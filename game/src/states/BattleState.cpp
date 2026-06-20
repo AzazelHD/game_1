@@ -138,7 +138,23 @@ void BattleState::onEnter()
     m_debugRenderer = &DebugRenderer::instance();
     m_debugRenderer->setEnabled(true);
 
-    // ── 10. Start fade‑in transition ──
+    // ── 10. Load default UI font (once) & wire to UnitPanel ──
+    if (!App::getDefaultFont())
+    {
+        Font *font = m_renderer->loadFont("assets/fonts/ARCADECLASSIC.TTF", 16);
+        App::setDefaultFont(font); // stores even if null (UnitPanel handles null)
+    }
+
+    m_unitPanel.setFont(App::getDefaultFont());
+
+    // ── 11. Initial turn banner ──
+    if (!m_units.empty())
+    {
+        Unit *first = m_turnQueue.getCurrentUnit();
+        m_unitPanel.setTurnInfo(1, first);
+    }
+
+    // ── 12. Start fade‑in transition ──
     m_transition.start({
         .transition = ScreenTransitions::FadeIn,
         .duration = 0.5f,

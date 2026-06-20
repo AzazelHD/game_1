@@ -26,6 +26,7 @@
 #include "battle/Unit.h"
 #include "battle/Grid.h"
 #include "ui/Cursor.h"
+#include "ui/UnitPanel.h"
 
 #include <memory>
 #include <vector>
@@ -178,4 +179,7 @@ private:
     void drawCursorTriangle(float cx, float cy, const IsoMetrics &m) const;
     void drawCursorTicks(float ax, float ay, int tileHeight,
                          const IsoMetrics &m) const;
+
+    // ── UI ──────────────────────────────────────────────────────────────
+    UnitPanel m_unitPanel;
 };
