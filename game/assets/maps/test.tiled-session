@@ -1,0 +1,86 @@
+{
+    "activeFile": "test_map.tmx",
+    "expandedProjectPaths": [
+    ],
+    "file.lastUsedOpenFilter": "All Files (*)",
+    "fileStates": {
+        "0.5H_IsoTiles.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 4
+        },
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/0.5H_IsoTiles.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 5.5
+        },
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/Default_IsoTiles.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 4
+        },
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/default.tsx": {
+            "scaleInDock": 1.5,
+            "scaleInEditor": 2
+        },
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/isometric tiles.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 4
+        },
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/isometric tiles_v2.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 4
+        },
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/test_map.tmx": {
+            "scale": 3,
+            "selectedLayer": 3,
+            "viewCenter": {
+                "x": 295.3333333333333,
+                "y": 136.16666666666669
+            }
+        },
+        "test_map.tmj": {
+            "scale": 3.2240624999999996,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 240.069787728991,
+                "y": 108.09343801492683
+            }
+        },
+        "test_map.tmx": {
+            "scale": 3.2240624999999996,
+            "selectedLayer": 5,
+            "viewCenter": {
+                "x": 269.22555006300286,
+                "y": 104.99176117088301
+            }
+        }
+    },
+    "last.exportedFilePath": "H:/Coding/Games/TRPG/game_1/game/assets/maps",
+    "last.imagePath": "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp",
+    "map.height": 10,
+    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedFormat": "tmx",
+    "map.orientation": "2",
+    "map.tileHeight": 24,
+    "map.tileWidth": 48,
+    "map.width": 10,
+    "openFiles": [
+        "test_map.tmx",
+        "0.5H_IsoTiles.tsx"
+    ],
+    "project": "test.tiled-project",
+    "recentFiles": [
+        "0.5H_IsoTiles.tsx",
+        "test_map.tmx",
+        "test_map.tmj",
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/test_map.tmx",
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/0.5H_IsoTiles.tsx",
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/Default_IsoTiles.tsx",
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/default.tsx",
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/isometric tiles_v2.tsx",
+        "H:/Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/isometric tiles.tsx"
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.tileSize": {
+        "height": 36,
+        "width": 48
+    }
+}

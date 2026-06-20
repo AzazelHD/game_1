@@ -1,0 +1,18 @@
+{
+  "configurations": [
+    {
+      "name": "Win32",
+      "includePath": [
+        "${workspaceFolder}/../engine/include",
+        "${workspaceFolder}/../engine/include/engine",
+        "${workspaceFolder}/game/src",
+        "${workspaceFolder}/vcpkg_installed/x64-windows/include"
+      ],
+      "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/cl.exe",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "windows-msvc-x64",
+      "configurationProvider": "ms-vscode.cmake-tools"
+    }
+  ],
+  "version": 4
+}

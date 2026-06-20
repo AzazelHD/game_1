@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="2026.05.04" orientation="isometric" renderorder="right-down" width="10" height="10" tilewidth="48" tileheight="24" infinite="0" nextlayerid="8" nextobjectid="26">
+ <editorsettings>
+  <export target="test_map.tmj" format="json"/>
+ </editorsettings>
+ <tileset firstgid="1" source="0.5H_IsoTiles.tsx"/>
+ <layer id="1" name="h1" width="10" height="10">
+  <data encoding="csv">
+0,0,0,0,0,0,0,0,0,1,
+0,0,0,0,0,0,0,0,0,1,
+0,0,0,0,0,0,0,0,0,1,
+0,0,0,0,0,0,0,0,0,1,
+0,0,0,0,0,0,0,0,0,1,
+10,10,10,10,10,0,0,0,0,1,
+10,10,10,10,10,10,10,10,10,10,
+10,10,10,10,10,10,4,4,4,10,
+4,4,4,4,4,4,4,4,4,4,
+4,4,4,4,4,4,4,4,4,4
+</data>
+ </layer>
+ <layer id="2" name="h2" width="10" height="10" offsetx="0" offsety="-12">
+  <data encoding="csv">
+0,0,0,0,0,0,0,0,0,1,
+0,0,0,0,0,0,0,0,0,1,
+0,0,0,0,0,0,0,0,0,1,
+9,9,9,9,9,9,9,9,9,9,
+9,9,9,9,9,9,9,9,9,9,
+0,0,0,0,0,9,9,9,9,9,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0
+</data>
+ </layer>
+ <layer id="3" name="h3" width="10" height="10" offsetx="0" offsety="-24">
+  <data encoding="csv">
+19,17,17,17,17,17,17,25,25,25,
+19,19,35,35,17,17,17,25,25,25,
+19,19,35,35,35,35,35,25,25,25,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0
+</data>
+ </layer>
+ <objectgroup color="#0cb500" id="5" name="spawn_player" class="spawn_player">
+  <object id="12" x="226.767" y="226.077">
+   <point/>
+  </object>
+  <object id="13" x="178.381" y="204.986">
+   <point/>
+  </object>
+  <object id="14" x="227.388" y="6.47863">
+   <point/>
+  </object>
+  <object id="15" x="6.7035" y="8.80489">
+   <point/>
+  </object>
+  <object id="16" x="13.8374" y="224.371">
+   <point/>
+  </object>
+  <object id="17" x="103.786" y="105.887">
+   <point/>
+  </object>
+  <object id="18" x="127.359" y="106.508">
+   <point/>
+  </object>
+  <object id="19" x="105.492" y="130.236">
+   <point/>
+  </object>
+  <object id="20" x="131.856" y="136.129">
+   <point/>
+  </object>
+ </objectgroup>
+ <objectgroup id="7" name="spawn_ally" class="spawn_ally"/>
+ <objectgroup color="#ff0004" id="6" name="spawn_enemy" class="spawn_enemy_2">
+  <object id="21" x="82.2293" y="154.739">
+   <point/>
+  </object>
+  <object id="22" x="177.606" y="82.3146">
+   <point/>
+  </object>
+  <object id="23" x="57.8812" y="59.3622">
+   <point/>
+  </object>
+  <object id="24" x="204.435" y="154.739">
+   <point/>
+  </object>
+  <object id="25" x="105.802" y="34.3937">
+   <point/>
+  </object>
+ </objectgroup>
+</map>

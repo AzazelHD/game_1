@@ -1,0 +1,83 @@
+TRPG - Useful Commands (Current)
+================================
+
+Two supported flows:
+- DEV: game Debug + engine from engine/build package export.
+- FINAL: game Release + engine from installed package in ../install.
+
+------------------------------------------------------------
+1) Build Engine (DEV)
+------------------------------------------------------------
+cd /d H:\Coding\Games\TRPG\engine
+tools\build_debug.bat
+
+Result:
+- Configures engine with preset engine.
+- Builds Debug and refreshes build-tree package files used by game DEV.
+
+------------------------------------------------------------
+2) Build Game (DEV)
+------------------------------------------------------------
+cd /d H:\Coding\Games\TRPG\game_1
+tools\build_debug.bat
+
+Result:
+- Configures game with preset game-debug.
+- Builds Debug game.exe using engine package from ../engine/build.
+
+------------------------------------------------------------
+3) Build + Install Engine (FINAL)
+------------------------------------------------------------
+cd /d H:\Coding\Games\TRPG\engine
+tools\build_release.bat
+tools\vsenv.bat cmake --install build --config Release
+
+Install location:
+- H:\Coding\Games\TRPG\install
+
+------------------------------------------------------------
+4) Build Game (FINAL)
+------------------------------------------------------------
+cd /d H:\Coding\Games\TRPG\game_1
+tools\build_release.bat
+
+Result:
+- Configures game with preset game-release.
+- Builds Release game.exe using installed engine package from ../install.
+
+------------------------------------------------------------
+5) Run Debug Build
+------------------------------------------------------------
+cd /d H:\Coding\Games\TRPG\game_1\build\debug\game\Debug
+game.exe
+
+------------------------------------------------------------
+6) Clean Configure (when cache is stale)
+------------------------------------------------------------
+cd /d H:\Coding\Games\TRPG\game_1
+if exist build\debug rmdir /s /q build\debug
+if exist build\release rmdir /s /q build\release
+
+Then configure again with the desired build script.
+
+------------------------------------------------------------
+VS Code tasks
+------------------------------------------------------------
+- Engine DEV / Engine FINAL (engine workspace)
+- Game DEV / Game FINAL / Run Game (game_1 workspace)
+
+------------------------------------------------------------
+ISOMETRIC TRANSFORMATION FORMULA (TILED)
+------------------------------------------------------------
+
+function TileToScreen(x, y):
+
+    tileWidth  = map.tileWidth
+    tileHeight = map.tileHeight
+
+    originX = (map.height * tileWidth) / 2
+
+    screenX = ((x - y) * tileWidth) / 2 + originX
+    screenY = ((x + y) * tileHeight) / 2
+
+    return (screenX, screenY)

@@ -1,0 +1,16 @@
+{
+    "name": "Aria",
+    "race": "Elf",
+    "gender": "Female",
+    "level": 1,
+    "maxHp": 22,
+    "maxMp": 14,
+    "attack": 7,
+    "defense": 5,
+    "magic": 14,
+    "magicDefense": 10,
+    "moveRange": 5,
+    "atkRange": 2,
+    "evasion": 14,
+    "speed": 28
+}

@@ -1,0 +1,2 @@
+# Place unit definition .json files here (one per unit type).
+# Schema defined in game/src/data/UnitLoader.h

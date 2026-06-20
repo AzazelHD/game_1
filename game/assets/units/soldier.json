@@ -1,0 +1,16 @@
+{
+    "name": "Soldier",
+    "race": "Human",
+    "gender": "Male",
+    "level": 1,
+    "maxHp": 30,
+    "maxMp": 5,
+    "attack": 12,
+    "defense": 8,
+    "magic": 3,
+    "magicDefense": 4,
+    "moveRange": 4,
+    "atkRange": 1,
+    "evasion": 8,
+    "speed": 20
+}

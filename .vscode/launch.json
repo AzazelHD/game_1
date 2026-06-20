@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Game Debug (VS Code)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/debug/game/Debug/game.exe",
+      "cwd": "${workspaceFolder}/build/debug/game/Debug",
+      "stopAtEntry": false,
+      "externalConsole": false
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20
+  },
+  "configurePresets": [
+    {
+      "name": "game-debug",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/debug",
+      "toolchainFile": "${sourceDir}/../engine/cmake/toolchains/trpg-vcpkg-toolchain.cmake",
+      "cacheVariables": {
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed",
+        "CMAKE_CONFIGURATION_TYPES": "Debug",
+        "TRPG_USE_INSTALLED_ENGINE": "OFF",
+        "TRPG_ENGINE_DEV_PREFIX": "${sourceDir}/../engine/build",
+        "TRPG_ENGINE_FINAL_PREFIX": "${sourceDir}/../install"
+      }
+    },
+    {
+      "name": "game-release",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/release",
+      "toolchainFile": "${sourceDir}/../engine/cmake/toolchains/trpg-vcpkg-toolchain.cmake",
+      "cacheVariables": {
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed",
+        "CMAKE_CONFIGURATION_TYPES": "Release",
+        "TRPG_USE_INSTALLED_ENGINE": "ON",
+        "TRPG_ENGINE_DEV_PREFIX": "${sourceDir}/../engine/build",
+        "TRPG_ENGINE_FINAL_PREFIX": "${sourceDir}/../install"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "game-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "game-release",
+      "configuration": "Release"
+    }
+  ]
+}

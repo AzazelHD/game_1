@@ -1,0 +1,11 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": false,
+  "cmake.configureOnEdit": false,
+  "files.exclude": {
+    "build": false
+  },
+  "search.exclude": {
+    "build": false
+  }
+}
