@@ -3,6 +3,7 @@
 #include "battle/Unit.h"
 #include "battle/MovementRange.h"
 #include "battle/CombatSystem.h"
+#include "engine/core/Log.h"
 #include "engine/math/Vec2.h"
 #include "engine/math/MathUtils.h"
 
@@ -154,6 +155,7 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
     if (!target)
     {
         // No enemies alive — mark turn done and wait.
+        LOG_INFO("EnemyAI", "%s has no target – waiting", unit.getName().c_str());
         unit.setHasMoved(true);
         unit.setHasActed(true);
         return;
@@ -190,6 +192,14 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
                 grid.getTile(startPos).occupied = false;
                 unit.setPosition(destPos);
                 grid.getTile(destPos).occupied = true;
+                LOG_INFO("EnemyAI", "%s moves from (%d,%d) to (%d,%d)",
+                         unit.getName().c_str(), startPos.x, startPos.y,
+                         destPos.x, destPos.y);
+            }
+            else
+            {
+                LOG_INFO("EnemyAI", "%s wants to move to (%d,%d) but it's blocked – staying",
+                         unit.getName().c_str(), destPos.x, destPos.y);
             }
         }
         unit.setHasMoved(true);
@@ -207,8 +217,36 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
             if (result.hit)
             {
                 target->takeDamage(result.damage);
+                LOG_INFO("EnemyAI", "%s attacks %s for %d damage! (HP: %d/%d)",
+                         unit.getName().c_str(), target->getName().c_str(),
+                         result.damage, target->getCurrentHp(), target->getMaxHp());
             }
+            else
+            {
+                LOG_INFO("EnemyAI", "%s misses %s", unit.getName().c_str(), target->getName().c_str());
+            }
+        }
+        else
+        {
+            LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (dist %d > range %d)",
+                     unit.getName().c_str(), target->getName().c_str(), distToTarget, unit.getAtkRange());
         }
         unit.setHasActed(true);
     }
+}
+
+int EnemyAI::chooseAction(const Unit &unit, const Grid &grid,
+                          std::vector<Unit *> &allUnits)
+{
+    Unit *target = findBestTarget(unit, allUnits);
+    if (!target)
+        return 2; // Wait
+
+    if (manhattanDistance(unit.getPosition(), target->getPosition()) <= unit.getAtkRange())
+        return 1; // Attack
+
+    if (!unit.hasMoved())
+        return 0; // Move
+
+    return 2; // Wait
 }

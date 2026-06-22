@@ -1,26 +1,35 @@
 #pragma once
 
 class Unit;
+class Renderer;
+class Font;
 
-// DamagePreview shows predicted damage before the player confirms an attack.
-// Shown when the cursor is over a valid attack target.
+// DamagePreview shows predicted damage when the cursor is over a valid
+// attack target. It is displayed only during the player's attack‑selection
+// phase and hidden otherwise.
 //
-// TODO: Implement the class with:
-//   - show(const Unit& attacker, const Unit& target):
-//       Call CombatSystem::resolve() but don't apply results — just display them.
-//       Store the preview result.
-//   - hide()
-//   - render(): draw a small box showing "DMG: X | HIT: Y%"
-//               If crit is possible, display "CRIT?" warning.
+// [x] Implemented:
+//   - show(const Unit& attacker, const Unit& target) – compute expected
+//     damage, hit%, and crit warning; store results.
+//   - hide() – clear the preview.
+//   - render(Renderer*, const Font*) – draw a small box with the preview.
 //
-// Tip: CombatSystem::resolve() uses rand() — the preview damage won't match the actual
-//      roll. For accurate previews, separate the "compute expected value" from the
-//      "roll random" step. Something to improve in a later phase.
+// The preview does NOT roll any random numbers – it uses a deterministic
+// formula matching CombatSystem's expected value, so the numbers stay
+// consistent while the player is choosing a target.
 class DamagePreview
 {
 public:
-    // TODO: implement
+    void show(const Unit &attacker, const Unit &target);
+    void hide();
+    bool isVisible() const { return m_visible; }
+
+    // Draw the preview box at a fixed screen position (top‑right corner).
+    void render(Renderer *renderer, const Font *font) const;
 
 private:
     bool m_visible = false;
+    int m_damage = 0;
+    float m_hitChance = 100.0f;  // percentage
+    bool m_critPossible = false; // reserved for future
 };

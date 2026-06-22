@@ -46,7 +46,7 @@
 0,0,0,0,0,0,0,0,0,0
 </data>
  </layer>
- <objectgroup color="#0cb500" id="5" name="spawn_player" class="spawn_player">
+ <objectgroup color="#00ff00" id="5" name="spawn_player" class="spawn_player">
   <object id="12" x="226.767" y="226.077">
    <point/>
   </object>
@@ -75,8 +75,8 @@
    <point/>
   </object>
  </objectgroup>
- <objectgroup id="7" name="spawn_ally" class="spawn_ally"/>
- <objectgroup color="#ff0004" id="6" name="spawn_enemy" class="spawn_enemy_2">
+ <objectgroup color="#005500" id="7" name="spawn_ally" class="spawn_ally"/>
+ <objectgroup color="#ff0000" id="6" name="spawn_enemy" class="spawn_enemy_2">
   <object id="21" x="82.2293" y="154.739">
    <point/>
   </object>

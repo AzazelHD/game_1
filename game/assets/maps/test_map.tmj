@@ -71,7 +71,7 @@
         }, 
         {
          "class":"spawn_player",
-         "color":"#0cb500",
+         "color":"#00ff00",
          "draworder":"topdown",
          "id":5,
          "name":"spawn_player",
@@ -201,6 +201,7 @@
         }, 
         {
          "class":"spawn_ally",
+         "color":"#005500",
          "draworder":"topdown",
          "id":7,
          "name":"spawn_ally",
@@ -213,7 +214,7 @@
         }, 
         {
          "class":"spawn_enemy_2",
-         "color":"#ff0004",
+         "color":"#ff0000",
          "draworder":"topdown",
          "id":6,
          "name":"spawn_enemy",

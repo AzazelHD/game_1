@@ -28,4 +28,6 @@ class EnemyAI
 {
 public:
     static void takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits);
+    static int chooseAction(const Unit &unit, const Grid &grid,
+                            std::vector<Unit *> &allUnits);
 };

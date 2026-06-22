@@ -27,6 +27,7 @@
 #include "battle/Grid.h"
 #include "ui/Cursor.h"
 #include "ui/UnitPanel.h"
+#include "ui/ActionMenu.h"
 
 #include <memory>
 #include <vector>
@@ -116,6 +117,38 @@ private:
         WaitingForAnimation
     };
 
+#ifdef _DEBUG
+    // Autoplay state machine for player‑team units (debug only).
+    enum class AutoPlayPhase
+    {
+        Idle,         // not autoplaying
+        ShowMenu,     // preparing to open the menu
+        MenuOpen,     // menu is visible, waiting to auto‑select
+        ExecuteAction // menu closed, executing the AI turn
+    };
+    AutoPlayPhase m_autoPlayPhase = AutoPlayPhase::Idle;
+    float m_autoPlayTimer = 0.0f;
+    int m_autoPlayActionIndex = 0; // which option the AI chose (0=Move,1=Attack,2=Wait)
+#endif
+
+    // ── Player control mode ─────────────────────────────────────────────
+    enum class PlayerControlMode
+    {
+        AI,   // current autoplay (debug only)
+        Human // manual phased turn
+    };
+    PlayerControlMode m_playerControlMode = PlayerControlMode::Human;
+
+    enum class HumanTurnPhase
+    {
+        ActionMenu,   // waiting for Move/Attack/Wait choice
+        MoveTarget,   // selecting destination tile
+        AttackTarget, // selecting enemy to attack
+        TurnEnded
+    };
+
+    HumanTurnPhase m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+
     TurnState m_turnState = TurnState::Idle;
     float m_turnTimer = 0.0f;
 
@@ -182,4 +215,5 @@ private:
 
     // ── UI ──────────────────────────────────────────────────────────────
     UnitPanel m_unitPanel;
+    ActionMenu m_actionMenu;
 };
