@@ -19,30 +19,26 @@
 #include "ui/Cursor.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <direct.h>
 
+// Sprite sheet dimensions for 0.5H_IsoTiles.png.
+//   Sprite size  : 48 × 36 px
+//   Map tile size: 48 × 24 px
+// Hardcoded because back-calculating from max-GID is fragile — the
+// sheet format is fixed for this asset.
 namespace
 {
-    // Sprite sheet dimensions for 0.5H_IsoTiles.png.
-    //   Sprite size  : 48 × 36 px
-    //   Map tile size: 48 × 24 px
-    // Hardcoded because back-calculating from max-GID is fragile — the
-    // sheet format is fixed for this asset.
-    namespace
-    {
-        constexpr float SPRITE_H = 36.0f;
+    constexpr float SPRITE_H = 36.0f;
 
-        // Spawn-overlay colours.
-        constexpr FColor COL_PLAYER_SPAWN = {0.18f, 0.52f, 0.89f, 0.55f}; // blue
-        constexpr FColor COL_ENEMY_SPAWN = {0.89f, 0.18f, 0.18f, 0.55f};  // red
+    // Spawn-overlay colours.
+    constexpr FColor COL_PLAYER_SPAWN = {0.18f, 0.52f, 0.89f, 0.55f}; // blue
+    constexpr FColor COL_ENEMY_SPAWN = {0.89f, 0.18f, 0.18f, 0.55f};  // red
 
-        // Cursor colours.
-        constexpr FColor COL_BLACK = {0.0f, 0.0f, 0.0f, 1.0f};
-        constexpr FColor COL_RED = {1.0f, 0.0f, 0.0f, 1.0f};
-    }
+    // Cursor colours.
+    constexpr FColor COL_BLACK = {0.0f, 0.0f, 0.0f, 1.0f};
+    constexpr FColor COL_RED = {1.0f, 0.0f, 0.0f, 1.0f};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +116,10 @@ void BattleState::onEnter()
     // ── 6. Initialise turn queue with all units ──
     m_turnQueue.init(m_units);
 
+    // 6.5. Snap cursor to the first acting unit so it doesn't flash at (0,0)
+    if (Unit *first = m_turnQueue.getCurrentUnit(); first)
+        m_cursor.setPosition(first->getPosition());
+
     // ── 7. Load tileset texture (sets m_spriteH) ──
     if (!loadTileset())
         return;
@@ -138,7 +138,6 @@ void BattleState::onEnter()
     // ── 10. Load default UI font (once) & wire to UnitPanel ──
     if (!App::getDefaultFont())
     {
-
         char cwd[1024];
         if (_getcwd(cwd, sizeof(cwd)))
             LOG_INFO("Battle", "Working directory: %s", cwd);
@@ -151,74 +150,48 @@ void BattleState::onEnter()
 
     m_unitPanel.setFont(App::getDefaultFont());
 
-    // ── 11. Initial turn banner ──
+    // ── 10.5. Configure the shared battle menu panel ─────────────────────
+    Button::setDefaultFont(App::getDefaultFont());
+    m_menuPanel.setVerticalLayout(VerticalLayoutConfig{
+        .spacing = 4.0f,
+        .alignment = HorizontalAlignment::Left});
+    m_menuPanel.setPosition({GameConstants::VIEW_W - 270.0f, GameConstants::VIEW_H - 150.0f});
+    m_menuPanel.setBackground(
+        {GameConstants::VIEW_W - 270.0f, GameConstants::VIEW_H - 150.0f, 250.0f, 120.0f},
+        {12, 12, 20, 230});
+
+    // ── Escape (Undo) callback – used whenever the menu is open ─────────
+    m_menuPanel.setOnCancel([this]()
+                            {
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (!active) return;
+
+        // Only undo the latest move if no action (attack/wait) followed it
+        if (active->hasMoved() && !m_actedAfterMove)
+        {
+            Vec2i currentPos = active->getPosition();
+            m_grid.getTile(currentPos).occupied = false;
+            active->setPosition(m_moveStartPos);
+            m_grid.getTile(m_moveStartPos).occupied = true;
+            active->setHasMoved(false);
+            m_cursor.setPosition(m_moveStartPos);
+
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            showBattleMenu(true, !active->hasActed(), true);
+            LOG_INFO("Battle", "Move undone for %s", active->getName().c_str());
+        }
+        else
+        {
+            m_menuPanel.clearButtons();
+            m_humanTurnPhase = HumanTurnPhase::FreeCursor;
+            m_cursor.setPosition(active->getPosition());
+        } });
+
+    // ── 11. Initial turn banner (optional) ──
     if (!m_units.empty())
     {
         Unit *first = m_turnQueue.getCurrentUnit();
         m_unitPanel.setTurnInfo(1, first);
-        m_actionMenu.setOnConfirm([this](int index)
-                                  {
-    Unit *active = m_turnQueue.getCurrentUnit();
-    if (!active)
-        return;
-
-    if (m_playerControlMode == PlayerControlMode::AI)
-    {
-        // AI mode – run full turn immediately.
-        EnemyAI::takeTurn(*active, m_grid, m_units);
-        m_cursor.setPosition(active->getPosition());
-        m_turnTimer = 0.15f;
-        m_turnState = TurnState::WaitingForAnimation;
-        return;
-    }
-
-    // Human mode – step through phases.
-    switch (m_humanTurnPhase)
-    {
-    case HumanTurnPhase::ActionMenu:
-    {
-        // The player just chose an action from the initial menu.
-        int action = index;   // 0 = Move, 1 = Attack, 2 = Wait
-
-        if (action == 0)   // Move
-        {
-            m_humanTurnPhase = HumanTurnPhase::MoveTarget;
-            m_actionMenu.hide();   // menu goes away while moving
-            // Stay in ProcessingTurn state so update() drives cursor movement.
-        }
-        else if (action == 1)   // Attack
-        {
-            m_humanTurnPhase = HumanTurnPhase::AttackTarget;
-            m_actionMenu.hide();
-        }
-        else   // Wait
-        {
-            // Unit does nothing – end turn immediately.
-            m_humanTurnPhase = HumanTurnPhase::TurnEnded;
-            active->setHasMoved(true);  // prevent move / act later
-            active->setHasActed(true);
-            advanceToNextUnit();
-            m_turnState = TurnState::Idle;
-        }
-        break;
-    }
-    case HumanTurnPhase::MoveTarget:
-        // Not used – movement is confirmed by Accept in handleActiveTurn.
-        break;
-    case HumanTurnPhase::AttackTarget:
-        // Not used – attack confirmed by Accept in handleActiveTurn.
-        break;
-    case HumanTurnPhase::TurnEnded:
-        break;
-    } });
-        m_actionMenu.setOnCancel([this]()
-                                 {
-                                     // Cancel = back to unit selection (or do nothing for now)
-                                     Unit *active = m_turnQueue.getCurrentUnit();
-                                     if (active)
-                                         LOG_INFO("Battle", "Player cancelled action for %s", active->getName().c_str());
-                                     // Do not advance turn; just hide menu
-                                 });
     }
 
     // ── 12. Start fade‑in transition ──
@@ -227,6 +200,54 @@ void BattleState::onEnter()
         .duration = 0.5f,
         .easing = easeInOut,
     });
+}
+
+void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
+{
+    m_menuPanel.clearButtons();
+
+    auto addBtn = [&](const char *label, std::function<void()> onClick, bool enabled)
+    {
+        Button btn{Rectf{0.f, 0.f, 250.f, 36.f}, label};
+        btn.setOnClick(std::move(onClick));
+        btn.setEnabled(enabled);
+        m_menuPanel.addButton(std::move(btn));
+    };
+
+    addBtn("Move", [this]
+           {
+        m_humanTurnPhase = HumanTurnPhase::MoveTarget;
+        m_menuPanel.clearButtons(); }, canMove);
+
+    addBtn("Attack", [this]
+           {
+        m_humanTurnPhase = HumanTurnPhase::AttackTarget;
+        m_menuPanel.clearButtons(); }, canAttack);
+
+    addBtn("Wait", [this]
+           {
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (active) {
+            active->setHasMoved(true);
+            active->setHasActed(true);
+            m_actedAfterMove = true;
+        }
+        m_menuPanel.clearButtons();
+        advanceToNextUnit();
+        m_turnState = TurnState::Idle; }, canWait);
+}
+
+void BattleState::showStatusMenu(Unit * /*unit*/)
+{
+    m_menuPanel.clearButtons();
+
+    Button btn{Rectf{0.f, 0.f, 250.f, 36.f}, "Status"};
+    btn.setOnClick([this]
+                   {
+        // TODO: full stat/inspect screen later
+        m_menuPanel.clearButtons();
+        m_humanTurnPhase = HumanTurnPhase::FreeCursor; });
+    m_menuPanel.addButton(std::move(btn));
 }
 
 void BattleState::onExit()
@@ -241,29 +262,135 @@ void BattleState::onExit()
 // Input Pass
 // ─────────────────────────────────────────────────────────────────────────────
 
+void BattleState::handleActiveTurn(const Input &input)
+{
+    if (!m_menuPanel.getButtons().empty())
+        return; // menu is open – ignore tactical input
+    if (m_playerControlMode != PlayerControlMode::Human)
+        return;
+
+    Unit *active = m_turnQueue.getCurrentUnit();
+    if (!active || active->getTeam() != 0)
+        return;
+
+    // ── FreeCursor phase ─────────────────────────────────────────────────
+    if (m_humanTurnPhase == HumanTurnPhase::FreeCursor)
+    {
+        if (input.isKeyPressed(KeyCode::Accept, false))
+        {
+            Vec2i cursorPos = m_cursor.getPosition();
+
+            if (cursorPos == active->getPosition())
+            {
+                m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+                showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
+            }
+            else
+            {
+                Unit *hovered = nullptr;
+                for (Unit *u : m_units)
+                    if (u && !u->isDead() && u->getPosition() == cursorPos)
+                    {
+                        hovered = u;
+                        break;
+                    }
+
+                if (hovered)
+                    showStatusMenu(hovered);
+                else
+                    m_cursor.setPosition(active->getPosition());
+            }
+        }
+    }
+    // ── MoveTarget phase ─────────────────────────────────────────────────
+    else if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
+    {
+        if (input.isKeyPressed(KeyCode::Accept, false))
+        {
+            Vec2i dest = m_cursor.getPosition();
+            m_moveStartPos = active->getPosition();
+
+            Vec2i start = active->getPosition();
+            m_grid.getTile(start).occupied = false;
+            active->setPosition(dest);
+            m_grid.getTile(dest).occupied = true;
+            active->setHasMoved(true);
+            m_actedAfterMove = false;
+
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            showBattleMenu(false, !active->hasActed(), true);
+        }
+        else if (input.isKeyPressed(KeyCode::Back, false))
+        {
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
+        }
+    }
+    // ── AttackTarget phase ───────────────────────────────────────────────
+    else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
+    {
+        Vec2i cursorPos = m_cursor.getPosition();
+        Unit *hoveredEnemy = nullptr;
+        for (Unit *u : m_units)
+            if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == cursorPos)
+            {
+                hoveredEnemy = u;
+                break;
+            }
+        if (hoveredEnemy)
+            m_damagePreview.show(*active, *hoveredEnemy);
+        else
+            m_damagePreview.hide();
+
+        if (input.isKeyPressed(KeyCode::Accept, false))
+        {
+            Vec2i targetPos = m_cursor.getPosition();
+            Unit *target = nullptr;
+            for (Unit *u : m_units)
+                if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == targetPos)
+                {
+                    target = u;
+                    break;
+                }
+
+            if (target)
+            {
+                int damage = std::max(active->getAttack() - target->getDefense(), 1);
+                target->takeDamage(damage);
+                active->setHasActed(true);
+                m_actedAfterMove = true;
+                LOG_INFO("Battle", "%s attacks %s for %d damage!",
+                         active->getName().c_str(), target->getName().c_str(), damage);
+            }
+
+            m_damagePreview.hide();
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            showBattleMenu(true, false, true);
+        }
+        else if (input.isKeyPressed(KeyCode::Back, false))
+        {
+            m_damagePreview.hide();
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            showBattleMenu(!active->hasMoved(), true, true);
+        }
+    }
+}
+
 void BattleState::handleInput()
 {
     const Input &input = Input::instance();
 
-    // 1. Structural Global States (Instant execution)
+    // 1. Pause
     if (input.isKeyPressed(KeyCode::Pause))
     {
         m_sm.push(std::make_unique<PauseState>(m_sm, m_renderer));
         return;
     }
 
-    // Safety check: Freeze human input interactions if scenes are fading
     if (m_transition.isActive())
         return;
 
-    // 2. Debug Override Trigger
-    if (input.isKeyPressed(KeyCode::Advance))
-    {
-        startBattleEnd(false);
-        return;
-    }
-
-    // 2.5. Toggle player control mode (DebugToggle key)
+    // 2. Toggle AI / Human control
     if (input.isKeyPressed(KeyCode::DebugToggle))
     {
         if (m_playerControlMode == PlayerControlMode::AI)
@@ -274,94 +401,29 @@ void BattleState::handleInput()
         else
         {
             m_playerControlMode = PlayerControlMode::AI;
-            LOG_INFO("Battle", "Switched to AI control");
+            LOG_INFO("Battle", "Switched to AI control (immediate takeover)");
+            Unit *active = m_turnQueue.getCurrentUnit();
+            if (active && active->getTeam() == 0 && !active->isDead())
+            {
+                m_menuPanel.clearButtons();
+                m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+                EnemyAI::takeTurn(*active, m_grid, m_units);
+                m_cursor.setPosition(active->getPosition());
+                m_turnTimer = 0.15f;
+                m_turnState = TurnState::WaitingForAnimation;
+            }
         }
     }
 
-    // 3. Delegate to tactical gameplay controls
+    // 3. Debug end battle
+    if (input.isKeyPressed(KeyCode::Advance))
+    {
+        startBattleEnd(false);
+        return;
+    }
+
+    // 4. Tactical input
     handleActiveTurn(input);
-}
-
-void BattleState::handleActiveTurn(const Input &input)
-{
-    // If the action menu is visible, it handles its own input via m_actionMenu.update().
-    if (m_actionMenu.isVisible())
-        return;
-
-    // Only process targeting inputs if it's a human player's turn.
-    if (m_playerControlMode != PlayerControlMode::Human)
-        return;
-
-    Unit *active = m_turnQueue.getCurrentUnit();
-    if (!active || active->getTeam() != 0)
-        return;
-
-    // Handle Confirm (Accept) and Cancel (Back) during targeting phases.
-    if (input.isKeyPressed(KeyCode::Accept, false))
-    {
-        if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
-        {
-            // Confirm the current cursor position as the move destination.
-            Vec2i dest = m_cursor.getPosition();
-
-            // You should add a check later: is 'dest' within reachable tiles?
-            // For now, just move the unit there.
-            Vec2i start = active->getPosition();
-            m_grid.getTile(start).occupied = false;
-            active->setPosition(dest);
-            m_grid.getTile(dest).occupied = true;
-            active->setHasMoved(true);
-
-            // After moving, re‑open the action menu (now only Attack / Wait).
-            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            m_actionMenu.show({"Move", "Attack", "Wait"}, {false, true, true});
-            LOG_INFO("Battle", "Menu opened after move, visible=%d", m_actionMenu.isVisible());
-        }
-        else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
-        {
-            // Confirm the current cursor position as the attack target.
-            Vec2i targetPos = m_cursor.getPosition();
-
-            // Find the enemy unit at that position.
-            Unit *target = nullptr;
-            for (Unit *u : m_units)
-            {
-                if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == targetPos)
-                {
-                    target = u;
-                    break;
-                }
-            }
-
-            if (target)
-            {
-                // Perform the attack (deterministic, for now).
-                int damage = std::max(active->getAttack() - target->getDefense(), 1);
-                target->takeDamage(damage);
-                active->setHasActed(true);
-
-                LOG_INFO("Battle", "%s attacks %s for %d damage!",
-                         active->getName().c_str(), target->getName().c_str(), damage);
-            }
-
-            // After attacking, end the turn (only Wait remains).
-            m_humanTurnPhase = HumanTurnPhase::TurnEnded;
-            advanceToNextUnit();
-            m_turnState = TurnState::Idle;
-        }
-    }
-    else if (input.isKeyPressed(KeyCode::Back, false))
-    {
-        // Cancel during targeting – go back to the action menu.
-        if (m_humanTurnPhase == HumanTurnPhase::MoveTarget ||
-            m_humanTurnPhase == HumanTurnPhase::AttackTarget)
-        {
-            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            // Re‑show the initial menu. If the unit already moved, we should show only the remaining options.
-            // For simplicity we always show all three for now; you can refine later.
-            m_actionMenu.show({"Move", "Attack", "Wait"}, {false, true, true});
-        }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,39 +442,30 @@ void BattleState::update(float dt)
     }
 
 #ifdef _DEBUG
-    switch (m_autoPlayPhase)
+    if (m_autoPlayPhase == AutoPlayPhase::ShowMenu)
     {
-    case AutoPlayPhase::ShowMenu:
-        m_autoPlayTimer -= dt;
-        if (m_autoPlayTimer <= 0.0f)
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (active)
         {
-            m_actionMenu.show({"Move", "Attack", "Wait"});
-            m_actionMenu.setSelectedIndex(m_autoPlayActionIndex);
-            m_autoPlayPhase = AutoPlayPhase::MenuOpen;
-            m_autoPlayTimer = 0.5f;
+            int action = m_autoPlayActionIndex; // 0=Move, 1=Attack, 2=Wait
+            if (action == 0 || action == 1)     // Move or Attack → let the AI do its thing
+            {
+                EnemyAI::takeTurn(*active, m_grid, m_units);
+                m_cursor.setPosition(active->getPosition());
+                m_turnTimer = 0.15f;
+                m_turnState = TurnState::WaitingForAnimation;
+            }
+            else // Wait
+            {
+                active->setHasMoved(true);
+                active->setHasActed(true);
+                m_actedAfterMove = true;
+                advanceToNextUnit();
+                m_turnState = TurnState::Idle;
+            }
         }
-        break;
-
-    case AutoPlayPhase::MenuOpen:
-        m_autoPlayTimer -= dt;
-        if (m_autoPlayTimer <= 0.0f)
-        {
-            m_actionMenu.simulateAccept();
-            m_autoPlayPhase = AutoPlayPhase::ExecuteAction;
-        }
-        break;
-
-    case AutoPlayPhase::ExecuteAction:
         m_autoPlayPhase = AutoPlayPhase::Idle;
-        break;
-
-    case AutoPlayPhase::Idle:
-    default:
-        break;
     }
-
-    if (m_autoPlayPhase != AutoPlayPhase::Idle)
-        return; // skip normal update while autoplay runs
 #endif
 
     // ── Human control phases ────────────────────────────────────────────
@@ -433,10 +486,9 @@ void BattleState::update(float dt)
         }
     }
 
-    if (m_actionMenu.isVisible())
+    if (!m_menuPanel.getButtons().empty())
     {
-        m_actionMenu.update(dt);
-        // Do not process turn logic while menu is visible
+        m_menuPanel.update();
         return;
     }
 
@@ -444,7 +496,18 @@ void BattleState::update(float dt)
     // This internally reads the arrow keys/WASD, handles the Fire Emblem-style
     // hold-to-repeat delays, and clamps itself within the map bounds!
     m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
-    // ─────────────────────────────────────────────────────────────────────────
+
+    // Track unit under cursor
+    m_hoveredUnit = nullptr;
+    Vec2i cursorPos = m_cursor.getPosition();
+    for (Unit *u : m_units)
+    {
+        if (u && !u->isDead() && u->getPosition() == cursorPos)
+        {
+            m_hoveredUnit = u;
+            break;
+        }
+    }
 
     // Turn state machine simulation loops
     switch (m_turnState)
@@ -558,7 +621,8 @@ void BattleState::processCurrentTurn()
     }
     else // Player team (team 0)
     {
-        m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+        m_humanTurnPhase = HumanTurnPhase::FreeCursor;
+        m_actedAfterMove = false;
         m_cursor.setPosition(active->getPosition());
 
         if (m_playerControlMode == PlayerControlMode::AI)
@@ -571,14 +635,11 @@ void BattleState::processCurrentTurn()
             m_turnState = TurnState::ProcessingTurn;
             LOG_INFO("Battle", "AI autoplay: %s will choose action %d", active->getName().c_str(), actionIndex);
 #else
-            m_actionMenu.show({"Move", "Attack", "Wait"});
             m_turnState = TurnState::ProcessingTurn;
 #endif
         }
         else // Human
         {
-            // Start human phased turn: show menu with all three options.
-            m_actionMenu.show({"Move", "Attack", "Wait"});
             m_turnState = TurnState::ProcessingTurn;
             // Later we'll add state for move-targeting / attack-targeting.
         }
@@ -645,14 +706,68 @@ void BattleState::render(float alpha)
     if (m_tileset && !m_mapData.isEmpty())
         drawScene(renderCam);
 
-    if (m_actionMenu.isVisible())
-        m_actionMenu.render(m_renderer, App::getDefaultFont());
+    // ── Action menu (always drawn if visible) ──
+    if (!m_menuPanel.getButtons().empty())
+        m_menuPanel.render(m_renderer);
 
-    m_unitPanel.render(m_renderer);
+    // ── Hover-based unit panel ──
+    // Show a coloured panel for the unit under the cursor (or during attack, show both)
+    if (m_playerControlMode == PlayerControlMode::Human &&
+        m_humanTurnPhase == HumanTurnPhase::AttackTarget)
+    {
+        // ── Attack targeting: show player (left) and target (right) ──
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (active && !active->isDead())
+        {
+            // Player panel (blue, left side)
+            m_unitPanel.show(active);
+            m_unitPanel.setTeamColor(Color{64, 128, 255, 255}); // blue
+            m_unitPanel.setPosition({16.0f, GameConstants::VIEW_H - 116.0f - 16.0f});
+            m_unitPanel.render(m_renderer);
 
+            // Target panel (red, right side) if hovering an enemy
+            if (m_hoveredUnit && m_hoveredUnit->getTeam() != 0)
+            {
+                m_targetPanel.show(m_hoveredUnit);
+                m_targetPanel.setFont(App::getDefaultFont());        // ensure font is set (set in onEnter)
+                m_targetPanel.setTeamColor(Color{255, 64, 64, 255}); // red
+                m_targetPanel.setPosition({GameConstants::VIEW_W - 316.0f, GameConstants::VIEW_H - 116.0f - 16.0f});
+                m_targetPanel.render(m_renderer);
+            }
+            else
+            {
+                m_targetPanel.hide();
+            }
+        }
+    }
+    else
+    {
+        // ── Normal hover: show single panel for unit under cursor ──
+        if (m_hoveredUnit)
+        {
+            m_unitPanel.show(m_hoveredUnit);
+            m_unitPanel.setTeamColor(m_hoveredUnit->getTeam() == 0 ? Color{64, 128, 255, 255}
+                                                                   : Color{255, 64, 64, 255});
+            m_unitPanel.setPosition({16.0f, GameConstants::VIEW_H - 116.0f - 16.0f});
+            m_unitPanel.render(m_renderer);
+        }
+        else
+        {
+            // Optionally show the turn banner when no unit is hovered
+            // If you want the turn banner always visible, leave it; otherwise hide the panel.
+            // For now, just hide the stat panel.
+            m_unitPanel.hide();
+        }
+    }
+
+    // ── Damage preview (always drawn if visible) ──
+    m_damagePreview.render(m_renderer, App::getDefaultFont());
+
+    // ── Debug overlay ──
     if (m_debugRenderer)
         m_debugRenderer->flush(m_renderer, renderCam);
 
+    // ── Screen transition (fade) ──
     m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
 }
 

@@ -1,5 +1,10 @@
 #pragma once
 
+#include "engine/math/Vec2.h"
+#include "engine/math/Rect.h"
+#include "engine/renderer/Color.h"
+#include "config/GameConstants.h"
+
 class Unit;
 class Font;
 class Renderer;
@@ -22,6 +27,9 @@ public:
     void hide();
     bool isVisible() const { return m_visible; }
 
+    void setPosition(Vec2f pos) { m_panelPos = pos; }
+    void setTeamColor(Color color) { m_teamColor = color; }
+
     void setFont(const Font *font) { m_font = font; }
     void setTurnInfo(int round, const Unit *activeUnit);
 
@@ -37,4 +45,10 @@ private:
     int m_round = 1;
     const Font *m_font = nullptr;
     const Unit *m_activeUnit = nullptr;
+
+    Vec2f m_panelPos{16.0f, GameConstants::VIEW_H - 116.0f - 16.0f};
+    Color m_teamColor = {180, 180, 180, 255};
+
+    static constexpr float PORTRAIT_W = 20.0f;
+    static constexpr float PORTRAIT_H = 30.0f;
 };

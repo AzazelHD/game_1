@@ -98,7 +98,7 @@ Checkpoint: enemy completes autonomous turns without breaking flow.
 
 - [x] Implement `UnitPanel` (hover/selected stats) — [UnitPanel.h](game/src/ui/UnitPanel.h) / [UnitPanel.cpp](game/src/ui/UnitPanel.cpp), [BattleState.h](game/src/states/BattleState.h) / [BattleState.cpp](game/src/states/BattleState.cpp)
 - [x] Implement `ActionMenu` (Move/Attack/Wait) — [ActionMenu.h](game/src/ui/ActionMenu.h) / [ActionMenu.cpp](game/src/ui/ActionMenu.cpp), [BattleState.h](game/src/states/BattleState.h) / [BattleState.cpp](game/src/states/BattleState.cpp)
-- [ ] Implement `DamagePreview` — [DamagePreview.h](game/src/ui/DamagePreview.h) / [DamagePreview.cpp](game/src/ui/DamagePreview.cpp), [BattleState.h](game/src/states/BattleState.h) / [BattleState.cpp](game/src/states/BattleState.cpp)
+- [x] Implement `DamagePreview` — [DamagePreview.h](game/src/ui/DamagePreview.h) / [DamagePreview.cpp](game/src/ui/DamagePreview.cpp), [BattleState.h](game/src/states/BattleState.h) / [BattleState.cpp](game/src/states/BattleState.cpp)
 - [x] Add turn and round indicators — [UnitPanel.h](game/src/ui/UnitPanel.h) / [UnitPanel.cpp](game/src/ui/UnitPanel.cpp), [BattleState.h](game/src/states/BattleState.h) / [BattleState.cpp](game/src/states/BattleState.cpp)
 - [x] Own `DialogBox` widget presentation in the game layer — [DialogBox.h](game/src/ui/DialogBox.h) / [DialogBox.cpp](game/src/ui/DialogBox.cpp)
 - [ ] Implement `DialogSystem` wrapper (`start/update/render/isActive`) — [DialogSystem.h](game/src/ui/DialogSystem.h) / [DialogSystem.cpp](game/src/ui/DialogSystem.cpp)

@@ -63,6 +63,15 @@ namespace
         if (font)
             renderer->renderText(font, text, Vec2f{x, y}, color, false, false, false);
     }
+
+    void drawPortrait(Renderer *renderer, Rectf rect, Color borderColor)
+    {
+        // Placeholder: just a coloured rectangle with border
+        renderer->setDrawColor(Color{60, 60, 60, 255});
+        renderer->fillRect(rect);
+        renderer->setDrawColor(borderColor);
+        renderer->drawRect(rect);
+    }
 }
 
 void UnitPanel::show(const Unit *unit)
@@ -99,24 +108,53 @@ void UnitPanel::renderStatsPanel(Renderer *renderer) const
     if (!m_font)
         return;
 
-    constexpr float PANEL_X = 16.0f;
     constexpr float PANEL_W = 300.0f;
     constexpr float PANEL_H = 116.0f;
-    const float panelY = GameConstants::VIEW_H - PANEL_H - 16.0f;
+    const float panel_x = m_panelPos.x;
+    const float panel_y = m_panelPos.y;
 
-    drawPanel(renderer, Rectf{PANEL_X, panelY, PANEL_W, PANEL_H});
+    // Background with team colour border
+    renderer->setBlendMode(Renderer::BlendMode::Blend);
+    renderer->setDrawColor(PANEL_BG);
+    renderer->fillRect(Rectf{panel_x, panel_y, PANEL_W, PANEL_H});
+    renderer->setDrawColor(m_teamColor);
+    renderer->drawRect(Rectf{panel_x, panel_y, PANEL_W, PANEL_H});
 
-    const float pad = 10.0f;
-    float x = PANEL_X + pad;
-    float y = panelY + pad;
+    float pad = 10.0f;
+    float x = panel_x + pad;
+    float y = panel_y + pad;
 
-    // ── Name / level / team swatch ────────────────────────────────────────
+    // ── Portrait (always shown when stat panel is visible) ────────────────
+    constexpr float PORTRAIT_W = 20.0f;
+    constexpr float PORTRAIT_H = 30.0f;
+
+    Rectf portraitRect;
+    float px, py = panel_y + pad;
+
+    if (panel_x < GameConstants::VIEW_W / 2.0f)
+    {
+        px = panel_x + pad;
+        x = px + PORTRAIT_W + pad; // shift text right
+    }
+    else
+    {
+        px = panel_x + PANEL_W - pad - PORTRAIT_W;
+        // text x stays at default (panel_x + pad) – no shift needed
+    }
+    portraitRect = Rectf{px, py, PORTRAIT_W, PORTRAIT_H};
+
+    renderer->setDrawColor(Color{60, 60, 60, 255});
+    renderer->fillRect(portraitRect);
+    renderer->setDrawColor(m_teamColor);
+    renderer->drawRect(portraitRect);
+
+    // Name / level / team swatch
     char buf[96];
     std::snprintf(buf, sizeof(buf), "%s  Lv%d", m_unit->getName().c_str(), m_unit->getLevel());
     drawText(renderer, m_font, x, y, TEXT_COLOR, buf);
 
     const Color tColor = teamColor(m_unit->getTeam());
-    Rectf swatch{PANEL_X + PANEL_W - pad - 14.0f, y - 2.0f, 14.0f, 14.0f};
+    Rectf swatch{panel_x + PANEL_W - pad - 14.0f, y - 2.0f, 14.0f, 14.0f};
     renderer->setDrawColor(tColor);
     renderer->fillRect(swatch);
     renderer->setDrawColor(Color{0, 0, 0, 255});
@@ -125,20 +163,13 @@ void UnitPanel::renderStatsPanel(Renderer *renderer) const
     y += 18.0f;
 
     // ── HP / MP bars ────────────────────────────────────────────────────
-    const float barW = PANEL_W - pad * 2.0f;
-    const float barH = 14.0f;
-
     std::snprintf(buf, sizeof(buf), "HP %d/%d", m_unit->getCurrentHp(), m_unit->getMaxHp());
-    drawBar(renderer, m_font, x, y, barW, barH,
-            m_unit->getMaxHp() > 0 ? static_cast<float>(m_unit->getCurrentHp()) / static_cast<float>(m_unit->getMaxHp()) : 0.0f,
-            Color{80, 200, 90, 255}, buf);
-    y += barH + 6.0f;
+    drawText(renderer, m_font, x, y, TEXT_COLOR, buf);
+    y += 16.0f;
 
     std::snprintf(buf, sizeof(buf), "MP %d/%d", m_unit->getCurrentMp(), m_unit->getMaxMp());
-    drawBar(renderer, m_font, x, y, barW, barH,
-            m_unit->getMaxMp() > 0 ? static_cast<float>(m_unit->getCurrentMp()) / static_cast<float>(m_unit->getMaxMp()) : 0.0f,
-            Color{80, 140, 230, 255}, buf);
-    y += barH + 10.0f;
+    drawText(renderer, m_font, x, y, TEXT_COLOR, buf);
+    y += 16.0f;
 
     // ── Core stats, two columns ────────────────────────────────────────
     std::snprintf(buf, sizeof(buf), "ATK %d   DEF %d   MAG %d", m_unit->getAttack(), m_unit->getDefense(), m_unit->getMagic());

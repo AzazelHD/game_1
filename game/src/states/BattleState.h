@@ -21,13 +21,14 @@
 #include "engine/renderer/Texture.h"
 #include "engine/renderer/DebugRenderer.h"
 #include "engine/statemachine/StateMachine.h"
+#include "engine/ui/MenuPanel.h"
 #include "battle/BattleMap.h"
 #include "battle/TurnQueue.h"
 #include "battle/Unit.h"
 #include "battle/Grid.h"
 #include "ui/Cursor.h"
 #include "ui/UnitPanel.h"
-#include "ui/ActionMenu.h"
+#include "ui/DamagePreview.h"
 
 #include <memory>
 #include <vector>
@@ -100,9 +101,11 @@ private:
     BattleMap m_battleMap; // gameplay grid derived from TileMapData
 
     // ── Gameplay systems ──────────────────────────────────────────────────
-    Grid m_grid{};               // logical grid representation (buildGameplayGrid)
-    std::vector<Unit *> m_units; // all active units (player + enemies)
-    TurnQueue m_turnQueue;       // turn scheduler / CT system
+    Grid m_grid{};                 // logical grid representation (buildGameplayGrid)
+    std::vector<Unit *> m_units;   // all active units (player + enemies)
+    TurnQueue m_turnQueue;         // turn scheduler / CT system
+    Vec2i m_moveStartPos{0, 0};    // starting position before a move
+    bool m_actedAfterMove = false; // true if an action happened after the last move
 
     // Result of the battle used after exit transition
     bool m_playerWon = false;
@@ -141,13 +144,14 @@ private:
 
     enum class HumanTurnPhase
     {
-        ActionMenu,   // waiting for Move/Attack/Wait choice
+        FreeCursor,   // player moves cursor freely; Enter triggers context actions
+        ActionMenu,   // Move/Attack/Wait menu
         MoveTarget,   // selecting destination tile
         AttackTarget, // selecting enemy to attack
-        TurnEnded
+        TurnEnded     // (internal) used to signal that the turn is over and we should advance
     };
 
-    HumanTurnPhase m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+    HumanTurnPhase m_humanTurnPhase = HumanTurnPhase::FreeCursor;
 
     TurnState m_turnState = TurnState::Idle;
     float m_turnTimer = 0.0f;
@@ -215,5 +219,10 @@ private:
 
     // ── UI ──────────────────────────────────────────────────────────────
     UnitPanel m_unitPanel;
-    ActionMenu m_actionMenu;
+    UnitPanel m_targetPanel;
+    MenuPanel m_menuPanel;
+    DamagePreview m_damagePreview;
+    Unit *m_hoveredUnit = nullptr;
+    void showBattleMenu(bool canMove, bool canAttack, bool canWait);
+    void showStatusMenu(Unit *unit);
 };
