@@ -57,9 +57,11 @@ struct UnitData
     int moveRange = 4;
     int atkRange = 1;
     int evasion = 10;
+    int jump = 1;
     int speed = 25;
     int team = 0;
     std::vector<ElementAffinity> affinities;
+    std::vector<std::string> skillIds;
 };
 
 struct StatBonuses

@@ -1,0 +1,12 @@
+{
+  "id": "slash",
+  "name": "Slash",
+  "description": "A basic physical attack.",
+  "basePower": 5,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 95,
+  "range": 1,
+  "mpCost": 0,
+  "effectTypes": ["damage"]
+}

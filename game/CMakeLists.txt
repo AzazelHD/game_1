@@ -73,6 +73,9 @@ add_executable(game
     ${GAME_HEADERS}
 )
 
+# Make the working directory match the folder where game.exe is placed
+set_target_properties(game PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$(OutDir)")
+
 # Header layout policy:
 # - src/ is the active implementation and header tree for the game target.
 # - add include/ only when a real public game API is introduced.

@@ -20,17 +20,32 @@ namespace
     constexpr Color TEXT_COLOR = {235, 235, 235, 255};
 }
 
-void DamagePreview::show(const Unit &attacker, const Unit &target)
+void DamagePreview::show(const Unit &attacker, const Unit &target, const SkillData *skill)
 {
+    HitContext ctx;
+    ctx.attacker = &attacker;
+    ctx.target = &target;
+    if (skill)
+    {
+        ctx.basePower = skill->basePower;
+        ctx.isMagical = skill->isMagical;
+        ctx.element = skill->element;
+        ctx.skillAccuracy = skill->skillAccuracy;
+    }
+    else
+    {
+        ctx.basePower = 0;
+        ctx.isMagical = false;
+        ctx.element = Element::Neutral;
+        ctx.skillAccuracy = 95;
+    }
+    ctx.side = AttackSide::Side; // will be dynamic later
+    ctx.tileEvasionBonus = 0;
+
+    CombatResult preview = CombatSystem::preview(ctx);
     m_visible = true;
-
-    // Simple deterministic damage: attack – defense, minimum 1.
-    m_damage = std::max(attacker.getAttack() - target.getDefense(), 1);
-
-    // For now, assume a fixed 100% hit chance.
-    m_hitChance = 100.0f;
-
-    // Crit detection is not yet implemented; leave as false.
+    m_damage = preview.damage;
+    m_hitChance = preview.hitChance;
     m_critPossible = false;
 }
 
@@ -56,12 +71,6 @@ void DamagePreview::render(Renderer *renderer, const Font *font) const
     // Build the text line(s)
     char line1[64];
     std::snprintf(line1, sizeof(line1), "DMG: %d   HIT: %.0f%%", m_damage, m_hitChance);
-
-    // Optional: "CRIT" warning when m_critPossible is true (not used now)
-    if (m_critPossible)
-    {
-        std::snprintf(line1, sizeof(line1), "DMG: %d   HIT: %.0f%%   CRIT!", m_damage, m_hitChance);
-    }
 
     // Draw text centred inside the box
     const float textX = box.x + 10.0f;

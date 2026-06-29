@@ -1,7 +1,10 @@
 #pragma once
+
+#include "Unit.h"
+#include "engine/math/Vec2.h"
+
 #include <unordered_set>
 #include <queue>
-#include "engine/math/Vec2.h"
 
 class Grid;
 
@@ -31,5 +34,8 @@ public:
     static std::unordered_set<Vec2i, Vec2iHash> compute(
         const Grid &grid,
         Vec2i start,
-        int movementPoints);
+        int movementPoints,
+        int team,
+        const std::vector<Unit *> &allUnits,
+        int jump);
 };

@@ -22,18 +22,22 @@
 #include "engine/renderer/DebugRenderer.h"
 #include "engine/statemachine/StateMachine.h"
 #include "engine/ui/MenuPanel.h"
-#include "battle/BattleMap.h"
-#include "battle/TurnQueue.h"
+#include "engine/input/KeyCode.h"
 #include "battle/Unit.h"
 #include "battle/Grid.h"
+#include "battle/BattleMap.h"
+#include "battle/TurnQueue.h"
+#include "battle/MovementRange.h"
 #include "ui/Cursor.h"
 #include "ui/UnitPanel.h"
 #include "ui/DamagePreview.h"
+#include "data/SkillLoader.h"
 
 #include <memory>
 #include <vector>
 #include <cstdint>
 #include <functional>
+#include <unordered_set>
 
 class Input;
 class Renderer;
@@ -101,11 +105,20 @@ private:
     BattleMap m_battleMap; // gameplay grid derived from TileMapData
 
     // ── Gameplay systems ──────────────────────────────────────────────────
-    Grid m_grid{};                 // logical grid representation (buildGameplayGrid)
-    std::vector<Unit *> m_units;   // all active units (player + enemies)
-    TurnQueue m_turnQueue;         // turn scheduler / CT system
-    Vec2i m_moveStartPos{0, 0};    // starting position before a move
-    bool m_actedAfterMove = false; // true if an action happened after the last move
+    Grid m_grid{};                                        // logical grid representation
+    std::vector<Unit *> m_units;                          // all active units (player + enemies)
+    std::unordered_map<std::string, SkillData> m_skillDB; // id -> skill
+    TurnQueue m_turnQueue;                                // turn scheduler / CT system
+    Vec2i m_moveStartPos{0, 0};                           // starting position before a move
+    bool m_actedAfterMove = false;                        // true if an action happened after the last move
+
+    // Reachable tiles for the current move phase
+    std::unordered_set<Vec2i, Vec2iHash> m_reachableTiles;
+    // Reachable tiles for the current attack phase
+    std::unordered_set<Vec2i, Vec2iHash> m_attackRangeTiles;
+
+    // Effective attack range for the current attack (1 = basic, skill range otherwise)
+    int m_currentAttackRange = 1;
 
     // Result of the battle used after exit transition
     bool m_playerWon = false;
@@ -217,12 +230,21 @@ private:
     void drawCursorTicks(float ax, float ay, int tileHeight,
                          const IsoMetrics &m) const;
 
-    // ── UI ──────────────────────────────────────────────────────────────
+    // ── Range overlay rendering ───────────────────────────────────────────
+    void computeAttackRangeTiles();
+    void drawRangeOverlayAt(int row, int col, float ax, float ay,
+                            const IsoMetrics &m, Color color) const;
+
+    // ── UI ────────────────────────────────────────────────────────────────
     UnitPanel m_unitPanel;
     UnitPanel m_targetPanel;
     MenuPanel m_menuPanel;
     DamagePreview m_damagePreview;
     Unit *m_hoveredUnit = nullptr;
+    std::string m_selectedSkillId;
+    void showSkillMenu();
     void showBattleMenu(bool canMove, bool canAttack, bool canWait);
     void showStatusMenu(Unit *unit);
+    void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
+    void openStatusMenu(Unit *unit);
 };

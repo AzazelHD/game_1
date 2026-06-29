@@ -15,8 +15,11 @@
 #include "states/ResultState.h"
 #include "battle/Unit.h"
 #include "battle/UnitFactory.h"
+#include "battle/CombatSystem.h"
+#include "battle/MovementRange.h"
 #include "ai/EnemyAI.h"
 #include "ui/Cursor.h"
+#include "data/SkillLoader.h"
 
 #include <algorithm>
 #include <memory>
@@ -56,6 +59,10 @@ BattleState::BattleState(StateMachine<Scene> &sm, Renderer *renderer)
 
 void BattleState::onEnter()
 {
+    m_selectedSkillId.clear();
+    m_reachableTiles.clear();
+    m_currentAttackRange = 1;
+
     // ── 1. Acquire engine dependencies ──
     m_renderer = App::getRenderer();
     if (!m_renderer)
@@ -138,14 +145,26 @@ void BattleState::onEnter()
     // ── 10. Load default UI font (once) & wire to UnitPanel ──
     if (!App::getDefaultFont())
     {
-        char cwd[1024];
-        if (_getcwd(cwd, sizeof(cwd)))
-            LOG_INFO("Battle", "Working directory: %s", cwd);
-        const char *fontPath = R"(H:\Coding\Games\TRPG\game_1\game\assets\fonts\ARCADECLASSIC.TTF)";
+
+        const char *fontPath = R"(assets/fonts/ARCADECLASSIC.TTF)";
         Font *font = m_renderer->loadFont(fontPath, 16);
         if (!font)
             LOG_ERROR("Battle", "Failed to load font: %s", fontPath);
         App::setDefaultFont(font);
+    }
+
+    // ── 10.1. Load skill database ─────────────────────────────────────────────
+    try
+    {
+        auto skills = SkillLoader::loadAll("assets/skills");
+        for (SkillData &s : skills)
+            m_skillDB[s.id] = std::move(s);
+        LOG_INFO("Battle", "Loaded %zu skills", m_skillDB.size());
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Battle", "Failed to load skills: %s", e.what());
+        // Skills are optional – the game will fall back to basic attacks.
     }
 
     m_unitPanel.setFont(App::getDefaultFont());
@@ -177,7 +196,7 @@ void BattleState::onEnter()
             m_cursor.setPosition(m_moveStartPos);
 
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            showBattleMenu(true, !active->hasActed(), true);
+            openBattleMenu(true, !active->hasActed(), true, KeyCode::Back);
             LOG_INFO("Battle", "Move undone for %s", active->getName().c_str());
         }
         else
@@ -214,16 +233,52 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         m_menuPanel.addButton(std::move(btn));
     };
 
+    // ── 1. Move ──────────────────────────────────────────────────────────
     addBtn("Move", [this]
            {
-        m_humanTurnPhase = HumanTurnPhase::MoveTarget;
-        m_menuPanel.clearButtons(); }, canMove);
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (active)
+            m_reachableTiles = MovementRange::compute(m_grid, active->getPosition(),
+                               active->getMoveRange(), active->getTeam(), m_units, 
+                               active->getJump());
 
+        m_humanTurnPhase = HumanTurnPhase::MoveTarget;
+
+        
+                m_menuPanel.clearButtons(); }, canMove);
+
+    // ── 2. Attack ────────────────────────────────────────────────────────
     addBtn("Attack", [this]
            {
+        m_currentAttackRange = 1;
+        m_selectedSkillId.clear();
+        computeAttackRangeTiles();
         m_humanTurnPhase = HumanTurnPhase::AttackTarget;
         m_menuPanel.clearButtons(); }, canAttack);
 
+    // ── 3. Skills ────────────────────────────────────────────────────────
+    Unit *active = m_turnQueue.getCurrentUnit();
+    if (active && !active->getSkillIds().empty())
+    {
+        addBtn("Skills", [this]
+               { showSkillMenu(); }, canAttack);
+    }
+
+    // ── 4. Defend ────────────────────────────────────────────────────────
+    addBtn("Defend", [this]
+           {
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (active) {
+            active->setHasMoved(true);
+            active->setHasActed(true);
+            m_actedAfterMove = true;
+            // TODO: apply defend status buff
+        }
+        m_menuPanel.clearButtons();
+        advanceToNextUnit();
+        m_turnState = TurnState::Idle; }, canAttack); // uses the same condition as Attack/Wait (unit hasn't acted yet)
+
+    // ── 5. Wait ──────────────────────────────────────────────────────────
     addBtn("Wait", [this]
            {
         Unit *active = m_turnQueue.getCurrentUnit();
@@ -235,6 +290,73 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         m_menuPanel.clearButtons();
         advanceToNextUnit();
         m_turnState = TurnState::Idle; }, canWait);
+
+    // ── Dynamic panel sizing (grows upward from bottom) ──────────────────
+    int buttonCount = static_cast<int>(m_menuPanel.getButtons().size());
+    if (buttonCount > 0)
+    {
+        constexpr float ITEM_HEIGHT = 36.0f;
+        constexpr float ITEM_SPACING = 4.0f;
+        constexpr float PANEL_PADDING = 10.0f; // top & bottom padding inside background
+        constexpr float BOTTOM_MARGIN = 10.0f; // space between panel bottom and screen edge
+
+        float totalHeight = buttonCount * ITEM_HEIGHT + (buttonCount - 1) * ITEM_SPACING + PANEL_PADDING * 2;
+        float panelY = GameConstants::VIEW_H - totalHeight - BOTTOM_MARGIN;
+
+        m_menuPanel.setPosition({GameConstants::VIEW_W - 270.0f, panelY});
+        m_menuPanel.setBackground(
+            {GameConstants::VIEW_W - 270.0f, panelY, 250.0f, totalHeight},
+            {12, 12, 20, 230});
+    }
+}
+
+void BattleState::showSkillMenu()
+{
+    Unit *active = m_turnQueue.getCurrentUnit();
+    if (!active)
+        return;
+
+    m_menuPanel.clearButtons();
+
+    LOG_INFO("Battle", "showSkillMenu: unit %s has %zu skill IDs",
+             active->getName().c_str(), active->getSkillIds().size());
+
+    for (const std::string &skillId : active->getSkillIds())
+    {
+        LOG_INFO("Battle", "  -> %s", skillId.c_str());
+
+        auto it = m_skillDB.find(skillId);
+        if (it == m_skillDB.end())
+            continue;
+
+        const SkillData &skill = it->second;
+        std::string label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
+        bool canUse = (active->getCurrentMp() >= skill.mpCost);
+
+        Button btn{Rectf{0.f, 0.f, 250.f, 36.f}, label};
+        btn.setOnClick([this, skillId]
+                       {
+            auto it = m_skillDB.find(skillId);
+            if (it != m_skillDB.end()) {
+                m_currentAttackRange = it->second.range;
+                m_selectedSkillId = skillId;
+                computeAttackRangeTiles();
+            }
+            m_humanTurnPhase = HumanTurnPhase::AttackTarget;
+            m_menuPanel.clearButtons(); });
+        btn.setEnabled(canUse);
+        m_menuPanel.addButton(std::move(btn));
+    }
+
+    Button backBtn{Rectf{0.f, 0.f, 250.f, 36.f}, "Back"};
+    backBtn.setOnClick([this]
+                       {
+        Unit *active = m_turnQueue.getCurrentUnit();
+        if (active)
+            showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
+        else
+            m_menuPanel.clearButtons(); });
+    m_menuPanel.addButton(std::move(backBtn));
 }
 
 void BattleState::showStatusMenu(Unit * /*unit*/)
@@ -248,6 +370,18 @@ void BattleState::showStatusMenu(Unit * /*unit*/)
         m_menuPanel.clearButtons();
         m_humanTurnPhase = HumanTurnPhase::FreeCursor; });
     m_menuPanel.addButton(std::move(btn));
+}
+
+void BattleState::openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger)
+{
+    showBattleMenu(canMove, canAttack, canWait);
+    Input::instance().consumeKey(trigger);
+}
+
+void BattleState::openStatusMenu(Unit *unit)
+{
+    showStatusMenu(unit);
+    Input::instance().consumeKey(KeyCode::Accept);
 }
 
 void BattleState::onExit()
@@ -283,7 +417,7 @@ void BattleState::handleActiveTurn(const Input &input)
             if (cursorPos == active->getPosition())
             {
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-                showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
+                openBattleMenu(!active->hasMoved(), !active->hasActed(), true, KeyCode::Accept);
             }
             else
             {
@@ -296,18 +430,23 @@ void BattleState::handleActiveTurn(const Input &input)
                     }
 
                 if (hovered)
-                    showStatusMenu(hovered);
+                    openStatusMenu(hovered);
                 else
                     m_cursor.setPosition(active->getPosition());
             }
         }
     }
+
     // ── MoveTarget phase ─────────────────────────────────────────────────
     else if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
     {
         if (input.isKeyPressed(KeyCode::Accept, false))
         {
             Vec2i dest = m_cursor.getPosition();
+            // Only allow moving to a reachable tile
+            if (m_reachableTiles.find(dest) == m_reachableTiles.end())
+                return; // ignore confirm if tile not reachable
+
             m_moveStartPos = active->getPosition();
 
             Vec2i start = active->getPosition();
@@ -318,14 +457,15 @@ void BattleState::handleActiveTurn(const Input &input)
             m_actedAfterMove = false;
 
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            showBattleMenu(false, !active->hasActed(), true);
+            openBattleMenu(false, !active->hasActed(), true, KeyCode::Accept);
         }
         else if (input.isKeyPressed(KeyCode::Back, false))
         {
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
+            openBattleMenu(!active->hasMoved(), !active->hasActed(), true, KeyCode::Back);
         }
     }
+
     // ── AttackTarget phase ───────────────────────────────────────────────
     else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
     {
@@ -337,8 +477,25 @@ void BattleState::handleActiveTurn(const Input &input)
                 hoveredEnemy = u;
                 break;
             }
+
+        // Update damage preview: use selected skill if any, else basic attack
         if (hoveredEnemy)
-            m_damagePreview.show(*active, *hoveredEnemy);
+        {
+            int dist = manhattanDistance(active->getPosition(), hoveredEnemy->getPosition());
+            if (dist <= m_currentAttackRange)
+            {
+                const SkillData *previewSkill = nullptr;
+                if (!m_selectedSkillId.empty())
+                {
+                    auto it = m_skillDB.find(m_selectedSkillId);
+                    if (it != m_skillDB.end())
+                        previewSkill = &it->second;
+                }
+                m_damagePreview.show(*active, *hoveredEnemy, previewSkill);
+            }
+            else
+                m_damagePreview.hide();
+        }
         else
             m_damagePreview.hide();
 
@@ -353,25 +510,134 @@ void BattleState::handleActiveTurn(const Input &input)
                     break;
                 }
 
-            if (target)
+            // Look up the selected skill (nullptr = basic attack)
+            const SkillData *skill = nullptr;
+            if (!m_selectedSkillId.empty())
             {
-                int damage = std::max(active->getAttack() - target->getDefense(), 1);
-                target->takeDamage(damage);
-                active->setHasActed(true);
-                m_actedAfterMove = true;
-                LOG_INFO("Battle", "%s attacks %s for %d damage!",
-                         active->getName().c_str(), target->getName().c_str(), damage);
+                auto it = m_skillDB.find(m_selectedSkillId);
+                if (it != m_skillDB.end())
+                    skill = &it->second;
             }
+
+            // Decide if the tile is a legal attack target
+            bool canAttack = (target != nullptr); // direct target
+
+            // AOE skill on empty tile – legal if at least one enemy is within the splash area
+            if (!canAttack && skill && skill->area > 0)
+            {
+                for (Unit *u : m_units)
+                {
+                    if (u && !u->isDead() && u->getTeam() != 0 &&
+                        manhattanDistance(u->getPosition(), targetPos) <= skill->area)
+                    {
+                        canAttack = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!canAttack)
+                return; // no valid target – ignore confirm
+
+            // Check attack range
+            int dist = manhattanDistance(active->getPosition(), targetPos);
+            if (dist > m_currentAttackRange)
+                return; // out of range – ignore confirm
+
+            // Determine which skill to use (nullptr = basic attack)
+            const SkillData *skillToUse = nullptr;
+            if (!m_selectedSkillId.empty())
+            {
+                auto it = m_skillDB.find(m_selectedSkillId);
+                if (it != m_skillDB.end())
+                    skillToUse = &it->second;
+            }
+
+            // ── Gather all targets affected by this attack ──────────────
+            std::vector<Unit *> targets;
+
+            if (skillToUse && skillToUse->area > 0)
+            {
+                // AOE skill – collect every enemy within the area
+                for (Unit *u : m_units)
+                {
+                    if (!u || u->isDead() || u->getTeam() == 0)
+                        continue;
+                    if (manhattanDistance(u->getPosition(), targetPos) <= skillToUse->area)
+                        targets.push_back(u);
+                }
+            }
+            else
+            {
+                // Single‑target (basic attack or single‑target skill)
+                if (target) // guaranteed non‑null because canAttack was true
+                    targets.push_back(target);
+            }
+
+            // ── Apply the skill to every valid target ──────────────────
+            for (Unit *u : targets)
+            {
+                HitContext ctx;
+                ctx.attacker = active;
+                ctx.target = u;
+                if (skillToUse)
+                {
+                    ctx.basePower = skillToUse->basePower;
+                    ctx.isMagical = skillToUse->isMagical;
+                    ctx.element = skillToUse->element;
+                    ctx.skillAccuracy = skillToUse->skillAccuracy;
+                }
+                else
+                {
+                    ctx.basePower = 0;
+                    ctx.isMagical = false;
+                    ctx.element = Element::Neutral;
+                    ctx.skillAccuracy = 95;
+                }
+                ctx.side = AttackSide::Side;
+                ctx.tileEvasionBonus = 0;
+
+                CombatResult result = CombatSystem::resolve(ctx);
+
+                // ── Animation hook (per target) ────────────────────────
+                // TODO: Play attack animation (active -> u) here.
+                //       Once animation finishes, apply the hit/miss below.
+
+                if (result.hit)
+                {
+                    // TODO: Play hit animation on 'u'
+                    u->takeDamage(result.damage);
+                    LOG_INFO("Battle", "%s uses %s on %s for %d damage!",
+                             active->getName().c_str(),
+                             skillToUse ? skillToUse->name.c_str() : "Attack",
+                             u->getName().c_str(), result.damage);
+                }
+                else
+                {
+                    // TODO: Play miss/dodge animation on 'u'
+                    LOG_INFO("Battle", "%s misses %s",
+                             active->getName().c_str(), u->getName().c_str());
+                }
+            }
+
+            // Deduct MP cost (once, after all targets are processed)
+            if (skillToUse)
+                active->setCurrentMp(active->getCurrentMp() - skillToUse->mpCost);
+
+            active->setHasActed(true);
+            m_actedAfterMove = true;
+            m_selectedSkillId.clear();
 
             m_damagePreview.hide();
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            showBattleMenu(true, false, true);
+            openBattleMenu(true, false, true, KeyCode::Accept);
         }
         else if (input.isKeyPressed(KeyCode::Back, false))
         {
             m_damagePreview.hide();
+            m_selectedSkillId.clear(); // cancel skill selection
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            showBattleMenu(!active->hasMoved(), true, true);
+            openBattleMenu(!active->hasMoved(), true, true, KeyCode::Back);
         }
     }
 }
@@ -729,7 +995,7 @@ void BattleState::render(float alpha)
             if (m_hoveredUnit && m_hoveredUnit->getTeam() != 0)
             {
                 m_targetPanel.show(m_hoveredUnit);
-                m_targetPanel.setFont(App::getDefaultFont());        // ensure font is set (set in onEnter)
+                m_targetPanel.setFont(App::getDefaultFont());
                 m_targetPanel.setTeamColor(Color{255, 64, 64, 255}); // red
                 m_targetPanel.setPosition({GameConstants::VIEW_W - 316.0f, GameConstants::VIEW_H - 116.0f - 16.0f});
                 m_targetPanel.render(m_renderer);
@@ -993,6 +1259,19 @@ void BattleState::drawScene(const Camera &camera) const
 
             drawTileLayersAt(row, col, ax, ay, m, tileLayers);
             drawSpawnOverlayAt(row, col, ax, ay, m, spawnGrid, gridSize);
+
+            // ── Range overlays ─────────────────────────────────────────
+            if (m_humanTurnPhase == HumanTurnPhase::MoveTarget &&
+                m_reachableTiles.count({col, row}))
+            {
+                drawRangeOverlayAt(row, col, ax, ay, m, Color{0, 100, 255, 120}); // blue for move
+            }
+            else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget &&
+                     m_attackRangeTiles.count({col, row}))
+            {
+                drawRangeOverlayAt(row, col, ax, ay, m, Color{255, 50, 50, 120}); // red for attack
+            }
+
             drawCursorAt(row, col, ax, ay, m);
             drawUnitAt(row, col, ax, ay, m);
             // drawEffectAt(row, col, ax, ay, m);
@@ -1214,4 +1493,37 @@ void BattleState::drawCursorTicks(float ax, float ay, int tileHeight,
             corners[i],
             Vec2f{corners[i].x + inward[i].x * tickLen, corners[i].y + inward[i].y * tickLen});
     }
+}
+
+void BattleState::computeAttackRangeTiles()
+{
+    m_attackRangeTiles.clear();
+    Unit *active = m_turnQueue.getCurrentUnit();
+    if (!active)
+        return;
+
+    Vec2i pos = active->getPosition();
+    int range = m_currentAttackRange;
+
+    for (int r = 0; r < m_mapData.height; ++r)
+        for (int c = 0; c < m_mapData.width; ++c)
+            if (manhattanDistance(pos, Vec2i{c, r}) <= range)
+                m_attackRangeTiles.insert({c, r});
+}
+
+void BattleState::drawRangeOverlayAt(int row, int col, float ax, float ay,
+                                     const IsoMetrics &m, Color color) const
+{
+    const GameTile &gt = m_battleMap.at(col, row);
+    const float ox = ax;
+    const float oy = ay - static_cast<float>(gt.height) * m.elevStep;
+
+    const std::vector<Renderer::Vertex> verts = {
+        Renderer::Vertex{{ox, oy - m.halfTH}, color},
+        Renderer::Vertex{{ox + m.halfTW, oy}, color},
+        Renderer::Vertex{{ox, oy + m.halfTH}, color},
+        Renderer::Vertex{{ox - m.halfTW, oy}, color}};
+
+    const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
+    m_renderer->drawGeometry(verts, indices);
 }

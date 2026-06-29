@@ -1,0 +1,13 @@
+{
+  "id": "fireball",
+  "name": "Fireball",
+  "description": "Launches a ball of fire.",
+  "basePower": 15,
+  "isMagical": true,
+  "element": "fire",
+  "skillAccuracy": 85,
+  "range": 4,
+  "area": 1,
+  "mpCost": 5,
+  "effectTypes": ["damage"]
+}

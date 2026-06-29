@@ -43,7 +43,7 @@ void PauseState::handleInput()
     }
 
     // 2. Let the menu panel process arrow/WASD navigation internally
-    m_menu.handleInput();
+    m_menu.update();
 
     // 3. Handle Confirm (Accept / Enter) button activation
     if (input.isKeyPressed(KeyCode::Accept, false) && m_menu.activateSelected())

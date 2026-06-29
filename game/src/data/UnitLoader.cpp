@@ -53,8 +53,14 @@ UnitData UnitLoader::load(const std::string &filePath)
     data.moveRange = j.value("moveRange", 4);
     data.atkRange = j.value("atkRange", 1);
     data.evasion = j.value("evasion", 10);
+    data.jump = j.value("jump", 1);
     data.speed = j.value("speed", 25);
     data.team = j.value("team", 0);
+    if (j.contains("skills") && j["skills"].is_array())
+    {
+        for (const auto &s : j["skills"])
+            data.skillIds.push_back(s.get<std::string>());
+    }
     return data;
 }
 

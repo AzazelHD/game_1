@@ -1,5 +1,8 @@
 #pragma once
 
+#include "data/SkillLoader.h"
+#include "battle/CombatSystem.h"
+
 class Unit;
 class Renderer;
 class Font;
@@ -20,7 +23,7 @@ class Font;
 class DamagePreview
 {
 public:
-    void show(const Unit &attacker, const Unit &target);
+    void show(const Unit &attacker, const Unit &target, const SkillData *skill);
     void hide();
     bool isVisible() const { return m_visible; }
 

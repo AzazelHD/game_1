@@ -52,7 +52,7 @@ void MainMenuState::handleInput()
         return;
 
     // 2. NOW let the menu panel process arrow/WASD navigation safely
-    m_menu.handleInput();
+    m_menu.update();
 
     // 3. Handle activation cleanly
     if (input.isKeyPressed(KeyCode::Accept, false) && m_menu.activateSelected())

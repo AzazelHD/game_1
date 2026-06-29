@@ -167,7 +167,8 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
         const Vec2i startPos = unit.getPosition();
         const int moveRange = unit.getMoveRange();
 
-        auto reachable = MovementRange::compute(grid, startPos, moveRange);
+        auto reachable = MovementRange::compute(grid, startPos, moveRange,
+                                                unit.getTeam(), allUnits, unit.getJump());
 
         // ── 3. Pick the reachable tile closest to the target ─────────────────
         const Vec2i destPos = bestTileToward(unit, reachable, target->getPosition(),

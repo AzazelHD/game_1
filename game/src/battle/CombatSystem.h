@@ -17,8 +17,9 @@ struct CombatResult
     int damage = 0;
     bool hit = false;
     bool crit = false;
-    bool absorbed = false; // true = damage heals instead
+    bool absorbed = false;
     Affinity affinityResult = Affinity::Neutral;
+    float hitChance = 0.0f;
 };
 
 // HitContext carries all the info needed to resolve an attack. It is constructed by the caller (BattleState) based on the attacker, target, and chosen skill/action.
@@ -55,6 +56,7 @@ class CombatSystem
 {
 public:
     static CombatResult resolve(const HitContext &ctx);
+    static CombatResult preview(const HitContext &ctx);
 
     // Tunable constants
     static constexpr float CRIT_CHANCE = 0.10f;

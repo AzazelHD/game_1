@@ -56,6 +56,64 @@ CombatResult CombatSystem::resolve(const HitContext &ctx)
     return result;
 }
 
+CombatResult CombatSystem::preview(const HitContext &ctx)
+{
+    CombatResult res;
+
+    // Calculate hit chance
+    int hitChance = ctx.skillAccuracy - ctx.target->getEvasion() + sideAccuracyBonus(ctx.side) + ctx.tileEvasionBonus;
+    hitChance = std::clamp(hitChance, 0, 100);
+    res.hitChance = static_cast<float>(hitChance);
+
+    // Calculate raw offense (no variance, no crit)
+    const Unit &atk = *ctx.attacker;
+    int offense = ctx.basePower + (ctx.isMagical ? atk.getMagic() : atk.getAttack());
+
+    // Side multiplier
+    switch (ctx.side)
+    {
+    case AttackSide::Front:
+        offense = static_cast<int>(offense * FRONT_DMG_MULTIPLIER);
+        break;
+    case AttackSide::Side:
+        break;
+    case AttackSide::Rear:
+        offense = static_cast<int>(offense * REAR_DMG_MULTIPLIER);
+        break;
+    }
+
+    // Element affinity
+    if (ctx.element != Element::Neutral)
+    {
+        Affinity aff = getAffinity(*ctx.target, ctx.element);
+        switch (aff)
+        {
+        case Affinity::Weak:
+            offense = static_cast<int>(offense * AFFINITY_WEAK);
+            break;
+        case Affinity::Resistant:
+            offense = static_cast<int>(offense * AFFINITY_RESIST);
+            break;
+        case Affinity::Immune:
+            offense = 0;
+            break;
+        case Affinity::Absorb:
+            res.absorbed = true;
+            break;
+        default:
+            break;
+        }
+        res.affinityResult = aff;
+    }
+
+    // Subtract defense
+    const Unit &def = *ctx.target;
+    int defense = ctx.isMagical ? def.getMagicDefense() : def.getDefense();
+    res.damage = std::max(0, offense - defense);
+
+    return res;
+}
+
 // ---------------------------------------------------------------------------
 // private
 // ---------------------------------------------------------------------------

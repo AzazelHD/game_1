@@ -3,6 +3,8 @@
 #include "battle/UnitData.h"
 #include "battle/UnitProgression.h"
 
+#include <algorithm>
+
 class Unit
 {
 public:
@@ -44,6 +46,7 @@ public:
     int getMagic() const { return m_data.magic + m_bonuses.magic; }
     int getMagicDefense() const { return m_data.magicDefense + m_bonuses.magicDef; }
     int getEvasion() const { return m_data.evasion + m_bonuses.evasion; }
+    int getJump() const { return m_data.jump; }
     int getMoveRange() const { return m_data.moveRange + m_bonuses.moveRange; }
     int getAtkRange() const { return m_data.atkRange + m_bonuses.atkRange; }
 
@@ -57,6 +60,7 @@ public:
     // Getters (actions)
     const std::vector<ActionType> &getActions() const { return m_actions; }
     const std::vector<SkillType> &getSkills() const { return m_skills; }
+    const std::vector<std::string> &getSkillIds() const { return m_data.skillIds; }
 
     // Setters
     void setPosition(Vec2i pos) { m_position = pos; }
@@ -64,6 +68,8 @@ public:
     void setHasMoved(bool val) { m_hasMoved = val; }
     void setHasActed(bool val) { m_hasActed = val; }
     void setWaitTime(int val) { m_waitTime = val; }
+    void setCurrentHp(int val) { m_currentHp = std::clamp(val, 0, getMaxHp()); }
+    void setCurrentMp(int val) { m_currentMp = std::clamp(val, 0, getMaxMp()); }
 
 private:
     // Data
