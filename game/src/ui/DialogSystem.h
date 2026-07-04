@@ -4,7 +4,12 @@
 #include <string>
 #include <vector>
 
-#include "ui/DialogBox.h"
+#include "ui/UIManager.h"
+
+class Renderer;
+class Font;
+class DialogWindow;
+class Input;
 
 // DialogLine: a single line (or paragraph) of dialog with optional metadata.
 struct DialogLine
@@ -46,14 +51,16 @@ struct DialogLine
 class DialogSystem
 {
 public:
-    // TODO: implement
+    void start(std::vector<DialogLine> lines, std::function<void()> onFinish, const Font *font);
+    void update(float dt, const Input &input);
+    void render(Renderer *renderer) const;
 
     bool isActive() const { return m_active; }
 
 private:
-    DialogBox m_box;
+    UIManager m_uiManager;
+    DialogWindow *m_window = nullptr;
     std::vector<DialogLine> m_lines;
-    int m_currentLine = 0;
     bool m_active = false;
     std::function<void()> m_onFinish;
 };

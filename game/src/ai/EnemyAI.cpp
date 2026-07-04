@@ -1,6 +1,7 @@
 #include "ai/EnemyAI.h"
 #include "battle/Grid.h"
 #include "battle/Unit.h"
+#include "battle/BattleMap.h"
 #include "battle/MovementRange.h"
 #include "battle/CombatSystem.h"
 #include "engine/core/Log.h"
@@ -142,10 +143,16 @@ namespace
 // ---------------------------------------------------------------------------
 // EnemyAI::takeTurn
 // ---------------------------------------------------------------------------
+//
+// NOTE: The AI deliberately uses the simple "move once, then act once" turn
+// shape rather than the full player turn-grammar (multi-segment movement,
+// undo, etc). It still goes through the same Unit API (spendMovePoints /
+// exhaustMovement / setMajorAction) so Unit's turn-state stays consistent
+// regardless of which controller (human or AI) drove the turn.
 
-void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
+void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
 {
-    // Already spent both actions somehow — nothing to do.
+    // Already spent both budgets somehow — nothing to do.
     if (unit.hasMoved() && unit.hasActed())
         return;
 
@@ -154,10 +161,12 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
 
     if (!target)
     {
-        // No enemies alive — mark turn done and wait.
+        // No enemies alive — this is a genuine Wait, not a major action.
+        // Waiting is cheaper (BASE_WAIT_COST) than acting, and the AI
+        // shouldn't be charged a major-action's CT cost for doing nothing.
+        // BattleState is the one that calls advanceToNextUnit() and derives
+        // CT cost from hasMoved()/hasActed(), so leave both false here.
         LOG_INFO("EnemyAI", "%s has no target – waiting", unit.getName().c_str());
-        unit.setHasMoved(true);
-        unit.setHasActed(true);
         return;
     }
 
@@ -165,9 +174,9 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
     if (!unit.hasMoved())
     {
         const Vec2i startPos = unit.getPosition();
-        const int moveRange = unit.getMoveRange();
+        const int moveRange = unit.getMoveRangeLeft();
 
-        auto reachable = MovementRange::compute(grid, startPos, moveRange,
+        auto reachable = MovementRange::compute(grid, battleMap, startPos, moveRange,
                                                 unit.getTeam(), allUnits, unit.getJump());
 
         // ── 3. Pick the reachable tile closest to the target ─────────────────
@@ -203,7 +212,9 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
                          unit.getName().c_str(), destPos.x, destPos.y);
             }
         }
-        unit.setHasMoved(true);
+        // AI doesn't do multi-segment movement, so it simply spends its
+        // whole pool in one shot regardless of the actual path cost.
+        unit.exhaustMovement();
     }
 
     // ── 5. Attack if the target is now within attack range ──────────────────
@@ -215,6 +226,9 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
             HitContext ctx = makeAttackContext(unit, *target);
             CombatResult result = CombatSystem::resolve(ctx);
 
+            // TODO: trigger attack animation (unit -> target) here once the
+            // engine has an animation system; apply damage/log on completion
+            // instead of immediately, to let the visual play out.
             if (result.hit)
             {
                 target->takeDamage(result.damage);
@@ -232,7 +246,7 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits)
             LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (dist %d > range %d)",
                      unit.getName().c_str(), target->getName().c_str(), distToTarget, unit.getAtkRange());
         }
-        unit.setHasActed(true);
+        unit.setMajorAction(MajorAction::Attack);
     }
 }
 
@@ -250,4 +264,9 @@ int EnemyAI::chooseAction(const Unit &unit, const Grid &grid,
         return 0; // Move
 
     return 2; // Wait
+}
+
+Unit *EnemyAI::chooseTarget(const Unit &unit, std::vector<Unit *> &allUnits)
+{
+    return findBestTarget(unit, allUnits);
 }

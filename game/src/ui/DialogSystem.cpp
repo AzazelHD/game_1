@@ -1,38 +1,60 @@
 #include "ui/DialogSystem.h"
+
 #include "engine/input/Input.h"
+#include "engine/renderer/Renderer.h"
+#include "ui/windows/DialogWindow.h"
 
-// TODO: Implement start(lines, onFinish):
-//   m_lines       = std::move(lines);
-//   m_currentLine = 0;
-//   m_active      = true;
-//   m_onFinish    = onFinish;
-//   Show the first line: m_box.open(/* screen bounds for your dialog area */);
-//                        m_box.setText(m_lines[0].text);
+void DialogSystem::start(std::vector<DialogLine> lines, std::function<void()> onFinish, const Font *font)
+{
+    m_lines = std::move(lines);
+    m_onFinish = std::move(onFinish);
+    m_active = !m_lines.empty();
 
-// TODO: Implement update(float dt, const Input& input):
-//   if (!m_active) return;
-//   m_box.update(dt);
-//
-//   if (input.isKeyPressed(KeyCode::DialogAdvance))
-//   {
-//       if (!m_box.isFinished())
-//           m_box.skipToEnd();
-//       else
-//       {
-//           m_currentLine++;
-//           if (m_currentLine >= static_cast<int>(m_lines.size()))
-//           {
-//               m_box.close();
-//               m_active = false;
-//               if (m_onFinish) m_onFinish();
-//           }
-//           else
-//               m_box.setText(m_lines[m_currentLine].text);
-//       }
-//   }
+    m_uiManager.clear();
+    m_window = nullptr;
 
-// TODO: Implement render():
-//   if (!m_active) return;
-//   m_box.render();
-//   // TODO Phase 12: draw portrait rect on the left side of the box.
-//   // TODO Phase 12: draw speaker name text above the box using SDL_ttf.
+    if (!m_active)
+        return;
+
+    m_window = m_uiManager.push<DialogWindow>("dialog.system");
+    m_window->setFont(font);
+
+    std::vector<DialogWindow::Line> windowLines;
+    windowLines.reserve(m_lines.size());
+    for (const DialogLine &line : m_lines)
+    {
+        windowLines.push_back(DialogWindow::Line{.speaker = line.speakerName, .text = line.text});
+    }
+
+    m_window->start(std::move(windowLines));
+}
+
+void DialogSystem::update(float dt, const Input &input)
+{
+    if (!m_active)
+        return;
+
+    m_uiManager.handleInput(input);
+    m_uiManager.update(dt);
+
+    auto events = m_uiManager.drainEvents();
+    for (const UIEvent &event : events)
+    {
+        if (event.windowId == "dialog.system" && event.type == UIEventType::DialogFinished)
+        {
+            m_active = false;
+            m_uiManager.clear();
+            m_window = nullptr;
+            if (m_onFinish)
+                m_onFinish();
+            break;
+        }
+    }
+}
+
+void DialogSystem::render(Renderer *renderer) const
+{
+    if (!m_active)
+        return;
+    m_uiManager.render(renderer);
+}

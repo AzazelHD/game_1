@@ -12,7 +12,7 @@
   "moveRange": 4,
   "atkRange": 1,
   "evasion": 10,
-  "jump": 2,
+  "jump": 1,
   "speed": 20,
   "skills": ["slash", "fireball"]
 }

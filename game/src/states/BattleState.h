@@ -16,64 +16,52 @@
 //   onExit()   — destroy tileset texture, clear BattleMap.
 
 #include "engine/scene/Scene.h"
+#include "engine/effects/ScreenTransition.h"
 #include "engine/data/TileMapData.h"
+#include "engine/math/Rect.h"
 #include "engine/renderer/Camera.h"
-#include "engine/renderer/Texture.h"
-#include "engine/renderer/DebugRenderer.h"
 #include "engine/statemachine/StateMachine.h"
-#include "engine/ui/MenuPanel.h"
 #include "engine/input/KeyCode.h"
-#include "battle/Unit.h"
 #include "battle/Grid.h"
 #include "battle/BattleMap.h"
 #include "battle/TurnQueue.h"
 #include "battle/MovementRange.h"
+#include "renderer/BattleRenderer.h"
+#include "config/BattleCatalog.h"
+#include "events/BattleEventSystem.h"
+#include "systems/DeploymentSystem.h"
+#include "systems/CombatAnimationSystem.h"
+#include "ui/UIManager.h"
 #include "ui/Cursor.h"
-#include "ui/UnitPanel.h"
 #include "ui/DamagePreview.h"
+#include "ui/windows/DeploymentWindow.h"
+#include "ui/windows/UnitPanelWindow.h"
 #include "data/SkillLoader.h"
 
 #include <memory>
 #include <vector>
-#include <cstdint>
 #include <functional>
+#include <unordered_map>
 #include <unordered_set>
 
 class Input;
 class Renderer;
+class DebugRenderer;
+class Texture;
+class Unit;
 struct TileLayerData;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IsoMetrics
-//
-// All isometric / elevation constants derived from the current map + scale.
-// Built once per frame in makeIsoMetrics() and passed by const-ref to every
-// per-cell draw helper, so none of them recompute or duplicate these values.
-// ─────────────────────────────────────────────────────────────────────────────
-struct IsoMetrics
+struct BattleRequest
 {
-    float s;        // uniform scale factor
-    float tw;       // scaled tile width
-    float th;       // scaled tile height
-    float halfTW;   // half tile width
-    float halfTH;   // half tile height
-    float ntw;      // native tile width — used for UV source rects
-    float elevStep; // vertical pixel shift per height level
+    std::string mapPath;
+    int returnWorldNodeId = 4;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TileLayerRef
-//
-// Lightweight, pre-validated view into one tile layer.
-// Collected once before the main draw loop so the inner loop never touches
-// m_mapData.layers directly.
-// ─────────────────────────────────────────────────────────────────────────────
-struct TileLayerRef
+struct BattleMenuItem
 {
-    const TileLayerData *layer;
-    float opacity;
-    float offsetX;
-    float offsetY;
+    std::string label;
+    bool enabled = true;
+    std::function<void()> onSelect;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,7 +70,10 @@ struct TileLayerRef
 class BattleState : public Scene
 {
 public:
-    BattleState(StateMachine<Scene> &sm, Renderer *renderer);
+    BattleState(StateMachine<Scene> &sm,
+                Renderer *renderer,
+                BattleRequest request,
+                std::function<void(bool)> onBattleFinished);
 
     // Scene interface
     void onEnter() override;
@@ -98,19 +89,34 @@ private:
     StateMachine<Scene> &m_sm;
     Renderer *m_renderer = nullptr; // non-owning; managed by app lifetime
     DebugRenderer *m_debugRenderer = nullptr;
-    Texture *m_tileset = nullptr; // owning; created in onEnter, freed in onExit
+    std::unique_ptr<BattleRenderer> m_battleRenderer; // owns all battle rendering code
+    Texture *m_tileset = nullptr;                     // owning; created in onEnter, freed in onExit
 
     // ── Map data ──────────────────────────────────────────────────────────
     TileMapData m_mapData; // visual/rendering data loaded from Tiled JSON
     BattleMap m_battleMap; // gameplay grid derived from TileMapData
+    BattleRequest m_request;
+    std::function<void(bool)> m_onBattleFinished;
+    FColor m_bgTop{10.0f / 255.0f, 18.0f / 255.0f, 55.0f / 255.0f, 1.0f};
+    FColor m_bgBottom{25.0f / 255.0f, 60.0f / 255.0f, 120.0f / 255.0f, 1.0f};
 
     // ── Gameplay systems ──────────────────────────────────────────────────
     Grid m_grid{};                                        // logical grid representation
     std::vector<Unit *> m_units;                          // all active units (player + enemies)
     std::unordered_map<std::string, SkillData> m_skillDB; // id -> skill
     TurnQueue m_turnQueue;                                // turn scheduler / CT system
-    Vec2i m_moveStartPos{0, 0};                           // starting position before a move
-    bool m_actedAfterMove = false;                        // true if an action happened after the last move
+    const BattleDefinition *m_battleDefinition = nullptr;
+    DeploymentSystem m_deployment;
+    BattleEventSystem m_eventSystem;
+    int m_pendingRewardXp = 0;
+
+    // ── Move-undo tracking ───────────────────────────────────────────────
+    // Only the MOST RECENT move segment can be undone, and only until a
+    // major action (attack/skill/defend) is taken — see Unit.h's
+    // MajorAction docs for the full turn grammar this supports.
+    Vec2i m_moveStartPos{0, 0};     // position before the last move segment
+    int m_moveStartPointsLeft = 0;  // active->getMoveRangeLeft() before the last move segment
+    bool m_canUndoLastMove = false; // true iff there's a move segment eligible for undo right now
 
     // Reachable tiles for the current move phase
     std::unordered_set<Vec2i, Vec2iHash> m_reachableTiles;
@@ -122,6 +128,7 @@ private:
 
     // Result of the battle used after exit transition
     bool m_playerWon = false;
+    bool m_showDefeatOverlay = false;
 
     // Fullscreen transition system (supports multiple transition types)
     ScreenTransition m_transition;
@@ -161,13 +168,34 @@ private:
         ActionMenu,   // Move/Attack/Wait menu
         MoveTarget,   // selecting destination tile
         AttackTarget, // selecting enemy to attack
-        TurnEnded     // (internal) used to signal that the turn is over and we should advance
+        AttackConfirm,
+        TurnEnded // (internal) used to signal that the turn is over and we should advance
     };
 
     HumanTurnPhase m_humanTurnPhase = HumanTurnPhase::FreeCursor;
 
     TurnState m_turnState = TurnState::Idle;
     float m_turnTimer = 0.0f;
+
+    enum class BattleFlowPhase
+    {
+        Deployment,
+        Combat,
+    };
+    BattleFlowPhase m_flowPhase = BattleFlowPhase::Deployment;
+
+    enum class PendingResolution
+    {
+        None,
+        PlayerConfirmedAttack,
+        EnemyAction,
+    };
+    PendingResolution m_pendingResolution = PendingResolution::None;
+    Unit *m_pendingActor = nullptr;
+    Unit *m_pendingTarget = nullptr;
+    int m_pendingEnemyAliveBefore = 0;
+    std::string m_pendingActionLabel;
+    std::string m_topBattleText;
 
     // ── Tileset layout ────────────────────────────────────────────────────
     float m_texW = 0.0f;
@@ -201,50 +229,51 @@ private:
     bool loadTileset();
     Vec2f computeMapOrigin();
 
-    // ── Rendering ─────────────────────────────────────────────────────────
-    void drawBackground() const;
-    void drawScene(const Camera &camera) const;
-
-    // ── drawScene: frame setup ────────────────────────────────────────────
-    IsoMetrics makeIsoMetrics(float zoom) const;
-    std::vector<TileLayerRef> collectTileLayers() const;
-    std::vector<std::uint8_t> buildSpawnGrid() const;
-
-    // ── drawScene: per-cell rendering ────────────────────────────────────
-    void drawTileLayersAt(int row, int col, float ax, float ay,
-                          const IsoMetrics &m,
-                          const std::vector<TileLayerRef> &layers) const;
-
-    void drawSpawnOverlayAt(int row, int col, float ax, float ay,
-                            const IsoMetrics &m,
-                            const std::vector<std::uint8_t> &spawnGrid,
-                            std::size_t gridSize) const;
-
-    void drawUnitAt(int row, int col, float ax, float ay, const IsoMetrics &m) const;
-
-    void drawCursorAt(int row, int col, float ax, float ay,
-                      const IsoMetrics &m) const;
-
-    // ── Cursor sub-rendering helpers ──────────────────────────────────────
-    void drawCursorTriangle(float cx, float cy, const IsoMetrics &m) const;
-    void drawCursorTicks(float ax, float ay, int tileHeight,
-                         const IsoMetrics &m) const;
-
     // ── Range overlay rendering ───────────────────────────────────────────
     void computeAttackRangeTiles();
-    void drawRangeOverlayAt(int row, int col, float ax, float ay,
-                            const IsoMetrics &m, Color color) const;
 
     // ── UI ────────────────────────────────────────────────────────────────
-    UnitPanel m_unitPanel;
-    UnitPanel m_targetPanel;
-    MenuPanel m_menuPanel;
+    UIManager m_uiManager;
+    UnitPanelWindow *m_unitPanelWindow = nullptr;
+    DeploymentWindow *m_deploymentWindow = nullptr;
+    class InspectWindow *m_inspectWindow = nullptr;
     DamagePreview m_damagePreview;
     Unit *m_hoveredUnit = nullptr;
+    Unit *m_inspectTargetUnit = nullptr;
     std::string m_selectedSkillId;
+    std::vector<BattleMenuItem> m_battleMenuItems;
+    CombatAnimationSystem m_combatAnimations;
+
+    // Pending attack confirmation state.
+    std::vector<Unit *> m_pendingAttackTargets;
+    std::unordered_set<Vec2i, Vec2iHash> m_pendingAttackTiles;
+    Vec2i m_pendingAttackCenter{0, 0};
+    int m_pendingAttackFocus = 0;
+    std::string m_pendingSkillId;
+
     void showSkillMenu();
     void showBattleMenu(bool canMove, bool canAttack, bool canWait);
+    void showDeploymentMenu();
     void showStatusMenu(Unit *unit);
+    void showInspectWindow(Unit *unit);
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
     void openStatusMenu(Unit *unit);
+    bool canActiveUnitMove() const;
+
+    void clearBattleMenu();
+    bool isBattleMenuOpen() const;
+    void setBattleMenuItems(std::vector<BattleMenuItem> items);
+    void processUIEvents(Unit *active);
+    void initializeDeploymentPhase();
+    void syncDeploymentPreviewUnits();
+    void refreshDeploymentWindow();
+    void startCombatPhase();
+    void showDialogueFromEvent(const std::string &text);
+    void spawnEnemyFromEvent(const std::string &templatePath);
+
+    void preparePendingAttack(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill);
+    void cyclePendingAttackTarget(int delta);
+    void updatePendingAttackPreview(Unit *active);
+    void applyPendingAttack(Unit *active, const SkillData *skill);
+    void cancelPendingAttack();
 };

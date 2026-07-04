@@ -2,9 +2,10 @@
 
 #include "engine/scene/Scene.h"
 #include "engine/effects/ScreenTransition.h"
-#include "engine/ui/MenuPanel.h"
+#include "ui/UIManager.h"
 
 class Renderer;
+class Font;
 
 template <typename T>
 class StateMachine;
@@ -27,10 +28,13 @@ public:
     void render(float alpha) override;
 
 private:
+    void processUIEvents();
+
+private:
     StateMachine<Scene> &m_stateMachine;
     Renderer *m_renderer = nullptr;
 
-    MenuPanel m_menu;
+    UIManager m_uiManager;
     ScreenTransition m_transition;
     bool m_fadeInOnEnter = false;
     bool m_transitioning = false;

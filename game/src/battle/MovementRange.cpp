@@ -1,5 +1,6 @@
 #include "MovementRange.h"
 #include "Grid.h"
+#include "battle/BattleMap.h"
 #include "battle/Unit.h"
 #include <queue>
 #include <unordered_map>
@@ -7,6 +8,7 @@
 
 std::unordered_set<Vec2i, Vec2iHash> MovementRange::compute(
     const Grid &grid,
+    const BattleMap &battleMap,
     Vec2i start,
     int movementPoints,
     int team,
@@ -41,9 +43,7 @@ std::unordered_set<Vec2i, Vec2iHash> MovementRange::compute(
             return false;
 
         // Height restriction – uses unit's jump stat
-        const auto &fromTile = grid.getTile(from);
-        const auto &toTile = grid.getTile(to);
-        if (std::abs(toTile.height - fromTile.height) > jump)
+        if (std::abs(battleMap.at(to.x, to.y).height - battleMap.at(from.x, from.y).height) > jump)
             return false;
 
         // Occupancy check

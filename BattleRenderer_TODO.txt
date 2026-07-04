@@ -1,0 +1,288 @@
+```text
+GOAL
+
+Extract all rendering code from BattleState into a new BattleRenderer class.
+
+The goal is ONLY to separate rendering from gameplay. Do not redesign the architecture or change any gameplay behavior.
+
+================================================================================
+
+RULES
+
+- Do not change gameplay logic.
+- Do not change turn logic.
+- Do not change AI behavior.
+- Do not change input handling.
+- Do not change battle flow.
+- Do not change rendering behavior.
+- Preserve rendering order exactly.
+- Do not rename public BattleState methods unless required.
+- Do not optimize unrelated code.
+- Do not perform formatting-only changes.
+- Keep the project compiling after each phase.
+
+================================================================================
+
+PHASE 1 - CREATE THE RENDERER
+
+Create:
+
+- BattleRenderer.h
+- BattleRenderer.cpp
+
+BattleRenderer will own all rendering code.
+
+BattleState will continue owning all gameplay state.
+
+================================================================================
+
+PHASE 2 - MOVE ONLY THESE METHODS
+
+Move these methods from BattleState into BattleRenderer.
+
+- drawBackground()
+- drawScene()
+- drawTileLayersAt()
+- drawSpawnOverlayAt()
+- drawCursorAt()
+- drawCursorTriangle()
+- drawCursorTicks()
+- drawRangeOverlayAt()
+- drawUnitAt()
+
+Do not change their implementation.
+
+Only update whatever is necessary for them to compile.
+
+================================================================================
+
+PHASE 3 - MOVE RENDERING HELPERS
+
+Move these helper methods into BattleRenderer.
+
+- makeIsoMetrics()
+- collectTileLayers()
+- buildSpawnGrid()
+
+Move any helper structs used exclusively by rendering if necessary.
+
+Example:
+
+- IsoMetrics
+- TileLayerRef
+
+Do not move gameplay data structures.
+
+================================================================================
+
+PHASE 4 - MOVE RENDERING DATA
+
+Move rendering-only members from BattleState into BattleRenderer.
+
+Specifically:
+
+- m_tileset
+- m_tilesPerRow
+- m_texW
+- m_texH
+- m_spriteH
+
+Any variable used only for drawing should belong to BattleRenderer.
+
+Do not move gameplay members.
+
+================================================================================
+
+PHASE 5 - MOVE TILESET INITIALIZATION
+
+Move:
+
+- loadTileset()
+
+into BattleRenderer.
+
+BattleState should simply initialize BattleRenderer.
+
+BattleRenderer becomes responsible for:
+
+- loading the texture
+- storing texture metadata
+- texture scale mode
+
+================================================================================
+
+PHASE 6 - MOVE RENDERING CONSTANTS
+
+Move these constants into BattleRenderer.cpp.
+
+- SPRITE_H
+- COL_PLAYER_SPAWN
+- COL_ENEMY_SPAWN
+- COL_BLACK
+- COL_RED
+
+Do not leave rendering constants inside BattleState.
+
+================================================================================
+
+PHASE 7 - CREATE A RENDER CONTEXT
+
+Instead of BattleRenderer accessing BattleState directly everywhere, create a render context.
+
+Example contents:
+
+- Renderer*
+- Camera
+- BattleMap
+- Grid
+- Cursor
+- Unit list
+- HumanTurnPhase
+- Reachable tiles
+- Attack range tiles
+- Any other read-only rendering state
+
+BattleRenderer must not modify gameplay state.
+
+It only reads it.
+
+================================================================================
+
+PHASE 8 - SPLIT drawScene()
+
+Keep rendering order EXACTLY the same.
+
+Split drawScene() into several private methods.
+
+Suggested order:
+
+renderTileLayers()
+
+renderSpawnOverlay()
+
+renderMovementRange()
+
+renderAttackRange()
+
+renderCursor()
+
+renderUnits()
+
+renderEffects()
+
+Each method should perform only one rendering task.
+
+Do not change painter's order.
+
+================================================================================
+
+PHASE 9 - CLEAN BattleState::render()
+
+BattleState::render() should become very small.
+
+Its responsibilities should be limited to:
+
+- interpolate camera
+- build render context
+- call BattleRenderer
+
+Example flow:
+
+interpolate camera
+
+create render context
+
+BattleRenderer::render(...)
+
+Nothing else.
+
+================================================================================
+
+PHASE 10 - MOVE UI RENDERING
+
+Move ONLY rendering calls for:
+
+- MenuPanel
+- UnitPanel
+- TargetPanel
+- DamagePreview
+- ScreenTransition
+
+Do NOT move:
+
+- update()
+- input
+- callbacks
+- menu logic
+- panel state
+
+BattleState continues owning those objects.
+
+BattleRenderer only draws them.
+
+================================================================================
+
+PHASE 11 - REMOVE RENDERER API FROM BattleState
+
+After extraction, BattleState should no longer call rendering APIs directly.
+
+Examples:
+
+drawTexture()
+
+drawGeometry()
+
+drawLine()
+
+setTextureAlphaMod()
+
+setBlendMode()
+
+Those should only appear inside BattleRenderer.
+
+================================================================================
+
+DO NOT MOVE THESE METHODS
+
+These remain inside BattleState because they are gameplay.
+
+- processCurrentTurn()
+- advanceToNextUnit()
+- handleInput()
+- handleActiveTurn()
+- update()
+- computeAttackRangeTiles()
+- checkVictory()
+- checkDefeat()
+- startBattleEnd()
+- onEnter()
+- onExit()
+
+================================================================================
+
+SUCCESS CRITERIA
+
+BattleState is responsible only for:
+
+- gameplay
+- battle state
+- turn processing
+- AI
+- input
+- menus
+- camera interpolation
+
+BattleRenderer is responsible only for:
+
+- map rendering
+- tile rendering
+- overlays
+- cursor rendering
+- unit rendering
+- UI rendering
+- damage preview rendering
+- screen transitions
+- all Renderer API calls
+
+Behavior before and after the refactor must be identical.
+```

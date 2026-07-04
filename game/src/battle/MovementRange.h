@@ -1,12 +1,14 @@
 #pragma once
 
-#include "Unit.h"
 #include "engine/math/Vec2.h"
 
-#include <unordered_set>
 #include <queue>
+#include <unordered_set>
+#include <vector>
 
 class Grid;
+class BattleMap;
+class Unit;
 
 // Hash functor for Vec2i — required by std::unordered_set and std::unordered_map.
 struct Vec2iHash
@@ -33,6 +35,7 @@ class MovementRange
 public:
     static std::unordered_set<Vec2i, Vec2iHash> compute(
         const Grid &grid,
+        const BattleMap &battleMap,
         Vec2i start,
         int movementPoints,
         int team,

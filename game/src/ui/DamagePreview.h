@@ -1,11 +1,9 @@
 #pragma once
 
-#include "data/SkillLoader.h"
-#include "battle/CombatSystem.h"
-
 class Unit;
 class Renderer;
 class Font;
+struct SkillData;
 
 // DamagePreview shows predicted damage when the cursor is over a valid
 // attack target. It is displayed only during the player's attack‑selection

@@ -1,5 +1,4 @@
 #include "battle/Unit.h"
-
 #include <algorithm>
 #include <cmath>
 
@@ -37,6 +36,11 @@ Unit::Unit(const UnitData &data, const RaceData &raceData, const GenderData &gen
         m_skills.push_back(SkillType::Foo_Undead);
         break;
     }
+
+    // Movement pool starts full; resetTurn() also does this at the start of
+    // every subsequent turn, but the unit needs a valid value before its
+    // first turn too (e.g. for UI that reads getMoveRangeLeft() pre-battle).
+    m_moveRangeLeft = getMoveRange();
 }
 
 // ── Combat ───────────────────────────────────────────────────────────────────
@@ -62,11 +66,11 @@ bool Unit::isDead() const
     return m_state == UnitState::Dead;
 }
 
-// ── Turn lifecycle ────────────────────────────────────────────────────────────
+// ── Turn lifecycle ──────────────────────────────────────────────────────────
 void Unit::resetTurn()
 {
-    m_hasMoved = false;
-    m_hasActed = false;
+    m_moveRangeLeft = getMoveRange();
+    m_majorAction = MajorAction::None;
     m_state = UnitState::Idle;
 }
 

@@ -1,14 +1,23 @@
 #include "config/GameConstants.h"
 #include "states/MainMenuState.h"
-#include "states/BattleState.h"
+#include "states/WorldMapState.h"
 #include "states/SettingsState.h"
+#include "engine/core/App.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/MathUtils.h"
 #include "engine/statemachine/StateMachine.h"
+#include "engine/renderer/Font.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Renderer.h"
+#include "ui/windows/ActionMenuWindow.h"
+#include <SDL3/SDL.h>
+
+namespace
+{
+    Font *g_mainTitleFont = nullptr;
+}
 
 MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool fadeInOnEnter)
     : m_stateMachine(sm),
@@ -20,14 +29,27 @@ MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool f
 void MainMenuState::onEnter()
 {
     m_transitioning = false;
+    m_uiManager.clear();
 
-    m_menu = MenuPanel{};
-    m_menu.setPosition({460.0f, 320.0f});
-    m_menu.setVerticalLayout(VerticalLayoutConfig{.spacing = 14.0f});
-    m_menu.addButton(Button(Rectf{0.0f, 0.0f, 320.0f, 56.0f}, "Start Battle"));
-    m_menu.addButton(Button(Rectf{0.0f, 0.0f, 320.0f, 56.0f}, "Settings"));
+    if (!App::getDefaultFont())
+    {
+        Font *font = m_renderer ? m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 24.0f) : nullptr;
+        App::setDefaultFont(font);
+    }
 
-    LOG_INFO("MainMenu", "onEnter: menu size=%d, selectedIndex=%d", m_menu.size(), m_menu.getSelectedIndex());
+    auto *menu = m_uiManager.push<ActionMenuWindow>("menu.main");
+    menu->setFont(App::getDefaultFont());
+    constexpr float menuW = 260.0f;
+    constexpr float menuH = 170.0f;
+    menu->setPanelPosition(Vec2f{GameConstants::VIEW_CX - menuW * 0.5f, GameConstants::VIEW_CY - menuH * 0.5f + 46.0f});
+    menu->setItems({
+        ActionMenuWindow::Item{.id = "start", .label = "Start Game", .enabled = true},
+        ActionMenuWindow::Item{.id = "options", .label = "Options", .enabled = true},
+        ActionMenuWindow::Item{.id = "quit", .label = "Quit", .enabled = true},
+    });
+
+    if (!g_mainTitleFont && m_renderer)
+        g_mainTitleFont = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 56.0f);
 
     if (m_fadeInOnEnter)
     {
@@ -41,6 +63,7 @@ void MainMenuState::onEnter()
 
 void MainMenuState::onExit()
 {
+    m_uiManager.clear();
 }
 
 void MainMenuState::handleInput()
@@ -51,28 +74,8 @@ void MainMenuState::handleInput()
     if (m_transition.isActive() || m_transitioning)
         return;
 
-    // 2. NOW let the menu panel process arrow/WASD navigation safely
-    m_menu.update();
-
-    // 3. Handle activation cleanly
-    if (input.isKeyPressed(KeyCode::Accept, false) && m_menu.activateSelected())
-    {
-        m_transitioning = true;
-
-        switch (m_menu.getSelectedIndex())
-        {
-        case 0:
-            m_stateMachine.replace(std::make_unique<BattleState>(m_stateMachine, m_renderer));
-            break;
-        case 1:
-            m_stateMachine.push(std::make_unique<SettingsState>(m_stateMachine, m_renderer));
-            m_transitioning = false;
-            break;
-        default:
-            m_transitioning = false;
-            break;
-        }
-    }
+    m_uiManager.handleInput(input);
+    processUIEvents();
 }
 
 void MainMenuState::update(float dt)
@@ -82,18 +85,64 @@ void MainMenuState::update(float dt)
     {
         m_transition.update(dt);
     }
+
+    m_uiManager.update(dt);
 }
 
 void MainMenuState::render(float alpha)
 {
     (void)alpha;
-    m_renderer->clear(Color{20, 24, 32, 255});
+    m_renderer->clear(Color{18, 21, 29, 255});
 
-    m_renderer->setDrawColor(Color{70, 90, 140, 255});
-    m_renderer->fillRect(Rectf{220.f, 180.f, 360.f, 120.f});
+    const Font *font = App::getDefaultFont();
+    const Font *titleFont = g_mainTitleFont ? g_mainTitleFont : font;
+    if (titleFont)
+    {
+        const std::string title = "TRPG";
+        m_renderer->renderTextInRect(titleFont,
+                                     title,
+                                     Rectf{0.0f, 130.0f, GameConstants::VIEW_W, 64.0f},
+                                     Color{235, 240, 250, 255},
+                                     Renderer::HorizontalAlign::Center,
+                                     Renderer::VerticalAlign::Middle,
+                                     false,
+                                     false,
+                                     false);
+    }
 
-    // TODO: MenuPanel/ScreenTransition still take SDL_Renderer* - bridge until
-    // those engine UI widgets are migrated to engine::Renderer.
-    m_menu.render(m_renderer);
+    m_uiManager.render(m_renderer);
+
     m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
+}
+
+void MainMenuState::processUIEvents()
+{
+    auto events = m_uiManager.drainEvents();
+    for (const UIEvent &event : events)
+    {
+        if (event.windowId != "menu.main" || event.type != UIEventType::ActionSelected)
+            continue;
+
+        m_transitioning = true;
+        if (event.actionId == "start")
+        {
+            m_stateMachine.replace(std::make_unique<WorldMapState>(m_stateMachine, m_renderer));
+        }
+        else if (event.actionId == "options")
+        {
+            m_stateMachine.push(std::make_unique<SettingsState>(m_stateMachine, m_renderer));
+            m_transitioning = false;
+        }
+        else if (event.actionId == "quit")
+        {
+            SDL_Event quitEvent{};
+            quitEvent.type = SDL_EVENT_QUIT;
+            SDL_PushEvent(&quitEvent);
+            m_transitioning = false;
+        }
+        else
+        {
+            m_transitioning = false;
+        }
+    }
 }

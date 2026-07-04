@@ -12,6 +12,6 @@
     "moveRange": 5,
     "atkRange": 2,
     "evasion": 14,
-    "jump": 1,
+    "jump": 2,
     "speed": 28
 }

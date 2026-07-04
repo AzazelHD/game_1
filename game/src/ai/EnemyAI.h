@@ -1,9 +1,11 @@
 #pragma once
+
 #include <vector>
 
 class Unit;
 class Grid;
 class TurnQueue;
+class BattleMap;
 
 // EnemyAI decides and executes one enemy unit's turn.
 // It drives the same systems as player input — no special back-door access.
@@ -27,7 +29,8 @@ class TurnQueue;
 class EnemyAI
 {
 public:
-    static void takeTurn(Unit &unit, Grid &grid, std::vector<Unit *> &allUnits);
+    static void takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits);
     static int chooseAction(const Unit &unit, const Grid &grid,
                             std::vector<Unit *> &allUnits);
+    static Unit *chooseTarget(const Unit &unit, std::vector<Unit *> &allUnits);
 };

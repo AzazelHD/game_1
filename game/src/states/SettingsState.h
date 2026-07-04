@@ -2,10 +2,12 @@
 
 #include "engine/scene/Scene.h"
 #include "engine/statemachine/StateMachine.h"
-#include "engine/ui/Button.h"
 #include "engine/ui/Slider.h"
 
+#include <vector>
+
 class Renderer;
+class Input;
 
 class SettingsState final : public Scene
 {
@@ -25,6 +27,48 @@ private:
     Renderer *m_renderer = nullptr;
     Slider m_volumeSlider;
     Slider m_musicSlider;
-    Button m_backButton{Rectf{}, "Back"};
-    int m_focusIndex = 0; // 0=volume 1=music 2=back
+
+    enum class Page
+    {
+        Main,
+        Graphics,
+        Audio,
+    };
+
+    struct Resolution
+    {
+        int width = 1280;
+        int height = 720;
+    };
+
+    enum class WindowMode
+    {
+        Windowed,
+        Borderless,
+    };
+
+    void handleMainInput(const Input &input);
+    void handleGraphicsInput(const Input &input);
+    void handleAudioInput(const Input &input);
+    void handlePendingExitConfirmInput(const Input &input);
+    void applyGraphicsSettings();
+    bool hasPendingChanges() const;
+    void loadPersistedSettings();
+    void savePersistedSettings() const;
+
+    Page m_page = Page::Main;
+    int m_focusIndex = 0;
+
+    std::vector<Resolution> m_resolutions;
+    int m_resolutionIndex = 0;
+    int m_appliedResolutionIndex = 0;
+    WindowMode m_windowMode = WindowMode::Windowed;
+    WindowMode m_appliedWindowMode = WindowMode::Windowed;
+
+    bool m_editingSlider = false;
+    bool m_showExitConfirm = false;
+    bool m_confirmApplySelected = true;
+
+    float m_appliedMasterVolume = 1.0f;
+    float m_appliedMusicVolume = 1.0f;
 };

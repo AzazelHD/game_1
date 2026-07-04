@@ -6,6 +6,27 @@ This file tracks only game-side work in `game_1/`.
 
 ---
 
+## JRPG Framework Refactor
+
+- [x] Phase 1 UI Window System core landed:
+  - `UIWindow` base + `UIManager` stack and top-input routing
+  - `UITheme` palette constants
+  - `ActionMenuWindow`, `DialogWindow`, `UnitPanelWindow`, `ConfirmWindow`
+  - `BattleState` UI interaction migrated to window events
+  - `WorldMapState` battle prompt migrated to `ConfirmWindow`
+  - `MainMenuState` selection migrated to `ActionMenuWindow`
+- [x] Phase 2 Party + Deployment system landed:
+  - `RosterSystem`, `PartySystem`, `PartyContext`
+  - `DeploymentSystem`, `BattleParticipantsBuilder`
+  - `DeploymentWindow` and deployment-first battle flow in `BattleState`
+  - map-specific deployment limits (`1v1_test.tmj` -> 1, `test_map.tmj` -> 6)
+- [x] Phase 3 Event + Battle definition system landed:
+  - expanded `BattleDefinition` data model (enemies, objectives, rewards, events)
+  - declarative trigger/action event layer via `BattleEventSystem`
+  - battle triggers wired (`OnBattleStart`, `OnTurnStart`, `OnTurnEnd`, `OnUnitDeath`, `OnVictory`, `OnDefeat`)
+
+---
+
 ## G1 — Bootstrap & Integration
 
 - [x] Define `TRPG` executable target in [CMakeLists.txt](game/CMakeLists.txt)

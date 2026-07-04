@@ -1,0 +1,25 @@
+Refactor the project strucuture file. i dont want formal names. I want something like "units portrait are on **file**, So i can quickly search where things exist and fix them myself. More general things like battling rules, movement, etc, can be more formal. But specific things i want concrete files.
+Said this. Fix this issues
+On battle, remove the tool tip "ESC - Free Cursor" and "Freecursor - enter place mode".
+I wanna change it, i dont want free cursor mode. I wanna have by default the first unit of my roster selected. Selected means i see its portrait on the bottom left. If the cursor is hovering an already placed unit then the portrait shows thet current unit, regardless of if it is ally or enemy. Now, if on empty tile, i see the unit roster, and if i click enter, i "grab" that unit, like pokemons moving from pc to party, but with some transparency (as currently) to show it is grabbed. Show the grabbed unit portrait on the bottom left for ever, even if i put the cursor on a different unit, still show the grabbed one. And clicking enter on an illegal tile (no spawn or occupied) add a TODO to "add impossible action" sound, or something. If clicking on a legal spawn tile, place that unit. Start battle should be available with at least 1 unit. There are max of n units placebles, depending on the map. leave that number as it is. If reached the max, selecting a different unit on roster and clicking enter also TODO comment with sound.
+Add also that, when a unit is already placed, i can select it on the roster, but if placed, add, for now, a red x next to units name, to indicate that unit is already placed. But if i click enter on a unit that is already placed, regardless or where the mouse is, i unplace that unit from where it was, and "grab" it again, to reposition.
+If a unit is being grabbed, and i pick esc, i cancel the placing of that unit. Like "release" it.
+Next.
+on an ally unit portrait when performing an action, either move, atk, or skill, the Level is outside of the box. Use the exact same portrait as when deploying units. If there is not a class for the portrait, make it, so it is always the same, consistency.
+When it is my turn, and i atk an enemy, i wanna see my portrait on bottom left and enemy on bottom right.
+Half left portraits should have this structure
+Name level
+IMG currentHP/MaxHP
+currentMP/Max/MP
+But for right half portraits, they should be like mirrored
+level name
+ccurentHP/Max/HP IMG
+ccurentMP/maxMP
+So adjust the corresponding class to display things correctly.
+On left half portrait, name, hp and mp and left aligned, but level is right aligned (on same line as name), without existing the box. So make it fit properly. All the portraits of all the units should have a fixed size. The only different is that if there is an image for the portrait, it is a bit bigger. Portraits can or cannot have image. So make also fixed room for the image width size.
+2 last things. Right now, enemy turn actions are instant. I would like to show the actions they perform, but skipping things, so i want to add u first more stuff.
+When acting over other unit (atk or skill), i want the caster to have its full portrait (including iamge) on the bottom left, and the target, on the bottom right, with portrait too. If AOE skill, then thr QE keys should rotate throught all the target, and displayed the current selected unit portrait.
+Now, in the case of skill, when i chose it, and i select a target, before confirming action, i want to display at the top of the screen, horizontally center and text align center too this text "skill dmg and skill accuracy". When confirming, add a TODO saying "display skill animation" if doesnt exist already (i think it already exists) and also display the skill name, same way we did with skill name and accuracy. Wait 0.5 secs, and perform the skill. The 0.5 secs wait is simulating an animation is being played. If normal atk, just display "attack" or "basic attack" when displaying the name. also wait 0.5 secs too.
+This is with player gamplay.
+With enemy gameplay, I also wanna display the skill (or basic atk) name. No dmg no accuracy, cuz since it is AI, player cant control it, so it is what it is. Knowing the dmg or acc wont matter cuz if AI chose it is cuz it thinks it is the best, so just the name.
+Remember than when AI turn, AI current unit should be on bottom left portrait, while the target (assuming atk, it is a player unit) should be on the bottom right

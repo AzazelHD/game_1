@@ -41,6 +41,9 @@ UnitData UnitLoader::load(const std::string &filePath)
 
     UnitData data;
     data.name = j.at("name").get<std::string>();
+    data.className = j.value("className", std::string("Unknown"));
+    data.spriteSetId = j.value("spriteSetId", std::string());
+    data.acquisitionIndex = j.value("acquisitionIndex", 0);
     data.race = parseRace(j.at("race").get<std::string>());
     data.gender = parseGender(j.at("gender").get<std::string>());
     data.level = j.value("level", 1);

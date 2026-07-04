@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "engine/math/Vec2.h"
 
 enum class Gender
 {
@@ -45,6 +44,9 @@ struct ElementAffinity
 struct UnitData
 {
     std::string name;
+    std::string className;
+    std::string spriteSetId;
+    int acquisitionIndex = 0;
     Race race;
     Gender gender;
     int level = 1;

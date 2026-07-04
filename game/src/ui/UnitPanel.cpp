@@ -148,10 +148,14 @@ void UnitPanel::renderStatsPanel(Renderer *renderer) const
     renderer->setDrawColor(m_teamColor);
     renderer->drawRect(portraitRect);
 
-    // Name / level / team swatch
-    char buf[96];
-    std::snprintf(buf, sizeof(buf), "%s  Lv%d", m_unit->getName().c_str(), m_unit->getLevel());
-    drawText(renderer, m_font, x, y, TEXT_COLOR, buf);
+    // Name / level on the same line: name left, level right.
+    char buf[128];
+    drawText(renderer, m_font, x, y, TEXT_COLOR, m_unit->getName().c_str());
+
+    char levelBuf[32];
+    std::snprintf(levelBuf, sizeof(levelBuf), "LV %d", m_unit->getLevel());
+    const float levelX = panel_x + PANEL_W - pad - 48.0f;
+    drawText(renderer, m_font, levelX, y, TEXT_COLOR, levelBuf);
 
     const Color tColor = teamColor(m_unit->getTeam());
     Rectf swatch{panel_x + PANEL_W - pad - 14.0f, y - 2.0f, 14.0f, 14.0f};

@@ -1,0 +1,28 @@
+#pragma once
+
+#include "ui/UIWindow.h"
+
+#include <string>
+#include <vector>
+
+class Font;
+
+class InspectWindow : public UIWindow
+{
+public:
+    explicit InspectWindow(std::string id);
+
+    void setFont(const Font *font) { m_font = font; }
+    void setTitle(std::string title) { m_title = std::move(title); }
+    void setLines(std::vector<std::string> lines);
+
+    void handleInput(const Input &input) override;
+    void update(float dt) override;
+    void render(Renderer *renderer) const override;
+
+private:
+    const Font *m_font = nullptr;
+    std::string m_title = "Inspect";
+    std::vector<std::string> m_lines;
+    int m_scroll = 0;
+};
