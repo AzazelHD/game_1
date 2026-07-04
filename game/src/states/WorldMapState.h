@@ -2,7 +2,7 @@
 
 #include "engine/scene/Scene.h"
 #include "engine/statemachine/StateMachine.h"
-#include "engine/world/WorldGraph.h"
+#include "world/WorldGraph.h"
 #include "ui/UIManager.h"
 
 #include "engine/math/Vec2.h"

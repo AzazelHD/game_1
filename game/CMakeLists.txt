@@ -106,6 +106,9 @@ set(GAME_HEADERS
     src/ui/windows/DeploymentWindow.h
     src/ui/windows/InspectWindow.h
     src/ui/windows/PartyWindow.h
+
+    src/world/WorldGraph.h
+    src/world/WorldPathfinding.h
 )
 
 add_executable(game
