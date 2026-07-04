@@ -9,7 +9,7 @@
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
-#include "engine/world/WorldPathfinding.h"
+#include "world/WorldPathfinding.h"
 #include "states/BattleState.h"
 #include "states/SettingsState.h"
 #include "ui/windows/ActionMenuWindow.h"
