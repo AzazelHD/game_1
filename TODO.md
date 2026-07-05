@@ -44,7 +44,6 @@ Checkpoint: executable launches and transitions into first state.
 - [x] Implement `BootState` (load essentials, transition) — [BootState.h](game/src/states/BootState.h) / [BootState.cpp](game/src/states/BootState.cpp), [main.cpp](game/src/main.cpp)
 - [x] Implement `MainMenuState` (input to start game) — [MainMenuState.h](game/src/states/MainMenuState.h) / [MainMenuState.cpp](game/src/states/MainMenuState.cpp)
 - [x] Implement `BattleState` skeleton and ownership model — [BattleState.h](game/src/states/BattleState.h) / [BattleState.cpp](game/src/states/BattleState.cpp), [main.cpp](game/src/main.cpp)
-- [x] Implement `PauseState` push/pop behavior — [PauseState.h](game/src/states/PauseState.h) / [PauseState.cpp](game/src/states/PauseState.cpp)
 - [x] Implement `SettingsState` (game-owned options menu) — [SettingsState.h](game/src/states/SettingsState.h) / [SettingsState.cpp](game/src/states/SettingsState.cpp)
 - [x] Implement `ResultState` (victory/defeat + return path) — [ResultState.h](game/src/states/ResultState.h) / [ResultState.cpp](game/src/states/ResultState.cpp)
 
@@ -59,9 +58,6 @@ Fix instructions (TODO: description):
 - [x]: result return path
   description: In [ResultState.cpp](game/src/states/ResultState.cpp), implement Confirm -> return to `MainMenuState`; keep this as the canonical post-battle exit.
 
-- [x]: pause menu actions
-  description: In [PauseState.cpp](game/src/states/PauseState.cpp), ensure buttons exist (Resume, Quit) in `onEnter`. In `update`, wire Quit to a real transition path (typically back to `MainMenuState`).
-
 - [x]: settings exit wiring
   description: In [SettingsState.cpp](game/src/states/SettingsState.cpp), wire Back/Confirm to pop or replace via state machine; remove placeholder TODO path.
 
@@ -69,7 +65,7 @@ Fix instructions (TODO: description):
   description: Add/verify `SettingsState` constructor definition in [SettingsState.cpp](game/src/states/SettingsState.cpp) to match [SettingsState.h](game/src/states/SettingsState.h) and avoid linker errors when instantiated.
 
 - [x]: battle state transitions
-  description: In [BattleState.cpp](game/src/states/BattleState.cpp), add minimal input/condition hooks in `update` to reach `PauseState` and `ResultState` so G2 flow is testable end-to-end.
+  description: In [BattleState.cpp](game/src/states/BattleState.cpp), add minimal input/condition hooks in `update` to reach `ResultState` so G2 flow is testable end-to-end.
 
 - [x]: status/comment alignment
   description: Align [TODO.md](TODO.md) status and state-header comments with actual implementation, especially where headers say done but `.cpp` still has placeholder TODOs.

@@ -9,7 +9,6 @@ set(GAME_SOURCES
     src/states/MainMenuState.cpp
     src/states/WorldMapState.cpp
     src/states/BattleState.cpp
-    src/states/PauseState.cpp
     src/states/ResultState.cpp
     src/states/SettingsState.cpp
 
@@ -58,7 +57,6 @@ set(GAME_HEADERS
     src/states/MainMenuState.h
     src/states/WorldMapState.h
     src/states/BattleState.h
-    src/states/PauseState.h
     src/states/ResultState.h
     src/states/SettingsState.h
 

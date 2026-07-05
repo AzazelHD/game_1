@@ -13,7 +13,6 @@
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/DebugRenderer.h"
 #include "states/BattleState.h"
-#include "states/PauseState.h"
 #include "config/BattleCatalog.h"
 #include "states/MainMenuState.h"
 #include "battle/Unit.h"
@@ -389,22 +388,35 @@ void BattleState::showSkillMenu()
     setBattleMenuItems(std::move(items));
 }
 
-void BattleState::showDeploymentMenu()
+void BattleState::showSystemMenu()
 {
-    setBattleMenuItems({
-        BattleMenuItem{
-            .label = "Start Battle",
-            .enabled = m_deployment.canStartBattle(),
-            .onSelect = [this]()
-            {
-                m_uiManager.popById("battle.deployment.confirm");
-                auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
-                confirm->setFont(App::getDefaultFont());
-                confirm->setPrompt("Start Battle?");
-            }},
+    const bool deploying = (m_flowPhase == BattleFlowPhase::Deployment);
 
-        BattleMenuItem{.label = "Close", .enabled = true, .onSelect = [this]()
-                                                          { clearBattleMenu(); }},
+    BattleMenuItem startItem{
+        .label = "Start Battle",
+        .enabled = m_deployment.canStartBattle(),
+        .onSelect = [this]()
+        {
+            m_uiManager.popById("battle.deployment.confirm");
+            auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
+            confirm->setFont(App::getDefaultFont());
+            confirm->setPrompt("Start Battle?");
+        }};
+
+    BattleMenuItem resumeItem{
+        .label = "Resume",
+        .enabled = true,
+        .onSelect = [this]()
+        { clearBattleMenu(); }};
+
+    setBattleMenuItems({
+        deploying ? std::move(startItem) : std::move(resumeItem),
+
+        BattleMenuItem{
+            .label = "Quit",
+            .enabled = true,
+            .onSelect = [this]()
+            { m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer)); }},
     });
 }
 
@@ -583,6 +595,19 @@ void BattleState::processUIEvents(Unit *active)
                     continue;
                 }
 
+                // Not grabbing → hovering a unit opens the one-item Inspect submenu.
+                if (m_hoveredUnit)
+                {
+                    m_inspectTargetUnit = m_hoveredUnit;
+                    m_uiManager.popById("battle.deploy.inspectmenu");
+                    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.deploy.inspectmenu");
+                    menu->setFont(App::getDefaultFont());
+                    menu->setItems({
+                        ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
+                    });
+                    continue;
+                }
+
                 const DeploymentEntry *selected = m_deployment.selectedEntry();
                 if (!selected)
                     continue;
@@ -622,7 +647,7 @@ void BattleState::processUIEvents(Unit *active)
                     refreshDeploymentWindow();
                     continue;
                 }
-                showDeploymentMenu();
+                showSystemMenu();
                 continue;
             }
             if (event.actionId == "start")
@@ -1431,13 +1456,6 @@ void BattleState::handleInput()
         return;
     }
 
-    // 1. Pause
-    if (input.isKeyPressed(KeyCode::Pause))
-    {
-        m_sm.push(std::make_unique<PauseState>(m_sm, m_renderer));
-        return;
-    }
-
     if (m_transition.isActive())
         return;
 
@@ -1475,7 +1493,7 @@ void BattleState::handleInput()
                 return;
             }
 
-            showDeploymentMenu();
+            showSystemMenu();
             return;
         }
 
@@ -1507,12 +1525,7 @@ void BattleState::handleInput()
             return;
         }
 
-        Unit *active = (!m_units.empty()) ? m_turnQueue.getCurrentUnit() : nullptr;
-        if (active && active->getTeam() == 0)
-        {
-            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            openBattleMenu(canActiveUnitMove(), !active->hasActed(), true, KeyCode::Back);
-        }
+        showSystemMenu();
         return;
     }
 
@@ -1592,7 +1605,7 @@ void BattleState::update(float dt)
         Vec2i cursorPos = m_cursor.getPosition();
         for (Unit *u : m_units)
         {
-            if (u && !u->isDead() && u->getPosition() == cursorPos)
+            if (u && u->getPosition() == cursorPos)
             {
                 m_hoveredUnit = u;
                 break;

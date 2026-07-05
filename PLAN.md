@@ -32,7 +32,7 @@ game_1/
 │   ├── CMakeLists.txt
 │   ├── src/
 │   │   ├── main.cpp
-│   │   ├── states/   (BootState, MainMenuState, BattleState, PauseState, SettingsState, ResultState)
+│   │   ├── states/   (BootState, MainMenuState, BattleState, SettingsState, ResultState)
 │   │   ├── battle/   (Grid, Unit, TurnQueue, CombatSystem, MovementRange, Pathfinder)
 │   │   ├── ai/       (EnemyAI)
 │   │   ├── ui/       (Cursor, ActionMenu, UnitPanel, DamagePreview, DialogBox, DialogSystem)
@@ -96,7 +96,7 @@ game_1/
 4. `BootState`: preload minimal resources and transition
 5. `MainMenuState`: input-driven transition to gameplay
 6. `BattleState`: own game loop context
-7. `PauseState`, `SettingsState`, and `ResultState`: temporary and terminal flow
+7. `SettingsState`, and `ResultState`: temporary and terminal flow
 
 ### G3 — Grid, Map, and Navigation
 

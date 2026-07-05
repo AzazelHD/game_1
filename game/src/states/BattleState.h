@@ -253,7 +253,7 @@ private:
 
     void showSkillMenu();
     void showBattleMenu(bool canMove, bool canAttack, bool canWait);
-    void showDeploymentMenu();
+    void showSystemMenu();
     void showStatusMenu(Unit *unit);
     void showInspectWindow(Unit *unit);
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
