@@ -8,7 +8,7 @@
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
-#include "ui/unit_portrait.h"
+#include "ui/UnitPortrait.h"
 
 #include <cstdio>
 
@@ -97,42 +97,42 @@ void UnitPanelWindow::render(Renderer *renderer) const
 
     if (m_leftUnit && m_rightUnit)
     {
-        const Rectf leftRect = unit_portrait::render(renderer,
-                                                     m_font,
-                                                     *m_leftUnit,
-                                                     Vec2f{leftX, baseY},
-                                                     unit_portrait::PortraitStyle{.mirrored = false, .enemy = false, .transparent = false});
+        const Rectf leftRect = UnitPortrait::render(renderer,
+                                                    m_font,
+                                                    *m_leftUnit,
+                                                    Vec2f{leftX, baseY},
+                                                    UnitPortrait::PortraitStyle{.mirrored = false, .enemy = false, .transparent = false});
         const float rightX = GameConstants::VIEW_W - leftRect.w - 16.0f * ui;
-        unit_portrait::render(renderer,
-                              m_font,
-                              *m_rightUnit,
-                              Vec2f{rightX, baseY},
-                              unit_portrait::PortraitStyle{.mirrored = true, .enemy = true, .transparent = false});
+        UnitPortrait::render(renderer,
+                             m_font,
+                             *m_rightUnit,
+                             Vec2f{rightX, baseY},
+                             UnitPortrait::PortraitStyle{.mirrored = true, .enemy = true, .transparent = false});
         return;
     }
 
     if (m_leftUnit)
     {
-        unit_portrait::render(renderer,
-                              m_font,
-                              *m_leftUnit,
-                              Vec2f{leftX, baseY},
-                              unit_portrait::PortraitStyle{.mirrored = false, .enemy = m_singleEnemy, .transparent = false});
+        UnitPortrait::render(renderer,
+                             m_font,
+                             *m_leftUnit,
+                             Vec2f{leftX, baseY},
+                             UnitPortrait::PortraitStyle{.mirrored = false, .enemy = m_singleEnemy, .transparent = false});
         return;
     }
 
     if (m_hasPreview)
     {
-        unit_portrait::renderFromStats(renderer,
-                                       m_font,
-                                       m_previewName,
-                                       m_previewLevel,
-                                       m_previewHp,
-                                       m_previewHp,
-                                       m_previewMp,
-                                       m_previewMp,
-                                       Vec2f{leftX, baseY},
-                                       unit_portrait::PortraitStyle{.mirrored = false, .enemy = m_previewEnemy, .transparent = false});
+        UnitPortrait::renderFromStats(renderer,
+                                      m_font,
+                                      m_previewName,
+                                      m_previewLevel,
+                                      m_previewHp,
+                                      m_previewHp,
+                                      m_previewMp,
+                                      m_previewMp,
+                                      Vec2f{leftX, baseY},
+                                      UnitPortrait::PortraitStyle{.mirrored = false, .enemy = m_previewEnemy, .transparent = false});
     }
 }
 

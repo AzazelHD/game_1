@@ -39,25 +39,16 @@
 #include <memory>
 #include <string>
 
-namespace
-{
-    constexpr float SPRITE_H = 36.0f;
-
-    std::string trimLabel(std::string text)
-    {
-        const std::size_t first = text.find_first_not_of(" \t\n\r");
-        if (first == std::string::npos)
-            return std::string();
-        const std::size_t last = text.find_last_not_of(" \t\n\r");
-        return text.substr(first, last - first + 1);
-    }
-}
-
 // Sprite sheet dimensions for 0.5H_IsoTiles.png.
 //   Sprite size  : 48 × 36 px
 //   Map tile size: 48 × 24 px
 // Hardcoded because back-calculating from max-GID is fragile — the
 // sheet format is fixed for this asset.
+
+namespace
+{
+    constexpr float SPRITE_H = 36.0f;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -174,7 +165,7 @@ void BattleState::onEnter()
     m_deploymentWindow = m_uiManager.push<DeploymentWindow>("battle.deployment");
     m_deploymentWindow->setFont(App::getDefaultFont());
 
-    clearBattleMenu();
+    m_hud.clear();
 
     initializeDeploymentPhase();
 
@@ -217,7 +208,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
                                                           active->getJump());
 
             m_humanTurnPhase = HumanTurnPhase::MoveTarget;
-            clearBattleMenu();
+            m_hud.clear();
         }});
 
     items.push_back(BattleMenuItem{
@@ -229,7 +220,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
             m_selectedSkillId.clear();
             computeAttackRangeTiles();
             m_humanTurnPhase = HumanTurnPhase::AttackTarget;
-            clearBattleMenu();
+            m_hud.clear();
         }});
 
     Unit *active = m_turnQueue.getCurrentUnit();
@@ -252,7 +243,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
             {
                 active->setMajorAction(MajorAction::Defend);
             }
-            clearBattleMenu();
+            m_hud.clear();
             advanceToNextUnit();
             m_turnState = TurnState::Idle;
         }});
@@ -262,12 +253,12 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         .enabled = canWait,
         .onSelect = [this]()
         {
-            clearBattleMenu();
+            m_hud.clear();
             advanceToNextUnit();
             m_turnState = TurnState::Idle;
         }});
 
-    setBattleMenuItems(std::move(items));
+    m_hud.setItems(std::move(items), m_flowPhase == BattleFlowPhase::Combat);
 }
 
 void BattleState::showSkillMenu()
@@ -306,7 +297,7 @@ void BattleState::showSkillMenu()
                     computeAttackRangeTiles();
                 }
                 m_humanTurnPhase = HumanTurnPhase::AttackTarget;
-                clearBattleMenu();
+                m_hud.clear();
             }});
     }
 
@@ -319,10 +310,10 @@ void BattleState::showSkillMenu()
             if (active)
                 showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
             else
-                clearBattleMenu();
+                m_hud.clear();
         }});
 
-    setBattleMenuItems(std::move(items));
+    m_hud.setItems(std::move(items), m_flowPhase == BattleFlowPhase::Combat);
 }
 
 void BattleState::showSystemMenu()
@@ -344,17 +335,7 @@ void BattleState::showSystemMenu()
         .label = "Resume",
         .enabled = true,
         .onSelect = [this]()
-        { clearBattleMenu(); }};
-
-    setBattleMenuItems({
-        deploying ? std::move(startItem) : std::move(resumeItem),
-
-        BattleMenuItem{
-            .label = "Quit",
-            .enabled = true,
-            .onSelect = [this]()
-            { m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer)); }},
-    });
+        { m_hud.clear(); }};
 }
 
 void BattleState::showStatusMenu(Unit *unit)
@@ -395,46 +376,6 @@ bool BattleState::canActiveUnitMove() const
     if (!active)
         return false;
     return active->getMoveRangeLeft() > 0 && (!active->hasMoved() || active->hasActed());
-}
-
-void BattleState::clearBattleMenu()
-{
-    m_battleMenuItems.clear();
-    m_uiManager.popById("battle.actionmenu");
-    m_uiManager.popById("battle.confirm");
-}
-
-bool BattleState::isBattleMenuOpen() const
-{
-    return m_uiManager.hasWindow("battle.actionmenu") || m_uiManager.hasWindow("battle.confirm");
-}
-
-void BattleState::setBattleMenuItems(std::vector<BattleMenuItem> items)
-{
-    m_battleMenuItems = std::move(items);
-    m_uiManager.popById("battle.actionmenu");
-
-    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.actionmenu");
-    menu->setFont(App::getDefaultFont());
-    if (m_flowPhase == BattleFlowPhase::Combat)
-    {
-        UIScale::refresh();
-        const float ui = UIScale::factor();
-        menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
-    }
-
-    std::vector<ActionMenuWindow::Item> uiItems;
-    uiItems.reserve(m_battleMenuItems.size());
-    for (int i = 0; i < static_cast<int>(m_battleMenuItems.size()); ++i)
-    {
-        const BattleMenuItem &item = m_battleMenuItems[i];
-        uiItems.push_back(ActionMenuWindow::Item{
-            .id = std::to_string(i),
-            .label = trimLabel(item.label),
-            .enabled = item.enabled,
-        });
-    }
-    menu->setItems(std::move(uiItems));
 }
 
 void BattleState::processUIEvents(Unit *active)
@@ -577,10 +518,10 @@ void BattleState::processUIEvents(Unit *active)
             if (event.type == UIEventType::ActionSelected)
             {
                 const int index = event.index;
-                if (index < 0 || index >= static_cast<int>(m_battleMenuItems.size()))
+                if (index < 0 || index >= static_cast<int>(m_hud.items().size()))
                     continue;
 
-                BattleMenuItem item = m_battleMenuItems[index];
+                BattleMenuItem item = m_hud.items()[index];
                 m_uiManager.popById("battle.actionmenu");
                 if (item.enabled && item.onSelect)
                     item.onSelect();
@@ -589,7 +530,7 @@ void BattleState::processUIEvents(Unit *active)
 
             if (event.type == UIEventType::ActionCanceled)
             {
-                clearBattleMenu();
+                m_hud.clear();
                 continue;
             }
         }
@@ -615,10 +556,10 @@ void BattleState::processUIEvents(Unit *active)
         if (event.windowId == "battle.actionmenu" && event.type == UIEventType::ActionSelected)
         {
             const int index = event.index;
-            if (index < 0 || index >= static_cast<int>(m_battleMenuItems.size()))
+            if (index < 0 || index >= static_cast<int>(m_hud.items().size()))
                 continue;
 
-            BattleMenuItem item = m_battleMenuItems[index];
+            BattleMenuItem item = m_hud.items()[index];
             m_uiManager.popById("battle.actionmenu");
             if (item.enabled && item.onSelect)
                 item.onSelect();
@@ -635,7 +576,7 @@ void BattleState::processUIEvents(Unit *active)
 
             if (!active)
             {
-                clearBattleMenu();
+                m_hud.clear();
                 continue;
             }
 
@@ -655,7 +596,7 @@ void BattleState::processUIEvents(Unit *active)
             }
             else if (!active->hasMoved() && !active->hasActed())
             {
-                clearBattleMenu();
+                m_hud.clear();
                 m_humanTurnPhase = HumanTurnPhase::FreeCursor;
                 m_cursor.setPosition(active->getPosition());
             }
@@ -789,7 +730,7 @@ void BattleState::applyPendingAttack(Unit *active, const SkillData *skill)
     m_damagePreview.hide();
     m_pendingAttack.clear();
     m_topBattleText.clear();
-    clearBattleMenu();
+    m_hud.clear();
     m_humanTurnPhase = HumanTurnPhase::ActionMenu;
     openBattleMenu(canActiveUnitMove(), false, true, KeyCode::Accept);
 
@@ -803,7 +744,7 @@ void BattleState::cancelPendingAttack()
     m_pendingSkillId.clear();
     m_damagePreview.hide();
     m_topBattleText.clear();
-    clearBattleMenu();
+    m_hud.clear();
     m_humanTurnPhase = HumanTurnPhase::AttackTarget;
 }
 
@@ -1035,233 +976,6 @@ void BattleState::onExit()
 // Input Pass
 // ─────────────────────────────────────────────────────────────────────────────
 
-void BattleState::handleActiveTurn(const Input &input)
-{
-    if (m_playerControlMode != PlayerControlMode::Human)
-        return;
-
-    Unit *active = m_turnQueue.getCurrentUnit();
-    if (!active || active->getTeam() != 0)
-        return;
-
-    if (isBattleMenuOpen())
-        return;
-
-    // ── FreeCursor phase ─────────────────────────────────────────────────
-    if (m_humanTurnPhase == HumanTurnPhase::FreeCursor)
-    {
-        if (input.isKeyPressed(KeyCode::Accept, false))
-        {
-            Vec2i cursorPos = m_cursor.getPosition();
-
-            if (cursorPos == active->getPosition())
-            {
-                m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-                openBattleMenu(canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept);
-            }
-            else
-            {
-                Unit *hovered = nullptr;
-                for (Unit *u : m_units)
-                    if (u && !u->isDead() && u->getPosition() == cursorPos)
-                    {
-                        hovered = u;
-                        break;
-                    }
-
-                if (hovered)
-                    showInspectWindow(hovered);
-                else
-                    m_cursor.setPosition(active->getPosition());
-            }
-        }
-    }
-
-    // ── MoveTarget phase ─────────────────────────────────────────────────
-    else if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
-    {
-        if (input.isKeyPressed(KeyCode::Accept, false))
-        {
-            Vec2i dest = m_cursor.getPosition();
-            // Only allow moving to a reachable tile
-            if (m_reachableTiles.find(dest) == m_reachableTiles.end())
-                return; // ignore confirm if tile not reachable
-
-            // Snapshot for undo BEFORE applying the move. Overwrites any
-            // earlier undo record — only the most recent move segment is
-            // ever undoable (see Unit.h's MajorAction docs).
-            m_moveStartPos = active->getPosition();
-            m_moveStartPointsLeft = active->getMoveRangeLeft();
-
-            // TODO: path cost should come from the actual pathfind result
-            // (diagonal/terrain costs etc.) once Pathfinder exposes per-tile
-            // cost for the chosen destination. For now MovementRange's BFS
-            // budget already validated reachability; we charge the full
-            // delta between start and current points so multi-segment moves
-            // stay consistent even if MovementRange's cost model changes.
-            const int pathCost = manhattanDistance(m_moveStartPos, dest);
-
-            Vec2i start = active->getPosition();
-            m_grid.getTile(start).occupied = false;
-            active->setPosition(dest);
-            m_grid.getTile(dest).occupied = true;
-            active->spendMovePoints(pathCost);
-            m_canUndoLastMove = true;
-            m_eventSystem.emit(BattleTriggerType::OnTileEnter);
-
-            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            openBattleMenu(canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept);
-        }
-        else if (input.isKeyPressed(KeyCode::Back, false))
-        {
-            // Cancel targeting before confirming — no move was committed,
-            // nothing to undo, state is exactly as it was before Move was clicked.
-            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            openBattleMenu(canActiveUnitMove(), !active->hasActed(), true, KeyCode::Back);
-        }
-    }
-
-    // ── AttackTarget phase ───────────────────────────────────────────────
-    else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
-    {
-        Vec2i cursorPos = m_cursor.getPosition();
-        Unit *hoveredEnemy = nullptr;
-        for (Unit *u : m_units)
-            if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == cursorPos)
-            {
-                hoveredEnemy = u;
-                break;
-            }
-
-        // Update damage preview: use selected skill if any, else basic attack
-        if (hoveredEnemy)
-        {
-            int dist = manhattanDistance(active->getPosition(), hoveredEnemy->getPosition());
-            if (dist <= m_currentAttackRange)
-            {
-                const SkillData *previewSkill = nullptr;
-                if (!m_selectedSkillId.empty())
-                {
-                    auto it = m_skillDB.find(m_selectedSkillId);
-                    if (it != m_skillDB.end())
-                        previewSkill = &it->second;
-                }
-                m_damagePreview.show(*active, *hoveredEnemy, previewSkill);
-
-                HitContext ctx;
-                ctx.attacker = active;
-                ctx.target = hoveredEnemy;
-                if (previewSkill)
-                {
-                    ctx.basePower = previewSkill->basePower;
-                    ctx.isMagical = previewSkill->isMagical;
-                    ctx.element = previewSkill->element;
-                    ctx.skillAccuracy = previewSkill->skillAccuracy;
-                }
-                else
-                {
-                    ctx.basePower = 0;
-                    ctx.isMagical = false;
-                    ctx.element = Element::Neutral;
-                    ctx.skillAccuracy = 95;
-                }
-                ctx.side = AttackSide::Side;
-                ctx.tileEvasionBonus = 0;
-
-                const CombatResult preview = CombatSystem::preview(ctx);
-                char textBuf[96];
-                std::snprintf(textBuf, sizeof(textBuf), "DMG %d   ACC %d%%", preview.damage, static_cast<int>(preview.hitChance + 0.5f));
-                m_topBattleText = textBuf;
-            }
-            else
-            {
-                m_damagePreview.hide();
-                m_topBattleText.clear();
-            }
-        }
-        else
-        {
-            m_damagePreview.hide();
-            m_topBattleText.clear();
-        }
-
-        if (input.isKeyPressed(KeyCode::Accept, false))
-        {
-            Vec2i targetPos = m_cursor.getPosition();
-            Unit *target = nullptr;
-            for (Unit *u : m_units)
-                if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == targetPos)
-                {
-                    target = u;
-                    break;
-                }
-
-            // Look up the selected skill (nullptr = basic attack)
-            const SkillData *skill = nullptr;
-            if (!m_selectedSkillId.empty())
-            {
-                auto it = m_skillDB.find(m_selectedSkillId);
-                if (it != m_skillDB.end())
-                    skill = &it->second;
-            }
-
-            // Decide if the tile is a legal attack target
-            bool canAttack = (target != nullptr); // direct target
-
-            // AOE skill on empty tile – legal if at least one enemy is within the splash area
-            if (!canAttack && skill && skill->area > 0)
-            {
-                for (Unit *u : m_units)
-                {
-                    if (u && !u->isDead() && u->getTeam() != 0 &&
-                        manhattanDistance(u->getPosition(), targetPos) <= skill->area)
-                    {
-                        canAttack = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!canAttack)
-                return; // no valid target – ignore confirm
-
-            // Check attack range
-            int dist = manhattanDistance(active->getPosition(), targetPos);
-            if (dist > m_currentAttackRange)
-                return; // out of range – ignore confirm
-
-            // Determine which skill to use (nullptr = basic attack)
-            const SkillData *skillToUse = nullptr;
-            if (!m_selectedSkillId.empty())
-            {
-                auto it = m_skillDB.find(m_selectedSkillId);
-                if (it != m_skillDB.end())
-                    skillToUse = &it->second;
-            }
-
-            preparePendingAttack(active, targetPos, target, skillToUse);
-
-            if (m_pendingAttack.targets().empty())
-                return;
-
-            m_humanTurnPhase = HumanTurnPhase::AttackConfirm;
-            m_pendingSkillId = m_selectedSkillId;
-            m_uiManager.popById("battle.confirm");
-            auto *confirm = m_uiManager.push<ConfirmWindow>("battle.confirm");
-            confirm->setFont(App::getDefaultFont());
-            confirm->setPrompt("Confirm?");
-        }
-        else if (input.isKeyPressed(KeyCode::Back, false))
-        {
-            m_damagePreview.hide();
-            m_selectedSkillId.clear(); // cancel skill selection
-            m_topBattleText.clear();
-            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            openBattleMenu(canActiveUnitMove(), true, true, KeyCode::Back);
-        }
-    }
-}
-
 void BattleState::handleInput()
 {
     const Input &input = Input::instance();
@@ -1368,7 +1082,7 @@ void BattleState::handleInput()
             Unit *active = m_turnQueue.getCurrentUnit();
             if (active && active->getTeam() == 0 && !active->isDead())
             {
-                clearBattleMenu();
+                m_hud.clear();
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
                 EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_units);
                 m_cursor.setPosition(active->getPosition());
@@ -1392,7 +1106,7 @@ void BattleState::handleInput()
         return;
 
     // 4. Tactical input
-    handleActiveTurn(input);
+    m_humanTurn.handleActiveTurn(input);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1604,7 +1318,7 @@ void BattleState::startBattleEnd(bool playerWon)
     {
         m_playerWon = false;
         m_showDefeatOverlay = true;
-        clearBattleMenu();
+        m_hud.clear();
         m_uiManager.popById("battle.confirm");
         m_uiManager.popById("battle.dialog");
         return;
@@ -1631,23 +1345,32 @@ void BattleState::startBattleEnd(bool playerWon)
 
 bool BattleState::checkVictory() const
 {
-    int enemyCount = 0;
-    for (const Unit *u : m_units)
-        if (u && !u->isDead() && u->getTeam() != 0)
-            enemyCount++;
+    int enemyCount = countAliveEnemies();
+    LOG_INFO("Battle", "checkVictory: %d enemies alive", enemyCount);
     return enemyCount == 0;
 }
 
 bool BattleState::checkDefeat() const
 {
-    return countAlive(0) == 0;
+    int playerCount = countAlivePlayers();
+    LOG_INFO("Battle", "checkDefeat: %d players alive", playerCount);
+    return playerCount == 0;
 }
 
-int BattleState::countAlive(int team) const
+int BattleState::countAliveEnemies() const
 {
     int n = 0;
     for (const Unit *u : m_units)
-        if (u && !u->isDead() && u->getTeam() == team)
+        if (u && !u->isDead() && u->getTeam() >= 2)
+            n++;
+    return n;
+}
+
+int BattleState::countAlivePlayers() const
+{
+    int n = 0;
+    for (const Unit *u : m_units)
+        if (u && !u->isDead() && u->getTeam() == 0)
             n++;
     return n;
 }

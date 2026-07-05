@@ -1,5 +1,3 @@
-#include "ui/unit_portrait.h"
-
 #include "battle/Unit.h"
 #include "engine/math/Rect.h"
 #include "engine/renderer/Color.h"
@@ -8,6 +6,7 @@
 #include "engine/renderer/Texture.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
+#include "ui/UnitPortrait.h"
 
 #include <filesystem>
 #include <cstdio>
@@ -57,11 +56,11 @@ namespace
     }
 }
 
-Rectf unit_portrait::render(Renderer *renderer,
-                            const Font *font,
-                            const Unit &unit,
-                            Vec2f topLeft,
-                            const PortraitStyle &style)
+Rectf UnitPortrait::render(Renderer *renderer,
+                           const Font *font,
+                           const Unit &unit,
+                           Vec2f topLeft,
+                           const PortraitStyle &style)
 {
     return renderFromStats(renderer,
                            font,
@@ -76,17 +75,17 @@ Rectf unit_portrait::render(Renderer *renderer,
                            unit.getData().spriteSetId);
 }
 
-Rectf unit_portrait::renderFromStats(Renderer *renderer,
-                                     const Font *font,
-                                     const std::string &name,
-                                     int level,
-                                     int currentHp,
-                                     int maxHp,
-                                     int currentMp,
-                                     int maxMp,
-                                     Vec2f topLeft,
-                                     const PortraitStyle &style,
-                                     const std::string &spriteSetId)
+Rectf UnitPortrait::renderFromStats(Renderer *renderer,
+                                    const Font *font,
+                                    const std::string &name,
+                                    int level,
+                                    int currentHp,
+                                    int maxHp,
+                                    int currentMp,
+                                    int maxMp,
+                                    Vec2f topLeft,
+                                    const PortraitStyle &style,
+                                    const std::string &spriteSetId)
 {
     if (!renderer || !font)
         return Rectf{topLeft.x, topLeft.y, 0.0f, 0.0f};

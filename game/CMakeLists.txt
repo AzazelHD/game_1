@@ -11,7 +11,8 @@ set(GAME_SOURCES
     src/states/BattleState.cpp
     src/states/ResultState.cpp
     src/states/SettingsState.cpp
-    src/states/BattleLoader.cpp
+    src/states/BattleLoader.cpp   
+    src/states/HumanTurnController.cpp
 
     src/battle/Grid.cpp
     src/battle/Unit.cpp
@@ -46,7 +47,7 @@ set(GAME_SOURCES
     src/ui/DamagePreview.cpp
     src/ui/DialogSystem.cpp
     src/ui/UIScale.cpp
-    src/ui/unit_portrait.cpp
+    src/ui/UnitPortrait.cpp
     src/ui/windows/ActionMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
@@ -54,6 +55,8 @@ set(GAME_SOURCES
     src/ui/windows/DeploymentWindow.cpp
     src/ui/windows/InspectWindow.cpp
     src/ui/windows/PartyWindow.cpp
+    src/ui/BattleHud.cpp  
+
 )
 
 set(GAME_HEADERS
@@ -63,6 +66,7 @@ set(GAME_HEADERS
     src/states/BattleState.h
     src/states/ResultState.h
     src/states/SettingsState.h
+    src/states/HumanTurnController.h
 
     src/battle/Grid.h
     src/battle/Unit.h
@@ -103,7 +107,7 @@ set(GAME_HEADERS
     src/ui/DamagePreview.h
     src/ui/DialogSystem.h
     src/ui/UIScale.h
-    src/ui/unit_portrait.h
+    src/ui/UnitPortrait.h
     src/ui/windows/ActionMenuWindow.h
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
@@ -111,6 +115,8 @@ set(GAME_HEADERS
     src/ui/windows/DeploymentWindow.h
     src/ui/windows/InspectWindow.h
     src/ui/windows/PartyWindow.h
+    src/ui/BattleHud.h  
+    src/ui/BattleMenuItem.h
 
     src/world/WorldGraph.h
     src/world/WorldPathfinding.h

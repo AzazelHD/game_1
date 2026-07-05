@@ -7,6 +7,7 @@
 #include "engine/renderer/Camera.h"
 #include "engine/statemachine/StateMachine.h"
 #include "engine/input/KeyCode.h"
+#include "states/HumanTurnController.h"
 #include "battle/Grid.h"
 #include "battle/BattleMap.h"
 #include "battle/TurnQueue.h"
@@ -18,6 +19,8 @@
 #include "systems/DeploymentSystem.h"
 #include "systems/CombatAnimationSystem.h"
 #include "ui/UIManager.h"
+#include "ui/BattleHud.h"
+#include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
 #include "ui/DamagePreview.h"
 #include "ui/windows/DeploymentWindow.h"
@@ -52,6 +55,7 @@ class Texture;
 class Unit;
 struct TileLayerData;
 struct HitContext;
+struct BattleMenuItem;
 
 struct BattleRequest
 {
@@ -59,18 +63,14 @@ struct BattleRequest
     int returnWorldNodeId = 4;
 };
 
-struct BattleMenuItem
-{
-    std::string label;
-    bool enabled = true;
-    std::function<void()> onSelect;
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // BattleState
 // ─────────────────────────────────────────────────────────────────────────────
+
 class BattleState : public Scene
 {
+    friend class HumanTurnController;
+
 public:
     BattleState(StateMachine<Scene> &sm,
                 Renderer *renderer,
@@ -192,6 +192,7 @@ private:
         PlayerConfirmedAttack,
         EnemyAction,
     };
+
     PendingResolution m_pendingResolution = PendingResolution::None;
     Unit *m_pendingActor = nullptr;
     Unit *m_pendingTarget = nullptr;
@@ -220,17 +221,19 @@ private:
 
     // ── Battle flow control ───────────────────────────────────────────────
     // Triggered when battle ends; handled via ScreenTransition lifecycle
-    void handleActiveTurn(const Input &input);
     void startBattleEnd(bool playerWon);
     bool checkVictory() const;
     bool checkDefeat() const;
-    int countAlive(int team) const;
+    int countAliveEnemies() const;
+    int countAlivePlayers() const;
 
     // ── Range overlay rendering ───────────────────────────────────────────
     void computeAttackRangeTiles();
 
     // ── UI ────────────────────────────────────────────────────────────────
     UIManager m_uiManager;
+    BattleHud m_hud{m_uiManager};
+    HumanTurnController m_humanTurn{*this};
     UnitPanelWindow *m_unitPanelWindow = nullptr;
     DeploymentWindow *m_deploymentWindow = nullptr;
     class InspectWindow *m_inspectWindow = nullptr;
@@ -238,7 +241,6 @@ private:
     Unit *m_hoveredUnit = nullptr;
     Unit *m_inspectTargetUnit = nullptr;
     std::string m_selectedSkillId;
-    std::vector<BattleMenuItem> m_battleMenuItems;
     CombatAnimationSystem m_combatAnimations;
 
     // Pending attack confirmation state.
@@ -257,9 +259,6 @@ private:
     HitContext makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const;
     void setUnitPanelPreviewFromEntry(const DeploymentEntry *entry);
 
-    void clearBattleMenu();
-    bool isBattleMenuOpen() const;
-    void setBattleMenuItems(std::vector<BattleMenuItem> items);
     void processUIEvents(Unit *active);
     void initializeDeploymentPhase();
     void syncDeploymentPreviewUnits();

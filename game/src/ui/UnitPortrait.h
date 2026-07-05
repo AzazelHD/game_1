@@ -9,7 +9,7 @@ class Renderer;
 class Font;
 class Unit;
 
-namespace unit_portrait
+namespace UnitPortrait
 {
     struct PortraitStyle
     {
