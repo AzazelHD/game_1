@@ -2,7 +2,7 @@
 
 #include "engine/scene/Scene.h"
 #include "engine/statemachine/StateMachine.h"
-#include "engine/ui/MenuPanel.h"
+#include "ui/UIManager.h"
 
 class Renderer;
 
@@ -33,7 +33,10 @@ public:
     void render(float alpha) override;
 
 private:
+    void processUIEvents();
+
+private:
     StateMachine<Scene> &m_sm;
     Renderer *m_renderer = nullptr;
-    MenuPanel m_menu;
+    UIManager m_uiManager;
 };

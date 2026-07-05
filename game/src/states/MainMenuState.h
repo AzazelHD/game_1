@@ -4,8 +4,8 @@
 #include "engine/effects/ScreenTransition.h"
 #include "ui/UIManager.h"
 
-class Renderer;
 class Font;
+class Renderer;
 
 template <typename T>
 class StateMachine;

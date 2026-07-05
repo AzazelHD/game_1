@@ -217,13 +217,19 @@ void SettingsState::handleGraphicsInput(const Input &input)
     {
         if (m_focusIndex == 2)
         {
-            applyGraphicsSettings();
-            applySettings();
-            m_appliedResolutionIndex = m_resolutionIndex;
-            m_appliedWindowMode = m_windowMode;
-            m_appliedMasterVolume = m_volumeSlider.getValue();
-            m_appliedMusicVolume = m_musicSlider.getValue();
-            savePersistedSettings();
+            if (hasPendingChanges())
+            {
+                applyGraphicsSettings();
+                applySettings();
+                m_appliedResolutionIndex = m_resolutionIndex;
+                m_appliedWindowMode = m_windowMode;
+                m_appliedMasterVolume = m_volumeSlider.getValue();
+                m_appliedMusicVolume = m_musicSlider.getValue();
+                savePersistedSettings();
+            }
+
+            m_page = Page::Main;
+            m_focusIndex = 0;
             return;
         }
     }
@@ -433,14 +439,15 @@ void SettingsState::render(float /*alpha*/)
 
         const std::string actionLabel = hasPendingChanges() ? "Apply Changes and Save" : "Back / Return to main menu";
 
-        const char *labels[3] = {"Resolution", "Window Mode", "Action"};
-        std::string values[3] = {
+        constexpr float kActionRowGap = 24.0f; // extra breathing room above the standalone action button
+
+        const char *labels[2] = {"Resolution", "Window Mode"};
+        std::string values[2] = {
             std::string("< ") + resBuf + " >",
             std::string("< ") + windowModeLabel(m_windowMode == WindowMode::Borderless) + " >",
-            actionLabel,
         };
 
-        for (int i = 0; i < 3; ++i)
+        for (int i = 0; i < 2; ++i)
         {
             const Rectf row{kPanelX * ui, (kPanelY + static_cast<float>(i) * kRowH) * ui, kPanelW * ui, (kRowH - 6.0f) * ui};
             drawRow(m_renderer, row, m_focusIndex == i);
@@ -465,6 +472,22 @@ void SettingsState::render(float /*alpha*/)
                                          false,
                                          false);
         }
+
+        // Standalone action button: extra gap above it, full-width centered label.
+        const Rectf actionRow{kPanelX * ui,
+                              (kPanelY + 2.0f * kRowH + kActionRowGap) * ui,
+                              kPanelW * ui,
+                              (kRowH - 6.0f) * ui};
+        drawRow(m_renderer, actionRow, m_focusIndex == 2);
+        m_renderer->renderTextInRect(font,
+                                     actionLabel,
+                                     actionRow,
+                                     m_focusIndex == 2 ? selectedColor : baseColor,
+                                     Renderer::HorizontalAlign::Center,
+                                     Renderer::VerticalAlign::Middle,
+                                     false,
+                                     false,
+                                     false);
     }
     else
     {
