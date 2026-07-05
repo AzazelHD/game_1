@@ -320,22 +320,36 @@ void BattleState::showSystemMenu()
 {
     const bool deploying = (m_flowPhase == BattleFlowPhase::Deployment);
 
-    BattleMenuItem startItem{
-        .label = "Start Battle",
-        .enabled = m_deployment.canStartBattle(),
-        .onSelect = [this]()
-        {
-            m_uiManager.popById("battle.deployment.confirm");
-            auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
-            confirm->setFont(App::getDefaultFont());
-            confirm->setPrompt("Start Battle?");
-        }};
+    BattleMenuItem firstItem;
+    if (deploying)
+    {
+        firstItem = BattleMenuItem{
+            .label = "Start Battle",
+            .enabled = m_deployment.canStartBattle(),
+            .onSelect = [this]()
+            {
+                m_uiManager.popById("battle.deployment.confirm");
+                auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
+                confirm->setFont(App::getDefaultFont());
+                confirm->setPrompt("Start Battle?");
+            }};
+    }
+    else
+    {
+        firstItem = BattleMenuItem{
+            .label = "Resume",
+            .enabled = true,
+            .onSelect = [this]()
+            { m_hud.clear(); }};
+    }
 
-    BattleMenuItem resumeItem{
-        .label = "Resume",
+    BattleMenuItem quitItem{
+        .label = "Quit",
         .enabled = true,
         .onSelect = [this]()
-        { m_hud.clear(); }};
+        { m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer)); }};
+
+    m_hud.setItems({std::move(firstItem), std::move(quitItem)}, false);
 }
 
 void BattleState::showStatusMenu(Unit *unit)
@@ -1063,7 +1077,19 @@ void BattleState::handleInput()
             return;
         }
 
-        showSystemMenu();
+        // Mid-action (targeting/moving): ESC cancels the action, not open the menu.
+        if (m_humanTurnPhase == HumanTurnPhase::MoveTarget ||
+            m_humanTurnPhase == HumanTurnPhase::AttackTarget)
+        {
+            cancelPendingAttack();
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            openBattleMenu(canActiveUnitMove(), true, true, KeyCode::Back);
+            return;
+        }
+
+        // Only in free-cursor mode does ESC open the system menu.
+        if (m_humanTurnPhase == HumanTurnPhase::FreeCursor)
+            showSystemMenu();
         return;
     }
 
