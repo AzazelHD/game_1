@@ -12,13 +12,14 @@
 #include "engine/renderer/Texture.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/DebugRenderer.h"
-#include "states/BattleState.h"
 #include "config/BattleCatalog.h"
+#include "states/BattleState.h"
+#include "states/BattleLoader.h"
 #include "states/MainMenuState.h"
 #include "battle/Unit.h"
 #include "battle/UnitFactory.h"
-#include "battle/CombatSystem.h"
 #include "battle/MovementRange.h"
+#include "battle/CombatSystem.h"
 #include "systems/PartyContext.h"
 #include "systems/BattleParticipantsBuilder.h"
 #include "renderer/BattleRendererContext.h"
@@ -49,72 +50,6 @@ namespace
             return std::string();
         const std::size_t last = text.find_last_not_of(" \t\n\r");
         return text.substr(first, last - first + 1);
-    }
-
-    const char *toString(Race race)
-    {
-        switch (race)
-        {
-        case Race::Human:
-            return "Human";
-        case Race::Elf:
-            return "Elf";
-        case Race::Undead:
-            return "Undead";
-        }
-        return "Unknown";
-    }
-
-    const char *toString(Gender gender)
-    {
-        switch (gender)
-        {
-        case Gender::Male:
-            return "Male";
-        case Gender::Female:
-            return "Female";
-        case Gender::None:
-            return "None";
-        }
-        return "Unknown";
-    }
-
-    const char *toString(Element element)
-    {
-        switch (element)
-        {
-        case Element::Fire:
-            return "Fire";
-        case Element::Ice:
-            return "Ice";
-        case Element::Lightning:
-            return "Lightning";
-        case Element::Holy:
-            return "Holy";
-        case Element::Dark:
-            return "Dark";
-        case Element::Neutral:
-            return "Neutral";
-        }
-        return "Unknown";
-    }
-
-    const char *toString(Affinity affinity)
-    {
-        switch (affinity)
-        {
-        case Affinity::Weak:
-            return "Weak";
-        case Affinity::Neutral:
-            return "Neutral";
-        case Affinity::Resistant:
-            return "Resistant";
-        case Affinity::Immune:
-            return "Immune";
-        case Affinity::Absorb:
-            return "Absorb";
-        }
-        return "Unknown";
     }
 }
 
@@ -182,20 +117,22 @@ void BattleState::onEnter()
         static_cast<int>(GameConstants::VIEW_H),
         Renderer::PresentationMode::Letterbox);
 
-    // ── 3. Load map data (tile dimensions, layers, etc.) ──
-    if (!loadMap())
+    // ── 3-6. Load map, build grid, load tileset, compute origin ──
+    BattleLoadResult loaded = BattleLoader{m_renderer}.load(m_request.mapPath.c_str(), m_scale, SPRITE_H);
+    if (!loaded.ok)
         return;
 
-    // ── 4. Build gameplay grid (terrain, occupancy) ──
-    if (!buildGameplayGrid())
-        return;
+    m_mapData = std::move(loaded.mapData);
+    m_battleMap = std::move(loaded.battleMap);
+    m_grid = std::move(loaded.grid);
+    m_tileset = loaded.tileset;
+    m_texW = loaded.texW;
+    m_texH = loaded.texH;
+    m_tilesPerRow = loaded.tilesPerRow;
+    m_spriteH = loaded.spriteH;
 
-    // ── 5. Load tileset texture (sets m_spriteH) ──
-    if (!loadTileset())
-        return;
+    Vec2f origin = loaded.mapOrigin;
 
-    // ── 6. Compute map origin (depends on m_spriteH) and set up camera ──
-    Vec2f origin = computeMapOrigin();
     m_camera.setTileSize(m_mapData.tileWidth, m_mapData.tileHeight);
     m_camera.setMapSize(m_mapData.width, m_mapData.height);
     m_camera.setOffset(origin);
@@ -432,57 +369,11 @@ void BattleState::showInspectWindow(Unit *unit)
     if (!unit)
         return;
 
-    const UnitData &data = unit->getData();
-    std::vector<std::string> lines;
-    lines.reserve(32);
-
-    lines.push_back("Name: " + data.name);
-    lines.push_back("Class: " + data.className);
-    lines.push_back("SpriteSet: " + data.spriteSetId);
-    lines.push_back("Acquisition: " + std::to_string(data.acquisitionIndex));
-    lines.push_back("Race: " + std::string(toString(data.race)));
-    lines.push_back("Gender: " + std::string(toString(data.gender)));
-    lines.push_back("Level: " + std::to_string(data.level));
-    lines.push_back("Team: " + std::to_string(data.team));
-    lines.push_back("HP: " + std::to_string(data.maxHp));
-    lines.push_back("MP: " + std::to_string(data.maxMp));
-    lines.push_back("ATK: " + std::to_string(data.attack));
-    lines.push_back("DEF: " + std::to_string(data.defense));
-    lines.push_back("MAG: " + std::to_string(data.magic));
-    lines.push_back("MDEF: " + std::to_string(data.magicDefense));
-    lines.push_back("MOVE: " + std::to_string(data.moveRange));
-    lines.push_back("RANGE: " + std::to_string(data.atkRange));
-    lines.push_back("EVA: " + std::to_string(data.evasion));
-    lines.push_back("JUMP: " + std::to_string(data.jump));
-    lines.push_back("SPD: " + std::to_string(data.speed));
-
-    lines.push_back("Affinities:");
-    if (data.affinities.empty())
-    {
-        lines.push_back("  <none>");
-    }
-    else
-    {
-        for (const ElementAffinity &aff : data.affinities)
-            lines.push_back("  " + std::string(toString(aff.element)) + ": " + toString(aff.affinity));
-    }
-
-    lines.push_back("Skills:");
-    if (data.skillIds.empty())
-    {
-        lines.push_back("  <none>");
-    }
-    else
-    {
-        for (const std::string &id : data.skillIds)
-            lines.push_back("  " + id);
-    }
-
     m_uiManager.popById("battle.inspect");
     auto *inspect = m_uiManager.push<InspectWindow>("battle.inspect");
     inspect->setFont(App::getDefaultFont());
     inspect->setTitle("Unit Inspect");
-    inspect->setLines(std::move(lines));
+    inspect->setLines(InspectWindow::buildLines(unit->getData()));
     m_inspectWindow = inspect;
 }
 
@@ -807,7 +698,7 @@ void BattleState::processUIEvents(Unit *active)
             m_pendingActionLabel = skill ? skill->name : "Attack";
             m_topBattleText = m_pendingActionLabel;
             m_pendingActor = active;
-            m_pendingTarget = m_pendingAttackTargets.empty() ? nullptr : m_pendingAttackTargets[std::clamp(m_pendingAttackFocus, 0, static_cast<int>(m_pendingAttackTargets.size()) - 1)];
+            m_pendingTarget = m_pendingAttack.focusedTarget();
             m_pendingResolution = PendingResolution::PlayerConfirmedAttack;
             m_turnTimer = 0.5f;
             m_turnState = TurnState::WaitingForAnimation;
@@ -818,54 +709,25 @@ void BattleState::processUIEvents(Unit *active)
 
 void BattleState::preparePendingAttack(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill)
 {
-    m_pendingAttackTargets.clear();
-    m_pendingAttackTiles.clear();
-    m_pendingAttackCenter = targetPos;
-    m_pendingAttackFocus = 0;
-
-    if (!active)
-        return;
-
-    if (skill && skill->area > 0)
-    {
-        for (Unit *u : m_units)
-        {
-            if (!u || u->isDead() || u->getTeam() == active->getTeam())
-                continue;
-            if (manhattanDistance(u->getPosition(), targetPos) <= skill->area)
-                m_pendingAttackTargets.push_back(u);
-        }
-    }
-    else if (directTarget)
-    {
-        m_pendingAttackTargets.push_back(directTarget);
-    }
-
-    for (Unit *u : m_pendingAttackTargets)
-        m_pendingAttackTiles.insert(u->getPosition());
-
+    m_pendingAttack.begin(active, targetPos, directTarget, skill, m_units);
     updatePendingAttackPreview(active);
 }
 
 void BattleState::cyclePendingAttackTarget(int delta)
 {
-    if (m_pendingAttackTargets.empty())
-        return;
-
-    const int count = static_cast<int>(m_pendingAttackTargets.size());
-    m_pendingAttackFocus = (m_pendingAttackFocus + delta + count) % count;
+    m_pendingAttack.cycleFocus(delta);
 }
 
 void BattleState::updatePendingAttackPreview(Unit *active)
 {
-    if (!active || m_pendingAttackTargets.empty())
+    Unit *focus = m_pendingAttack.focusedTarget();
+    if (!active || !focus)
     {
         m_damagePreview.hide();
         m_topBattleText.clear();
         return;
     }
 
-    Unit *focus = m_pendingAttackTargets[std::clamp(m_pendingAttackFocus, 0, static_cast<int>(m_pendingAttackTargets.size()) - 1)];
     m_hoveredUnit = focus;
 
     const SkillData *previewSkill = nullptr;
@@ -877,25 +739,7 @@ void BattleState::updatePendingAttackPreview(Unit *active)
     }
     m_damagePreview.show(*active, *focus, previewSkill);
 
-    HitContext ctx;
-    ctx.attacker = active;
-    ctx.target = focus;
-    if (previewSkill)
-    {
-        ctx.basePower = previewSkill->basePower;
-        ctx.isMagical = previewSkill->isMagical;
-        ctx.element = previewSkill->element;
-        ctx.skillAccuracy = previewSkill->skillAccuracy;
-    }
-    else
-    {
-        ctx.basePower = 0;
-        ctx.isMagical = false;
-        ctx.element = Element::Neutral;
-        ctx.skillAccuracy = 95;
-    }
-    ctx.side = AttackSide::Side;
-    ctx.tileEvasionBonus = 0;
+    HitContext ctx = makeHitContext(active, focus, previewSkill);
 
     const CombatResult preview = CombatSystem::preview(ctx);
     char textBuf[96];
@@ -910,30 +754,12 @@ void BattleState::applyPendingAttack(Unit *active, const SkillData *skill)
 
     bool anyDied = false;
 
-    for (Unit *u : m_pendingAttackTargets)
+    for (Unit *u : m_pendingAttack.targets())
     {
         if (!u || u->isDead())
             continue;
 
-        HitContext ctx;
-        ctx.attacker = active;
-        ctx.target = u;
-        if (skill)
-        {
-            ctx.basePower = skill->basePower;
-            ctx.isMagical = skill->isMagical;
-            ctx.element = skill->element;
-            ctx.skillAccuracy = skill->skillAccuracy;
-        }
-        else
-        {
-            ctx.basePower = 0;
-            ctx.isMagical = false;
-            ctx.element = Element::Neutral;
-            ctx.skillAccuracy = 95;
-        }
-        ctx.side = AttackSide::Side;
-        ctx.tileEvasionBonus = 0;
+        HitContext ctx = makeHitContext(active, u, skill);
 
         CombatResult result = CombatSystem::resolve(ctx);
         if (result.hit)
@@ -961,8 +787,7 @@ void BattleState::applyPendingAttack(Unit *active, const SkillData *skill)
     m_pendingSkillId.clear();
 
     m_damagePreview.hide();
-    m_pendingAttackTargets.clear();
-    m_pendingAttackTiles.clear();
+    m_pendingAttack.clear();
     m_topBattleText.clear();
     clearBattleMenu();
     m_humanTurnPhase = HumanTurnPhase::ActionMenu;
@@ -974,8 +799,7 @@ void BattleState::applyPendingAttack(Unit *active, const SkillData *skill)
 
 void BattleState::cancelPendingAttack()
 {
-    m_pendingAttackTargets.clear();
-    m_pendingAttackTiles.clear();
+    m_pendingAttack.clear();
     m_pendingSkillId.clear();
     m_damagePreview.hide();
     m_topBattleText.clear();
@@ -1417,7 +1241,7 @@ void BattleState::handleActiveTurn(const Input &input)
 
             preparePendingAttack(active, targetPos, target, skillToUse);
 
-            if (m_pendingAttackTargets.empty())
+            if (m_pendingAttack.targets().empty())
                 return;
 
             m_humanTurnPhase = HumanTurnPhase::AttackConfirm;
@@ -1601,16 +1425,8 @@ void BattleState::update(float dt)
         if (!menuOpen)
             m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
 
-        m_hoveredUnit = nullptr;
         Vec2i cursorPos = m_cursor.getPosition();
-        for (Unit *u : m_units)
-        {
-            if (u && u->getPosition() == cursorPos)
-            {
-                m_hoveredUnit = u;
-                break;
-            }
-        }
+        m_hoveredUnit = unitAt(cursorPos);
 
         refreshDeploymentWindow();
 
@@ -1618,19 +1434,7 @@ void BattleState::update(float dt)
         {
             if (m_deployment.hasGrabbedUnit())
             {
-                const DeploymentEntry *preview = m_deployment.grabbedEntry();
-                if (preview)
-                {
-                    try
-                    {
-                        const UnitData unitData = UnitLoader::load(preview->templatePath);
-                        m_unitPanelWindow->setPreview(unitData.name, unitData.level, unitData.maxHp, unitData.maxMp, false);
-                    }
-                    catch (...)
-                    {
-                        m_unitPanelWindow->setPreview(preview->unitId, 1, 1, 0, false);
-                    }
-                }
+                setUnitPanelPreviewFromEntry(m_deployment.grabbedEntry());
             }
             else if (m_hoveredUnit)
             {
@@ -1638,23 +1442,7 @@ void BattleState::update(float dt)
             }
             else
             {
-                const DeploymentEntry *preview = m_deployment.selectedEntry();
-                if (preview)
-                {
-                    try
-                    {
-                        const UnitData unitData = UnitLoader::load(preview->templatePath);
-                        m_unitPanelWindow->setPreview(unitData.name, unitData.level, unitData.maxHp, unitData.maxMp, false);
-                    }
-                    catch (...)
-                    {
-                        m_unitPanelWindow->setPreview(preview->unitId, 1, 1, 0, false);
-                    }
-                }
-                else
-                {
-                    m_unitPanelWindow->clearPreview();
-                }
+                setUnitPanelPreviewFromEntry(m_deployment.selectedEntry());
             }
         }
         return;
@@ -1714,16 +1502,8 @@ void BattleState::update(float dt)
     m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
 
     // Track unit under cursor
-    m_hoveredUnit = nullptr;
     Vec2i cursorPos = m_cursor.getPosition();
-    for (Unit *u : m_units)
-    {
-        if (u && !u->isDead() && u->getPosition() == cursorPos)
-        {
-            m_hoveredUnit = u;
-            break;
-        }
-    }
+    m_hoveredUnit = unitAt(cursorPos);
 
     // Turn state machine simulation loops
     switch (m_turnState)
@@ -1855,20 +1635,21 @@ bool BattleState::checkVictory() const
     for (const Unit *u : m_units)
         if (u && !u->isDead() && u->getTeam() != 0)
             enemyCount++;
-
-    LOG_INFO("Battle", "checkVictory: %d enemies alive", enemyCount);
     return enemyCount == 0;
 }
 
 bool BattleState::checkDefeat() const
 {
-    int playerCount = 0;
-    for (const Unit *u : m_units)
-        if (u && !u->isDead() && u->getTeam() == 0)
-            playerCount++;
+    return countAlive(0) == 0;
+}
 
-    LOG_INFO("Battle", "checkDefeat: %d players alive", playerCount);
-    return playerCount == 0;
+int BattleState::countAlive(int team) const
+{
+    int n = 0;
+    for (const Unit *u : m_units)
+        if (u && !u->isDead() && u->getTeam() == team)
+            n++;
+    return n;
 }
 
 void BattleState::processCurrentTurn()
@@ -2021,7 +1802,7 @@ void BattleState::render(float alpha)
         else if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
         {
             overlayMode = BattleOverlayMode::ConfirmTargets;
-            overlayTiles = &m_pendingAttackTiles;
+            overlayTiles = &m_pendingAttack.tiles();
         }
 
         BattleRendererContext renderCtx{
@@ -2088,8 +1869,8 @@ void BattleState::render(float alpha)
                       m_humanTurnPhase == HumanTurnPhase::AttackConfirm))
             {
                 Unit *target = nullptr;
-                if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm && !m_pendingAttackTargets.empty())
-                    target = m_pendingAttackTargets[std::clamp(m_pendingAttackFocus, 0, static_cast<int>(m_pendingAttackTargets.size()) - 1)];
+                if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm && !m_pendingAttack.targets().empty())
+                    target = m_pendingAttack.focusedTarget();
                 else
                     target = m_hoveredUnit;
 
@@ -2215,127 +1996,6 @@ void BattleState::render(float alpha)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// onEnter helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-bool BattleState::loadMap()
-{
-    TiledJsonLoader loader;
-    std::string error;
-
-    auto opt = loader.loadFromFile(m_request.mapPath.c_str(), error);
-    if (!opt)
-    {
-        LOG_ERROR("Battle", "Map load FAILED: %s", error.c_str());
-        return false;
-    }
-
-    m_mapData = std::move(*opt);
-
-    LOG_INFO(
-        "Battle",
-        "Map loaded: %dx%d tiles, %d layers, tileW=%d tileH=%d",
-        m_mapData.width,
-        m_mapData.height,
-        static_cast<int>(m_mapData.layers.size()),
-        m_mapData.tileWidth,
-        m_mapData.tileHeight);
-
-    return true;
-}
-
-bool BattleState::buildGameplayGrid()
-{
-    if (!m_battleMap.buildFrom(m_mapData))
-    {
-        LOG_ERROR("Battle", "BattleMap build FAILED - battle cannot proceed");
-        return false;
-    }
-
-    m_grid = Grid(m_mapData.width, m_mapData.height);
-    return true;
-}
-
-bool BattleState::loadTileset()
-{
-    m_tileset = m_renderer->loadTexture("assets/sprites/0.5H_IsoTiles.png");
-    if (!m_tileset)
-    {
-        LOG_ERROR("Battle", "Tileset load FAILED");
-        return false;
-    }
-
-    if (m_mapData.tileWidth <= 0)
-    {
-        LOG_ERROR("Battle", "tileWidth is 0 - cannot compute sprite layout");
-        delete m_tileset;
-        m_tileset = nullptr;
-        return false;
-    }
-
-    m_renderer->setTextureScaleMode(m_tileset, Renderer::ScaleMode::Nearest);
-
-    m_texW = static_cast<float>(m_tileset->getWidth());
-    m_texH = static_cast<float>(m_tileset->getHeight());
-
-    m_tilesPerRow = std::max(1, static_cast<int>(m_texW / m_mapData.tileWidth));
-    m_spriteH = SPRITE_H;
-
-    LOG_INFO(
-        "Battle",
-        "Tileset: %.0fx%.0f px, tilesPerRow=%d, spriteH=%.0f (constant)",
-        m_texW,
-        m_texH,
-        m_tilesPerRow,
-        m_spriteH);
-
-    return true;
-}
-
-Vec2f BattleState::computeMapOrigin()
-{
-    if (m_mapData.width <= 0 || m_mapData.height <= 0 ||
-        m_mapData.tileWidth <= 0 || m_mapData.tileHeight <= 0)
-    {
-        return {GameConstants::VIEW_CX, GameConstants::VIEW_CY};
-    }
-
-    const Vec2f c00 = tileToIso(Vec2i{0, 0}, m_mapData.tileWidth, m_mapData.tileHeight);
-    const Vec2f c10 = tileToIso(Vec2i{m_mapData.width - 1, 0}, m_mapData.tileWidth, m_mapData.tileHeight);
-    const Vec2f c01 = tileToIso(Vec2i{0, m_mapData.height - 1}, m_mapData.tileWidth, m_mapData.tileHeight);
-    const Vec2f c11 = tileToIso(Vec2i{m_mapData.width - 1, m_mapData.height - 1}, m_mapData.tileWidth, m_mapData.tileHeight);
-
-    const float minIsoX = std::min({c00.x, c10.x, c01.x, c11.x});
-    const float maxIsoX = std::max({c00.x, c10.x, c01.x, c11.x});
-    const float minIsoY = std::min({c00.y, c10.y, c01.y, c11.y});
-    const float maxIsoY = std::max({c00.y, c10.y, c01.y, c11.y});
-
-    const float tileH = static_cast<float>(m_mapData.tileHeight);
-    const float gridH = maxIsoY - minIsoY;
-    const float centerIsoX = (minIsoX + maxIsoX) * 0.5f;
-
-    float minLayerOffsetY = 0.0f;
-    for (const auto &layer : m_mapData.layers)
-        minLayerOffsetY = std::min(minLayerOffsetY, layer.offsetY);
-
-    const float s = static_cast<float>(m_scale);
-
-    float originX = GameConstants::VIEW_CX - centerIsoX * s;
-    float originY = GameConstants::VIEW_CY +
-                    s * (m_spriteH - 2.0f * tileH - minLayerOffsetY - gridH) / 2.0f;
-
-    LOG_INFO(
-        "Battle",
-        "Map origin: (%.0f, %.0f), gridH=%.0f, minLayerOffsetY=%.0f",
-        originX,
-        originY,
-        gridH,
-        minLayerOffsetY);
-
-    return {originX, originY};
-}
-
 void BattleState::computeAttackRangeTiles()
 {
     m_attackRangeTiles.clear();
@@ -2351,5 +2011,58 @@ void BattleState::computeAttackRangeTiles()
             if (manhattanDistance(pos, Vec2i{c, r}) <= range)
                 m_attackRangeTiles.insert({c, r});
 
-    m_attackRangeTiles.erase(pos); // exclude the tile the unit is standing on
+    // exclude the tile the unit is standing on
+    m_attackRangeTiles.erase(pos);
+}
+
+Unit *BattleState::unitAt(Vec2i pos) const
+{
+    for (Unit *u : m_units)
+        if (u && !u->isDead() && u->getPosition() == pos)
+            return u;
+    return nullptr;
+}
+
+HitContext BattleState::makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const
+{
+    HitContext ctx;
+    ctx.attacker = attacker;
+    ctx.target = target;
+    if (skill)
+    {
+        ctx.basePower = skill->basePower;
+        ctx.isMagical = skill->isMagical;
+        ctx.element = skill->element;
+        ctx.skillAccuracy = skill->skillAccuracy;
+    }
+    else
+    {
+        ctx.basePower = 0;
+        ctx.isMagical = false;
+        ctx.element = Element::Neutral;
+        ctx.skillAccuracy = 95;
+    }
+    ctx.side = AttackSide::Side;
+    ctx.tileEvasionBonus = 0;
+    return ctx;
+}
+
+void BattleState::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
+{
+    if (!m_unitPanelWindow)
+        return;
+    if (!entry)
+    {
+        m_unitPanelWindow->clearPreview();
+        return;
+    }
+    try
+    {
+        const UnitData unitData = UnitLoader::load(entry->templatePath);
+        m_unitPanelWindow->setPreview(unitData.name, unitData.level, unitData.maxHp, unitData.maxMp, false);
+    }
+    catch (...)
+    {
+        m_unitPanelWindow->setPreview(entry->unitId, 1, 1, 0, false);
+    }
 }

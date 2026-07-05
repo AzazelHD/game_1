@@ -1,6 +1,8 @@
 #pragma once
-#include <vector>
+
 #include "engine/math/Vec2.h"
+
+#include <vector>
 
 // Tile types — extend as your game grows (forest, mountain, water, etc.)
 enum class TileType

@@ -7,8 +7,10 @@
 #include "engine/math/Vec2.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
+#include "battle/UnitData.h"
 #include "ui/UITheme.h"
 
+#include <string>
 #include <algorithm>
 
 namespace
@@ -108,4 +110,54 @@ void InspectWindow::render(Renderer *renderer) const
                                false,
                                false,
                                false);
+}
+
+std::vector<std::string> InspectWindow::buildLines(const UnitData &data)
+{
+    std::vector<std::string> lines;
+    lines.reserve(32);
+
+    lines.push_back("Name: " + data.name);
+    lines.push_back("Class: " + data.className);
+    lines.push_back("SpriteSet: " + data.spriteSetId);
+    lines.push_back("Acquisition: " + std::to_string(data.acquisitionIndex));
+    lines.push_back("Race: " + std::string(toString(data.race)));
+    lines.push_back("Gender: " + std::string(toString(data.gender)));
+    lines.push_back("Level: " + std::to_string(data.level));
+    lines.push_back("Team: " + std::to_string(data.team));
+    lines.push_back("HP: " + std::to_string(data.maxHp));
+    lines.push_back("MP: " + std::to_string(data.maxMp));
+    lines.push_back("ATK: " + std::to_string(data.attack));
+    lines.push_back("DEF: " + std::to_string(data.defense));
+    lines.push_back("MAG: " + std::to_string(data.magic));
+    lines.push_back("MDEF: " + std::to_string(data.magicDefense));
+    lines.push_back("MOVE: " + std::to_string(data.moveRange));
+    lines.push_back("RANGE: " + std::to_string(data.atkRange));
+    lines.push_back("EVA: " + std::to_string(data.evasion));
+    lines.push_back("JUMP: " + std::to_string(data.jump));
+    lines.push_back("SPD: " + std::to_string(data.speed));
+
+    lines.push_back("Affinities:");
+    if (data.affinities.empty())
+    {
+        lines.push_back("  <none>");
+    }
+    else
+    {
+        for (const ElementAffinity &aff : data.affinities)
+            lines.push_back("  " + std::string(toString(aff.element)) + ": " + toString(aff.affinity));
+    }
+
+    lines.push_back("Skills:");
+    if (data.skillIds.empty())
+    {
+        lines.push_back("  <none>");
+    }
+    else
+    {
+        for (const std::string &id : data.skillIds)
+            lines.push_back("  " + id);
+    }
+
+    return lines;
 }

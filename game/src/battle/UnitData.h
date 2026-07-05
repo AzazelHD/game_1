@@ -1,4 +1,5 @@
 #pragma once
+
 #include <string>
 #include <vector>
 
@@ -85,8 +86,8 @@ enum class ActionType
     Move,
     Attack,
     Item,
+    Defend,
     Wait,
-    Defend, // TODO: requires shield equipped
 };
 
 enum class SkillType
@@ -105,3 +106,69 @@ enum class UnitState
     Done,
     Dead
 };
+
+inline const char *toString(Race race)
+{
+    switch (race)
+    {
+    case Race::Human:
+        return "Human";
+    case Race::Elf:
+        return "Elf";
+    case Race::Undead:
+        return "Undead";
+    }
+    return "Unknown";
+}
+
+inline const char *toString(Gender gender)
+{
+    switch (gender)
+    {
+    case Gender::Male:
+        return "Male";
+    case Gender::Female:
+        return "Female";
+    case Gender::None:
+        return "None";
+    }
+    return "Unknown";
+}
+
+inline const char *toString(Element element)
+{
+    switch (element)
+    {
+    case Element::Fire:
+        return "Fire";
+    case Element::Ice:
+        return "Ice";
+    case Element::Lightning:
+        return "Lightning";
+    case Element::Holy:
+        return "Holy";
+    case Element::Dark:
+        return "Dark";
+    case Element::Neutral:
+        return "Neutral";
+    }
+    return "Unknown";
+}
+
+inline const char *toString(Affinity affinity)
+{
+    switch (affinity)
+    {
+    case Affinity::Weak:
+        return "Weak";
+    case Affinity::Neutral:
+        return "Neutral";
+    case Affinity::Resistant:
+        return "Resistant";
+    case Affinity::Immune:
+        return "Immune";
+    case Affinity::Absorb:
+        return "Absorb";
+    }
+    return "Unknown";
+}

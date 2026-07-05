@@ -11,6 +11,7 @@ set(GAME_SOURCES
     src/states/BattleState.cpp
     src/states/ResultState.cpp
     src/states/SettingsState.cpp
+    src/states/BattleLoader.cpp
 
     src/battle/Grid.cpp
     src/battle/Unit.cpp
@@ -21,6 +22,7 @@ set(GAME_SOURCES
     src/battle/MovementRange.cpp
     src/battle/BattleMap.cpp
     src/battle/UnitFactory.cpp
+    src/battle/PendingAttackController.cpp
 
     src/ai/EnemyAI.cpp
 
@@ -28,7 +30,9 @@ set(GAME_SOURCES
 
     src/data/UnitLoader.cpp
     src/data/SkillLoader.cpp
+
     src/config/BattleCatalog.cpp
+
     src/systems/RosterSystem.cpp
     src/systems/PartySystem.cpp
     src/systems/PartyContext.cpp
@@ -71,6 +75,7 @@ set(GAME_HEADERS
     src/battle/GameTile.h
     src/battle/BattleMap.h
     src/battle/UnitFactory.h
+    src/battle/PendingAttackController.h
 
     src/ai/EnemyAI.h
 
@@ -79,7 +84,9 @@ set(GAME_HEADERS
 
     src/data/UnitLoader.h
     src/data/SkillLoader.h
+
     src/config/BattleCatalog.h
+    
     src/systems/RosterSystem.h
     src/systems/PartySystem.h
     src/systems/PartyContext.h

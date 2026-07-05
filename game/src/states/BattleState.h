@@ -1,20 +1,5 @@
 #pragma once
 
-// BattleState — main gameplay state.
-//
-// Owns both the visual map data (TileMapData) and the gameplay grid
-// (BattleMap). These are deliberately separate:
-//   - TileMapData  → rendering, tile GIDs, layer offsets, tilesets.
-//   - BattleMap    → gameplay grid (height, terrain class, occupancy, spawns).
-//
-// Lifecycle:
-//   onEnter()  — acquire renderer, load TileMapData, build BattleMap,
-//                load tileset texture, compute sprite layout and map origin.
-//   update(dt) — dispatches to EnemyAI or waits for player input based on
-//                whose turn TurnQueue surfaces.
-//   render()   — gradient background, then all visible map layers (painter order).
-//   onExit()   — destroy tileset texture, clear BattleMap.
-
 #include "engine/scene/Scene.h"
 #include "engine/effects/ScreenTransition.h"
 #include "engine/data/TileMapData.h"
@@ -26,6 +11,7 @@
 #include "battle/BattleMap.h"
 #include "battle/TurnQueue.h"
 #include "battle/MovementRange.h"
+#include "battle/PendingAttackController.h"
 #include "renderer/BattleRenderer.h"
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
@@ -44,12 +30,28 @@
 #include <unordered_map>
 #include <unordered_set>
 
+// BattleState — main gameplay state.
+//
+// Owns both the visual map data (TileMapData) and the gameplay grid
+// (BattleMap). These are deliberately separate:
+//   - TileMapData  → rendering, tile GIDs, layer offsets, tilesets.
+//   - BattleMap    → gameplay grid (height, terrain class, occupancy, spawns).
+//
+// Lifecycle:
+//   onEnter()  — acquire renderer, load TileMapData, build BattleMap,
+//                load tileset texture, compute sprite layout and map origin.
+//   update(dt) — dispatches to EnemyAI or waits for player input based on
+//                whose turn TurnQueue surfaces.
+//   render()   — gradient background, then all visible map layers (painter order).
+//   onExit()   — destroy tileset texture, clear BattleMap.
+
 class Input;
 class Renderer;
 class DebugRenderer;
 class Texture;
 class Unit;
 struct TileLayerData;
+struct HitContext;
 
 struct BattleRequest
 {
@@ -222,12 +224,7 @@ private:
     void startBattleEnd(bool playerWon);
     bool checkVictory() const;
     bool checkDefeat() const;
-
-    // ── Loading / initialization (onEnter helpers) ───────────────────────
-    bool loadMap();
-    bool buildGameplayGrid();
-    bool loadTileset();
-    Vec2f computeMapOrigin();
+    int countAlive(int team) const;
 
     // ── Range overlay rendering ───────────────────────────────────────────
     void computeAttackRangeTiles();
@@ -245,10 +242,7 @@ private:
     CombatAnimationSystem m_combatAnimations;
 
     // Pending attack confirmation state.
-    std::vector<Unit *> m_pendingAttackTargets;
-    std::unordered_set<Vec2i, Vec2iHash> m_pendingAttackTiles;
-    Vec2i m_pendingAttackCenter{0, 0};
-    int m_pendingAttackFocus = 0;
+    PendingAttackController m_pendingAttack;
     std::string m_pendingSkillId;
 
     void showSkillMenu();
@@ -259,6 +253,9 @@ private:
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
     void openStatusMenu(Unit *unit);
     bool canActiveUnitMove() const;
+    Unit *unitAt(Vec2i pos) const;
+    HitContext makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const;
+    void setUnitPanelPreviewFromEntry(const DeploymentEntry *entry);
 
     void clearBattleMenu();
     bool isBattleMenuOpen() const;
