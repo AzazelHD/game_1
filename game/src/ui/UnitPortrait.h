@@ -16,6 +16,7 @@ namespace UnitPortrait
         bool mirrored = false;
         bool enemy = false;
         bool transparent = false;
+        bool showPlacedMarker = false; // draws a red "X" after the name — already deployed on the field
     };
 
     Rectf render(Renderer *renderer,

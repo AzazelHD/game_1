@@ -14,7 +14,7 @@
 
 namespace
 {
-    constexpr float kTextWidth = 150.0f;
+    constexpr float kTextWidth = 220.0f;
     constexpr float kImageWidth = 50.0f;
     constexpr float kBoxHeight = 116.0f;
     constexpr float kPaddingX = 12.0f;
@@ -151,12 +151,23 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
     std::snprintf(hpBuf, sizeof(hpBuf), "HP %d/%d", currentHp, maxHp);
     std::snprintf(mpBuf, sizeof(mpBuf), "MP %d/%d", currentMp, maxMp);
 
+    // Small dedicated slot for the "already placed" marker, right before the
+    // level number — only takes up space when actually shown.
+    const float markerW = style.showPlacedMarker ? 20.0f * scale : 0.0f;
+
     if (!style.mirrored)
     {
         renderText(renderer, font, name,
-                   Rectf{textRect.x + pad, textRect.y + nameY, textRect.w - 2.0f * pad - 76.0f * scale, lineH},
+                   Rectf{textRect.x + pad, textRect.y + nameY, textRect.w - 2.0f * pad - 76.0f * scale - markerW, lineH},
                    UITheme::Text,
                    Renderer::HorizontalAlign::Left);
+        if (style.showPlacedMarker)
+        {
+            renderText(renderer, font, "X",
+                       Rectf{textRect.x + textRect.w - 76.0f * scale - pad - markerW, textRect.y + nameY, markerW, lineH},
+                       Color{220, 60, 60, 255},
+                       Renderer::HorizontalAlign::Center);
+        }
         renderText(renderer, font, levelBuf,
                    Rectf{textRect.x + textRect.w - 72.0f * scale - pad, textRect.y + nameY, 72.0f * scale, lineH},
                    UITheme::Text,
@@ -176,8 +187,15 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
                    Rectf{textRect.x + pad, textRect.y + nameY, 72.0f * scale, lineH},
                    UITheme::Text,
                    Renderer::HorizontalAlign::Left);
+        if (style.showPlacedMarker)
+        {
+            renderText(renderer, font, "X",
+                       Rectf{textRect.x + 76.0f * scale + pad, textRect.y + nameY, markerW, lineH},
+                       Color{220, 60, 60, 255},
+                       Renderer::HorizontalAlign::Center);
+        }
         renderText(renderer, font, name,
-                   Rectf{textRect.x + 76.0f * scale + pad, textRect.y + nameY, textRect.w - 2.0f * pad - 76.0f * scale, lineH},
+                   Rectf{textRect.x + 76.0f * scale + pad + markerW, textRect.y + nameY, textRect.w - 2.0f * pad - 76.0f * scale - markerW, lineH},
                    UITheme::Text,
                    Renderer::HorizontalAlign::Right);
         renderText(renderer, font, hpBuf,

@@ -16,7 +16,7 @@ public:
     void setTurnInfo(const Unit *activeUnit, int round);
     void setSingle(const Unit *unit, bool isEnemy);
     void setDuel(const Unit *left, const Unit *right);
-    void setPreview(std::string name, int level, int hp, int mp, bool isEnemy);
+    void setPreview(std::string name, int level, int hp, int mp, bool isEnemy, bool isPlaced = false);
     void clearPreview();
     void clearPanels();
 
@@ -42,4 +42,5 @@ private:
     int m_previewHp = 1;
     int m_previewMp = 0;
     bool m_previewEnemy = false;
+    bool m_previewPlaced = false;
 };

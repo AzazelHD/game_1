@@ -50,13 +50,14 @@ void UnitPanelWindow::setDuel(const Unit *left, const Unit *right)
     m_singleEnemy = false;
 }
 
-void UnitPanelWindow::setPreview(std::string name, int level, int hp, int mp, bool isEnemy)
+void UnitPanelWindow::setPreview(std::string name, int level, int hp, int mp, bool isEnemy, bool isPlaced)
 {
     m_previewName = std::move(name);
     m_previewLevel = level;
     m_previewHp = hp;
     m_previewMp = mp;
     m_previewEnemy = isEnemy;
+    m_previewPlaced = isPlaced;
     m_hasPreview = true;
     m_leftUnit = nullptr;
     m_rightUnit = nullptr;
@@ -132,7 +133,7 @@ void UnitPanelWindow::render(Renderer *renderer) const
                                       m_previewMp,
                                       m_previewMp,
                                       Vec2f{leftX, baseY},
-                                      UnitPortrait::PortraitStyle{.mirrored = false, .enemy = m_previewEnemy, .transparent = false});
+                                      UnitPortrait::PortraitStyle{.mirrored = false, .enemy = m_previewEnemy, .transparent = false, .showPlacedMarker = m_previewPlaced});
     }
 }
 

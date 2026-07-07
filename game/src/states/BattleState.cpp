@@ -18,6 +18,7 @@
 #include "states/MainMenuState.h"
 #include "battle/Unit.h"
 #include "battle/UnitFactory.h"
+#include "battle/UnitProgression.h"
 #include "battle/MovementRange.h"
 #include "battle/CombatSystem.h"
 #include "systems/PartyContext.h"
@@ -372,6 +373,47 @@ void BattleState::showInspectWindow(Unit *unit)
     m_inspectWindow = inspect;
 }
 
+void BattleState::showInspectWindowFromTemplate(const std::string &templatePath)
+{
+    // For a roster unit that hasn't been placed yet there's no live Unit
+    // object to inspect — build the same effective stats a live Unit would
+    // have (race/gender bonuses applied) from its template instead.
+    try
+    {
+        const UnitData templateData = UnitLoader::load(templatePath);
+        const RaceData &raceData = getRaceData(templateData.race);
+        const GenderData &genderData = getGenderData(templateData.gender);
+        const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
+
+        m_uiManager.popById("battle.inspect");
+        auto *inspect = m_uiManager.push<InspectWindow>("battle.inspect");
+        inspect->setFont(App::getDefaultFont());
+        inspect->setTitle("Unit Inspect");
+        inspect->setLines(InspectWindow::buildLines(previewUnit.getData()));
+        m_inspectWindow = inspect;
+    }
+    catch (...)
+    {
+        // Template failed to load — nothing sensible to show.
+    }
+}
+
+void BattleState::syncCursorToSelection()
+{
+    // Whenever the roster selection points at a unit that's already on the
+    // field, snap the cursor to it — hovering and "being selected" become
+    // the same thing for placed units, so there's exactly one way to land
+    // on them instead of two (roster cycling vs. manually walking the
+    // cursor over). The cursor only moves here; whether it's then allowed
+    // to move freely again is decided by DeploymentSystem::isSelectionLocked()
+    // at the point movement input is read.
+    if (const DeploymentEntry *entry = m_deployment.selectedEntry())
+    {
+        if (m_deployment.isUnitPlaced(entry->unitId))
+            m_cursor.setPosition(entry->position);
+    }
+}
+
 void BattleState::openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger)
 {
     showBattleMenu(canMove, canAttack, canWait);
@@ -407,17 +449,21 @@ void BattleState::processUIEvents(Unit *active)
         {
             if (event.actionId == "cycle_prev")
             {
-                const Vec2i cursorPos = m_cursor.getPosition();
-                if (!m_deployment.hasGrabbedUnit() && !m_deployment.isOccupied(cursorPos))
+                if (!m_deployment.hasGrabbedUnit())
+                {
                     m_deployment.cycleSelection(-1);
+                    syncCursorToSelection();
+                }
                 refreshDeploymentWindow();
                 continue;
             }
             if (event.actionId == "cycle_next")
             {
-                const Vec2i cursorPos = m_cursor.getPosition();
-                if (!m_deployment.hasGrabbedUnit() && !m_deployment.isOccupied(cursorPos))
+                if (!m_deployment.hasGrabbedUnit())
+                {
                     m_deployment.cycleSelection(1);
+                    syncCursorToSelection();
+                }
                 refreshDeploymentWindow();
                 continue;
             }
@@ -436,13 +482,18 @@ void BattleState::processUIEvents(Unit *active)
                     if (m_deployment.placeGrabbed(cursorPos))
                     {
                         syncDeploymentPreviewUnits();
+                        // Selection auto-advanced inside placeGrabbed(); snap
+                        // the cursor if it now points at another placed unit.
+                        syncCursorToSelection();
                         refreshDeploymentWindow();
                     }
                     continue;
                 }
 
-                // Not grabbing → hovering a unit opens the one-item Inspect submenu.
-                if (m_hoveredUnit)
+                // Not grabbing, hovering an enemy preview unit: open the
+                // "Inspect" submenu (kept as a submenu rather than instant,
+                // since Accept on an enemy could grow more options later).
+                if (m_hoveredUnit && m_hoveredUnit->getTeam() != 0)
                 {
                     m_inspectTargetUnit = m_hoveredUnit;
                     m_uiManager.popById("battle.deploy.inspectmenu");
@@ -458,6 +509,8 @@ void BattleState::processUIEvents(Unit *active)
                 if (!selected)
                     continue;
 
+                // Already placed (the cursor is pinned to it, per
+                // isSelectionLocked): pick it back up so it can be relocated.
                 if (m_deployment.isUnitPlaced(selected->unitId))
                 {
                     if (m_deployment.unplaceUnit(selected->unitId) && m_deployment.grabUnit(selected->unitId))
@@ -483,6 +536,23 @@ void BattleState::processUIEvents(Unit *active)
                 {
                     refreshDeploymentWindow();
                 }
+                continue;
+            }
+            if (event.actionId == "details")
+            {
+                // Details (Tab): inspect whatever is hovered (ours or an
+                // enemy preview) directly, no submenu. If nothing is
+                // hovered, inspect whatever is currently QE-selected in the
+                // roster — even if it hasn't been placed yet, since we can
+                // read its stats straight from its template.
+                if (m_hoveredUnit && !m_hoveredUnit->isDead())
+                {
+                    showInspectWindow(m_hoveredUnit);
+                    continue;
+                }
+
+                if (const DeploymentEntry *selected = m_deployment.selectedEntry())
+                    showInspectWindowFromTemplate(selected->templatePath);
                 continue;
             }
             if (event.actionId == "back")
@@ -1013,67 +1083,51 @@ void BattleState::handleInput()
 
     if (input.isKeyPressed(KeyCode::Back, false))
     {
-        if (m_flowPhase == BattleFlowPhase::Deployment)
+        // Anything open on the UI stack already handles its own Back key and
+        // emits its own cancellation event (ActionCanceled / ConfirmResult
+        // with confirmed=false / etc.) — processUIEvents() already knows how
+        // to react to every one of these. Forwarding generically means Back
+        // always does exactly what the topmost window itself defines Back to
+        // mean (e.g. DialogWindow advances its text instead of being torn
+        // down mid-line), instead of BattleState re-deriving "what's open"
+        // by checking window IDs one by one.
+        //
+        // Checked BEFORE the "grabbed unit" fallback below: if the Inspect
+        // window (or any other modal) is open while a unit is also grabbed,
+        // the first Back should close that window, not release the grab.
+        if (m_uiManager.hasBlockingWindow())
         {
-            if (m_deployment.hasGrabbedUnit())
-            {
-                m_deployment.releaseGrabbed();
-                refreshDeploymentWindow();
-                return;
-            }
+            // getCurrentUnit() asserts on an empty timeline, which is exactly
+            // the case during Deployment (the turn queue doesn't exist yet).
+            // Only Combat has a "currently active unit" concept.
+            Unit *active = (m_flowPhase == BattleFlowPhase::Combat)
+                               ? m_turnQueue.getCurrentUnit()
+                               : nullptr;
 
-            if (m_uiManager.hasWindow("battle.deploy.inspectmenu"))
-            {
-                m_uiManager.popById("battle.deploy.inspectmenu");
-                m_inspectTargetUnit = nullptr;
-                return;
-            }
-            if (m_uiManager.hasWindow("battle.inspect"))
-            {
-                m_uiManager.popById("battle.inspect");
-                m_inspectWindow = nullptr;
-                return;
-            }
-            if (m_uiManager.hasWindow("battle.deployment.confirm"))
-            {
-                m_uiManager.popById("battle.deployment.confirm");
-                return;
-            }
-            if (m_uiManager.hasWindow("battle.actionmenu"))
-            {
-                m_uiManager.popById("battle.actionmenu");
-                return;
-            }
-
-            showSystemMenu();
-            return;
-        }
-
-        if (m_uiManager.hasWindow("battle.inspect"))
-        {
-            m_uiManager.popById("battle.inspect");
-            m_inspectWindow = nullptr;
-            return;
-        }
-        if (m_uiManager.hasWindow("battle.dialog"))
-        {
-            m_uiManager.popById("battle.dialog");
-            return;
-        }
-        if (m_uiManager.hasWindow("battle.confirm"))
-        {
-            m_uiManager.popById("battle.confirm");
-            cancelPendingAttack();
-            return;
-        }
-        if (m_uiManager.hasWindow("battle.actionmenu"))
-        {
-            Unit *active = (!m_units.empty()) ? m_turnQueue.getCurrentUnit() : nullptr;
-            if (active && active->hasActed() && !m_canUndoLastMove)
+            // The action menu specifically should not be cancellable via
+            // Back once the active unit has committed to its action and
+            // there's no move left to undo — there's nothing meaningful to
+            // go "back" to at that point.
+            if (m_uiManager.hasWindow("battle.actionmenu") &&
+                active && active->hasActed() && !m_canUndoLastMove)
                 return;
 
             m_uiManager.handleInput(input);
             processUIEvents(active);
+            return;
+        }
+
+        // Not a UI window — deployment's own "unit currently grabbed" state.
+        if (m_flowPhase == BattleFlowPhase::Deployment && m_deployment.hasGrabbedUnit())
+        {
+            m_deployment.releaseGrabbed();
+            refreshDeploymentWindow();
+            return;
+        }
+
+        if (m_flowPhase == BattleFlowPhase::Deployment)
+        {
+            showSystemMenu();
             return;
         }
 
@@ -1083,7 +1137,10 @@ void BattleState::handleInput()
         {
             cancelPendingAttack();
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-            openBattleMenu(canActiveUnitMove(), true, true, KeyCode::Back);
+
+            const Unit *active = m_turnQueue.getCurrentUnit();
+            const bool canAttack = active && !active->hasActed();
+            openBattleMenu(canActiveUnitMove(), canAttack, true, KeyCode::Back);
             return;
         }
 
@@ -1162,7 +1219,12 @@ void BattleState::update(float dt)
             m_uiManager.hasWindow("battle.deploy.inspectmenu") ||
             m_uiManager.hasWindow("battle.dialog");
 
-        if (!menuOpen)
+        // Cursor movement is locked while the roster selection is pinned to
+        // an already-placed unit (see DeploymentSystem::isSelectionLocked) —
+        // there's nothing to browse for until either that unit is grabbed
+        // (freeing movement to relocate it) or a different, unplaced entry
+        // is selected instead.
+        if (!menuOpen && !m_deployment.isSelectionLocked())
             m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
 
         Vec2i cursorPos = m_cursor.getPosition();
@@ -1698,8 +1760,6 @@ void BattleState::render(float alpha)
         }
     }
 
-    m_uiManager.render(m_renderer);
-
     // ── Damage preview (always drawn if visible) ──
     m_damagePreview.render(m_renderer, App::getDefaultFont());
 
@@ -1708,6 +1768,18 @@ void BattleState::render(float alpha)
     // ── Debug overlay ──
     if (m_debugRenderer)
         m_debugRenderer->flush(m_renderer, renderCam);
+
+    // UI is drawn last, on top of the battle scene, animations, and debug
+    // overlay — otherwise unit sprites drawn after this point would paint
+    // over any open menu (e.g. the Inspect window).
+    if (m_inspectWindow)
+    {
+        // Dim everything behind the Inspect panel so it reads as a modal.
+        m_renderer->setBlendMode(Renderer::BlendMode::Blend);
+        m_renderer->setDrawColor(Color{0, 0, 0, 140});
+        m_renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});
+    }
+    m_uiManager.render(m_renderer);
 
     // ── Screen transition (fade) ──
     m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
@@ -1805,13 +1877,24 @@ void BattleState::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
         m_unitPanelWindow->clearPreview();
         return;
     }
+
+    const bool isPlaced = m_deployment.isUnitPlaced(entry->unitId);
+
     try
     {
-        const UnitData unitData = UnitLoader::load(entry->templatePath);
-        m_unitPanelWindow->setPreview(unitData.name, unitData.level, unitData.maxHp, unitData.maxMp, false);
+        // Build the same effective stats a live Unit would have (race/gender
+        // bonuses applied) instead of showing the raw template numbers —
+        // otherwise the preview disagrees with what the unit actually has
+        // once placed (e.g. a race's MP bonus wouldn't show up here).
+        const UnitData templateData = UnitLoader::load(entry->templatePath);
+        const RaceData &raceData = getRaceData(templateData.race);
+        const GenderData &genderData = getGenderData(templateData.gender);
+        const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
+        const UnitData &data = previewUnit.getData();
+        m_unitPanelWindow->setPreview(data.name, data.level, data.maxHp, data.maxMp, false, isPlaced);
     }
     catch (...)
     {
-        m_unitPanelWindow->setPreview(entry->unitId, 1, 1, 0, false);
+        m_unitPanelWindow->setPreview(entry->unitId, 1, 1, 0, false, isPlaced);
     }
 }

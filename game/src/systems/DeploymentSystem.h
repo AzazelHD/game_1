@@ -41,6 +41,18 @@ public:
 
     void cycleSelection(int delta);
     const DeploymentEntry *selectedEntry() const;
+
+    // True when the roster selection points at a unit that's already on the
+    // field and nothing is currently grabbed — in that state the cursor is
+    // meant to stay pinned to that unit's tile rather than move freely
+    // (there's nothing to "browse" for; Accept re-grabs it to relocate).
+    bool isSelectionLocked() const
+    {
+        if (hasGrabbedUnit())
+            return false;
+        const DeploymentEntry *entry = selectedEntry();
+        return entry && isUnitPlaced(entry->unitId);
+    }
     const DeploymentEntry *grabbedEntry() const;
     const std::vector<DeploymentEntry> &partyEntries() const { return m_partyEntries; }
 

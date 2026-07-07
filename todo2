@@ -1,0 +1,41 @@
+Aquí tienes la lista completa, consolidada y priorizada. Marco lo que ya está hecho y ordeno el resto por dependencia (lo que desbloquea a otras cosas va primero).
+✅ Ya hecho
+
+[Punto 3] Fix del canAttack hardcodeado al cancelar con ESC en medio de una acción.
+
+Pendiente
+1. ESC como navegación real de pila (recién hablado)
+Sustituir la cadena manual de hasWindow("id") → popById("id") en BattleState::handleInput() por: reenviar el Back a quien esté arriba de la pila (m_uiManager.handleInput(input)) y procesar el evento que emita. Arregla el bug confirmado del diálogo (ESC lo cierra de golpe en vez de avanzar el texto) y elimina la duplicación con processUIEvents().
+Alcance: cambios en BattleState.cpp únicamente. Bajo riesgo, ya diseñado.
+2. Menús persistentes (mostrar/ocultar en vez de crear/destruir)
+Añadir un flag visible a UIWindow, que UIManager respete en handleInput/render, y que BattleHud cree el ActionMenuWindow una sola vez y lo muestre/oculte en vez de hacer push/pop cada vez. Incluye el matiz que ya señaló Devin: ActionMenuWindow::setItems resetea m_selected/m_scroll cada vez, así que si se hace persistente hay que dejar de resetear eso salvo que sea intencional.
+Alcance: UIWindow.h, UIManager.h/.cpp, BattleHud.h/.cpp. Depende conceptualmente del punto 1 (mismo área de código), mejor hacerlo justo después.
+3. Extraer SelectableList (duplicación en ui/windows) (tu punto 1 original)
+Una clase/helper compartido para "lista con selección + scroll con clamp a ventana visible", usado por ActionMenuWindow, PartyWindow e InspectWindow en vez de que cada una reimplemente m_selected/m_scroll a mano.
+Alcance: nuevo archivo en engine o en game/src/ui, más refactor de esas 3 ventanas para usarlo.
+4. friend class HumanTurnController → API real (tu punto 4)
+Diseñar una interfaz explícita (getters/setters concretos, o un struct de "contexto") entre BattleState y HumanTurnController, en vez de darle acceso total a los privados. Requiere decidir, campo por campo, qué es realmente necesario exponer.
+Alcance: BattleState.h, HumanTurnController.h/.cpp. Es el más laborioso de diseñar bien.
+5. BattleState — reparto real de responsabilidades (SRP) (tu punto 2)
+El más grande y el que más se beneficia de que los puntos 1-4 ya estén hechos primero (menos ruido, menos acoplamiento que arrastrar). Extraer como mínimo:
+
+Construcción de menús (qué mostrar y cuándo habilitar cada opción) → fuera de BattleState, no solo el plumbing de mostrar/ocultar.
+Flujo de "ataque pendiente" (decisión de cuándo/cómo se dispara) → más allá de lo que ya guarda PendingAttackController.
+Máquina de autoplay/debug (AutoPlayPhase) → aislarla del todo.
+Alcance: el más grande, tocará prácticamente todo states/. Dejarlo para el final, cuando el terreno ya esté más limpio.
+
+
+Orden recomendado: 1 → 2 → 3 → 4 → 5, porque cada uno reduce ruido/acoplamiento para el siguiente, y el 5 (el más grande) sale más barato si los anteriores ya están resueltos.
+¿Empezamos por el 1?
+----
+Cuando estoy en deploying, free cursor, no tengo una unidad cogida, y hago enter en una unidad ENEMIGA quiero que se abra el sub menu inspect, y con ese boton, y que funcione.
+Ahora mira, el menu de inspect, con los stats, se renderiza por detras de los sprites de las unidades (circulos en este caso). Quiero que ese menu este por encima de todo. De hecho, me gustaria que el game se oscurecierda un poco, añadiendo un background negro con alpha, probablemente.
+y por otro lado, si tengo una unidad cogida, y presiono tab (he cambiado la acciopn de inspect a Details, y la tecla de la i al tabulador), Y luego doy esc, primero se cancela la unidad que tengo cogida, y si lo presiono otra vez, se cierra el menu de estadisticas. Quiero que sea al reves
+--
+Lets call "select a unit" when that unit is on the portrait frame. Grab when graving, ready to place, and placed when placed. Hover is having cursor on that unit tile.
+
+Okey, everything seems to works except 2 things:
+
+1.- The 100% vvalues of the master and music volume, overlay the slider. Can u push place the numbers after the slider? right text-aligned
+
+2.- When a unit is planed, specially aria, on the portrait she has 14 MP, but when placed she has 19 (?) Also... i wanna modify something a bit. I am still not seeing the red x after the name when a unit is already placed (on the portrait), and lets say i place aria, roster doesnt automatically change to next unit (soldier). Also, aria is only removed from its place if, while having aria selected (on the roster), i click on an empty tile. If i press Enter while having aria selected, on the tile where aria is placed, i can grab it again. So... to fix this, maybe we should do something instead. If i select a unit which is already placed, fix the cursor position to that unit tile. And if i press enter, that units is no longer placed, but grabbed. I cant move cursor unless i am trying to place a new unit. If i ever select a unit who is already placed, lock cursor position

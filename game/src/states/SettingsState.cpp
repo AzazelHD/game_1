@@ -1,6 +1,5 @@
 #include "config/GameConstants.h"
 #include "states/SettingsState.h"
-
 #include "engine/core/App.h"
 #include "engine/core/Window.h"
 #include "engine/input/Input.h"
@@ -9,6 +8,9 @@
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
+#include "engine/ui/Insets.h"
+#include "engine/ui/VerticalLayout.h"
+#include "engine/ui/HorizontalLayout.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
 
@@ -60,6 +62,50 @@ namespace
             renderer->drawRect(rect);
         }
     }
+
+    constexpr float kRowBoxH = kRowH - 6.0f; // visual height of each row's highlight box
+    constexpr float kRowGap = 6.0f;          // default margin-bottom between stacked rows
+
+    // Single source of truth for the 3 uniformly-spaced rows shared by the
+    // Main and Audio pages (each row: fixed height, 6px margin-bottom gap
+    // to the next one — nothing special beyond that).
+    std::vector<Rectf> computeUniformRows(float ui)
+    {
+        const std::vector<VerticalLayout::Item> rows = {
+            {kPanelW * ui, kRowBoxH * ui, Insets{0.0f, 0.0f, kRowGap * ui, 0.0f}},
+            {kPanelW * ui, kRowBoxH * ui, Insets{0.0f, 0.0f, kRowGap * ui, 0.0f}},
+            {kPanelW * ui, kRowBoxH * ui, Insets{}},
+        };
+        return VerticalLayout::stack(rows, Vec2f{kPanelX * ui, kPanelY * ui});
+    }
+
+    // Shared slider + "NN%" label layout for one audio row. The slider
+    // keeps its own fixed size (kTrackW/kTrackH); the percentage text is
+    // placed with a margin-left right after it, filling whatever space
+    // remains up to the panel's right edge.
+    struct AudioRowLayout
+    {
+        Rectf sliderRect;
+        Rectf pctRect;
+    };
+
+    AudioRowLayout computeAudioRowLayout(float rowY, float rowH, float ui)
+    {
+        constexpr float kSliderMarginTop = 16.0f; // slider sits a bit below the row's label baseline
+        constexpr float kPctMarginLeft = 14.0f;   // gap between slider and its "%" text
+
+        const float trackX = (kPanelX + 290.0f) * ui;
+        const float panelRight = (kPanelX + kPanelW) * ui;
+        const float pctWidth = std::max(0.0f, panelRight - (trackX + kTrackW * ui) - kPctMarginLeft * ui);
+
+        const std::vector<HorizontalLayout::Item> items = {
+            {kTrackW * ui, kTrackH * ui, Insets{kSliderMarginTop * ui, 0.0f, 0.0f, 0.0f}},
+            {pctWidth, rowH, Insets{0.0f, 0.0f, 0.0f, kPctMarginLeft * ui}},
+        };
+
+        const std::vector<Rectf> rects = HorizontalLayout::stack(items, Vec2f{trackX, rowY});
+        return AudioRowLayout{rects[0], rects[1]};
+    }
 }
 
 void SettingsState::onEnter()
@@ -79,20 +125,22 @@ void SettingsState::onEnter()
 
     loadPersistedSettings();
 
-    const float trackX = kPanelX + 290.0f;
-
     Slider::RenderStyle style;
     style.trackHeight = 8.0f;
     style.handleWidth = 12.0f;
     style.handleHeight = 18.0f;
     style.offsetY = 0.0f;
 
-    m_volumeSlider.setTrackRect({trackX, kPanelY + kRowH * 0.0f + 16.0f, kTrackW, kTrackH});
+    const std::vector<Rectf> audioRows = computeUniformRows(1.0f);
+    const AudioRowLayout volumeLayout = computeAudioRowLayout(audioRows[0].y, audioRows[0].h, 1.0f);
+    const AudioRowLayout musicLayout = computeAudioRowLayout(audioRows[1].y, audioRows[1].h, 1.0f);
+
+    m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
     m_volumeSlider.setRange(0.0f, 1.0f);
     m_volumeSlider.setValue(g_sessionMasterVolume);
     m_volumeSlider.setRenderStyle(style);
 
-    m_musicSlider.setTrackRect({trackX, kPanelY + kRowH * 1.0f + 16.0f, kTrackW, kTrackH});
+    m_musicSlider.setTrackRect(musicLayout.sliderRect);
     m_musicSlider.setRange(0.0f, 1.0f);
     m_musicSlider.setValue(g_sessionMusicVolume);
     m_musicSlider.setRenderStyle(style);
@@ -370,10 +418,13 @@ void SettingsState::update(float /*dt*/)
 {
     UIScale::refresh();
     const float ui = UIScale::factor();
-    const float trackX = (kPanelX + 290.0f) * ui;
 
-    m_volumeSlider.setTrackRect({trackX, (kPanelY + kRowH * 0.0f + 16.0f) * ui, kTrackW * ui, kTrackH * ui});
-    m_musicSlider.setTrackRect({trackX, (kPanelY + kRowH * 1.0f + 16.0f) * ui, kTrackW * ui, kTrackH * ui});
+    const std::vector<Rectf> audioRows = computeUniformRows(ui);
+    const AudioRowLayout volumeLayout = computeAudioRowLayout(audioRows[0].y, audioRows[0].h, ui);
+    const AudioRowLayout musicLayout = computeAudioRowLayout(audioRows[1].y, audioRows[1].h, ui);
+
+    m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
+    m_musicSlider.setTrackRect(musicLayout.sliderRect);
 }
 
 void SettingsState::render(float /*alpha*/)
@@ -491,9 +542,10 @@ void SettingsState::render(float /*alpha*/)
     }
     else
     {
-        const Rectf volumeRow{kPanelX * ui, (kPanelY + kRowH * 0.0f) * ui, kPanelW * ui, (kRowH - 6.0f) * ui};
-        const Rectf musicRow{kPanelX * ui, (kPanelY + kRowH * 1.0f) * ui, kPanelW * ui, (kRowH - 6.0f) * ui};
-        const Rectf backRow{kPanelX * ui, (kPanelY + kRowH * 2.0f) * ui, kPanelW * ui, (kRowH - 6.0f) * ui};
+        const std::vector<Rectf> audioRows = computeUniformRows(ui);
+        const Rectf volumeRow = audioRows[0];
+        const Rectf musicRow = audioRows[1];
+        const Rectf backRow = audioRows[2];
 
         drawRow(m_renderer, volumeRow, m_focusIndex == 0);
         drawRow(m_renderer, musicRow, m_focusIndex == 1);
@@ -527,9 +579,15 @@ void SettingsState::render(float /*alpha*/)
         std::snprintf(volumePct, sizeof(volumePct), "%d%%", static_cast<int>(m_volumeSlider.getValue() * 100.0f + 0.5f));
         std::snprintf(musicPct, sizeof(musicPct), "%d%%", static_cast<int>(m_musicSlider.getValue() * 100.0f + 0.5f));
 
+        // Percentage sits right after the slider (margin-left), like a CSS
+        // box in flow — never overlapping the slider itself, regardless of
+        // slider width/position, since both come from the same layout call.
+        const AudioRowLayout volumeLayout = computeAudioRowLayout(volumeRow.y, volumeRow.h, ui);
+        const AudioRowLayout musicLayout = computeAudioRowLayout(musicRow.y, musicRow.h, ui);
+
         m_renderer->renderTextInRect(font,
                                      volumePct,
-                                     Rectf{volumeRow.x + volumeRow.w - 86.0f * ui, volumeRow.y, 70.0f * ui, volumeRow.h},
+                                     volumeLayout.pctRect,
                                      m_focusIndex == 0 ? selectedColor : baseColor,
                                      Renderer::HorizontalAlign::Right,
                                      Renderer::VerticalAlign::Middle,
@@ -538,7 +596,7 @@ void SettingsState::render(float /*alpha*/)
                                      false);
         m_renderer->renderTextInRect(font,
                                      musicPct,
-                                     Rectf{musicRow.x + musicRow.w - 86.0f * ui, musicRow.y, 70.0f * ui, musicRow.h},
+                                     musicLayout.pctRect,
                                      m_focusIndex == 1 ? selectedColor : baseColor,
                                      Renderer::HorizontalAlign::Right,
                                      Renderer::VerticalAlign::Middle,

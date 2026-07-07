@@ -54,6 +54,12 @@ void DeploymentWindow::handleInput(const Input &input)
         return;
     }
 
+    if (input.isKeyPressed(KeyCode::Details, false))
+    {
+        emit(UIEvent{.type = UIEventType::ActionSelected, .windowId = id(), .actionId = "details"});
+        return;
+    }
+
     if (input.isKeyPressed(KeyCode::Back, false))
     {
         emit(UIEvent{.type = UIEventType::ActionSelected, .windowId = id(), .actionId = "back"});

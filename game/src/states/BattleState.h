@@ -252,6 +252,8 @@ private:
     void showSystemMenu();
     void showStatusMenu(Unit *unit);
     void showInspectWindow(Unit *unit);
+    void showInspectWindowFromTemplate(const std::string &templatePath);
+    void syncCursorToSelection();
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
     void openStatusMenu(Unit *unit);
     bool canActiveUnitMove() const;

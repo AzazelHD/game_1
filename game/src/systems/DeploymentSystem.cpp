@@ -112,6 +112,12 @@ bool DeploymentSystem::placeGrabbed(Vec2i pos)
     placed.position = pos;
     m_deployed.push_back(std::move(placed));
     m_grabbedUnitId.clear();
+
+    // Move the roster selection to the next entry so the player doesn't have
+    // to manually cycle past the unit they just placed.
+    if (!m_partyEntries.empty())
+        m_selectedIndex = (m_selectedIndex + 1) % m_partyEntries.size();
+
     return true;
 }
 
