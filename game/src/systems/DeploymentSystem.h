@@ -54,6 +54,11 @@ public:
         return entry && isUnitPlaced(entry->unitId);
     }
     const DeploymentEntry *grabbedEntry() const;
+    // Looks up the *live* placed position for unitId (m_deployed), as
+    // opposed to selectedEntry()/partyEntries(), whose .position field is
+    // never updated after placement and is meaningless for placed units.
+    const DeploymentEntry *deployedEntryFor(const std::string &unitId) const;
+    const DeploymentEntry *deployedEntryAt(Vec2i pos) const;
     const std::vector<DeploymentEntry> &partyEntries() const { return m_partyEntries; }
 
     const std::unordered_set<Vec2i, Vec2iHash> &spawnTiles() const { return m_spawnTiles; }

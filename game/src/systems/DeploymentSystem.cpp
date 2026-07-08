@@ -158,3 +158,17 @@ const DeploymentEntry *DeploymentSystem::grabbedEntry() const
                            { return entry.unitId == m_grabbedUnitId; });
     return it == m_partyEntries.end() ? nullptr : &(*it);
 }
+
+const DeploymentEntry *DeploymentSystem::deployedEntryFor(const std::string &unitId) const
+{
+    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [&unitId](const DeploymentEntry &entry)
+                           { return entry.unitId == unitId; });
+    return it == m_deployed.end() ? nullptr : &(*it);
+}
+
+const DeploymentEntry *DeploymentSystem::deployedEntryAt(Vec2i pos) const
+{
+    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [pos](const DeploymentEntry &entry)
+                           { return entry.position == pos; });
+    return it == m_deployed.end() ? nullptr : &(*it);
+}
