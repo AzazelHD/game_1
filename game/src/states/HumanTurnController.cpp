@@ -12,31 +12,33 @@
 
 void HumanTurnController::handleActiveTurn(const Input &input)
 {
-    if (m_state.m_playerControlMode != BattleState::PlayerControlMode::Human)
+    BattleState::HumanTurnContext ctx = m_state.makeHumanTurnContext();
+
+    if (ctx.controlMode != BattleState::PlayerControlMode::Human)
         return;
 
-    Unit *active = m_state.m_turnQueue.getCurrentUnit();
+    Unit *active = ctx.turnQueue.getCurrentUnit();
     if (!active || active->getTeam() != 0)
         return;
 
-    if (m_state.m_hud.isOpen())
+    if (ctx.hudOpen)
         return;
 
-    if (m_state.m_humanTurnPhase == BattleState::HumanTurnPhase::FreeCursor)
+    if (ctx.phase == BattleState::HumanTurnPhase::FreeCursor)
     {
         if (input.isKeyPressed(KeyCode::Accept, false))
         {
-            Vec2i cursorPos = m_state.m_cursor.getPosition();
+            Vec2i cursorPos = ctx.cursor.getPosition();
 
             if (cursorPos == active->getPosition())
             {
-                m_state.m_humanTurnPhase = BattleState::HumanTurnPhase::ActionMenu;
+                ctx.phase = BattleState::HumanTurnPhase::ActionMenu;
                 m_state.openBattleMenu(m_state.canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept);
             }
             else
             {
                 Unit *hovered = nullptr;
-                for (Unit *u : m_state.m_units)
+                for (Unit *u : ctx.units)
                     if (u && !u->isDead() && u->getPosition() == cursorPos)
                     {
                         hovered = u;
@@ -46,45 +48,45 @@ void HumanTurnController::handleActiveTurn(const Input &input)
                 if (hovered)
                     m_state.showInspectWindow(hovered);
                 else
-                    m_state.m_cursor.setPosition(active->getPosition());
+                    ctx.cursor.setPosition(active->getPosition());
             }
         }
     }
-    else if (m_state.m_humanTurnPhase == BattleState::HumanTurnPhase::MoveTarget)
+    else if (ctx.phase == BattleState::HumanTurnPhase::MoveTarget)
     {
         if (input.isKeyPressed(KeyCode::Accept, false))
         {
-            Vec2i dest = m_state.m_cursor.getPosition();
-            if (m_state.m_reachableTiles.find(dest) == m_state.m_reachableTiles.end())
+            Vec2i dest = ctx.cursor.getPosition();
+            if (ctx.reachableTiles.find(dest) == ctx.reachableTiles.end())
                 return;
 
-            m_state.m_moveStartPos = active->getPosition();
-            m_state.m_moveStartPointsLeft = active->getMoveRangeLeft();
+            ctx.moveStartPos = active->getPosition();
+            ctx.moveStartPointsLeft = active->getMoveRangeLeft();
 
-            const int pathCost = manhattanDistance(m_state.m_moveStartPos, dest);
+            const int pathCost = manhattanDistance(ctx.moveStartPos, dest);
 
             Vec2i start = active->getPosition();
-            m_state.m_grid.getTile(start).occupied = false;
+            ctx.grid.getTile(start).occupied = false;
             active->setPosition(dest);
-            m_state.m_grid.getTile(dest).occupied = true;
+            ctx.grid.getTile(dest).occupied = true;
             active->spendMovePoints(pathCost);
-            m_state.m_canUndoLastMove = true;
-            m_state.m_eventSystem.emit(BattleTriggerType::OnTileEnter);
+            ctx.canUndoLastMove = true;
+            ctx.eventSystem.emit(BattleTriggerType::OnTileEnter);
 
-            m_state.m_humanTurnPhase = BattleState::HumanTurnPhase::ActionMenu;
+            ctx.phase = BattleState::HumanTurnPhase::ActionMenu;
             m_state.openBattleMenu(m_state.canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept);
         }
         else if (input.isKeyPressed(KeyCode::Back, false))
         {
-            m_state.m_humanTurnPhase = BattleState::HumanTurnPhase::ActionMenu;
+            ctx.phase = BattleState::HumanTurnPhase::ActionMenu;
             m_state.openBattleMenu(m_state.canActiveUnitMove(), !active->hasActed(), true, KeyCode::Back);
         }
     }
-    else if (m_state.m_humanTurnPhase == BattleState::HumanTurnPhase::AttackTarget)
+    else if (ctx.phase == BattleState::HumanTurnPhase::AttackTarget)
     {
-        Vec2i cursorPos = m_state.m_cursor.getPosition();
+        Vec2i cursorPos = ctx.cursor.getPosition();
         Unit *hoveredEnemy = nullptr;
-        for (Unit *u : m_state.m_units)
+        for (Unit *u : ctx.units)
             if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == cursorPos)
             {
                 hoveredEnemy = u;
@@ -94,41 +96,41 @@ void HumanTurnController::handleActiveTurn(const Input &input)
         if (hoveredEnemy)
         {
             int dist = manhattanDistance(active->getPosition(), hoveredEnemy->getPosition());
-            if (dist <= m_state.m_currentAttackRange)
+            if (dist <= ctx.currentAttackRange)
             {
                 const SkillData *previewSkill = nullptr;
-                if (!m_state.m_selectedSkillId.empty())
+                if (!ctx.selectedSkillId.empty())
                 {
-                    auto it = m_state.m_skillDB.find(m_state.m_selectedSkillId);
-                    if (it != m_state.m_skillDB.end())
+                    auto it = ctx.skillDB.find(ctx.selectedSkillId);
+                    if (it != ctx.skillDB.end())
                         previewSkill = &it->second;
                 }
-                m_state.m_damagePreview.show(*active, *hoveredEnemy, previewSkill);
+                ctx.damagePreview.show(*active, *hoveredEnemy, previewSkill);
 
-                HitContext ctx = m_state.makeHitContext(active, hoveredEnemy, previewSkill);
+                HitContext hitCtx = m_state.makeHitContext(active, hoveredEnemy, previewSkill);
 
-                const CombatResult preview = CombatSystem::preview(ctx);
+                const CombatResult preview = CombatSystem::preview(hitCtx);
                 char textBuf[96];
                 std::snprintf(textBuf, sizeof(textBuf), "DMG %d   ACC %d%%", preview.damage, static_cast<int>(preview.hitChance + 0.5f));
-                m_state.m_topBattleText = textBuf;
+                ctx.topBattleText = textBuf;
             }
             else
             {
-                m_state.m_damagePreview.hide();
-                m_state.m_topBattleText.clear();
+                ctx.damagePreview.hide();
+                ctx.topBattleText.clear();
             }
         }
         else
         {
-            m_state.m_damagePreview.hide();
-            m_state.m_topBattleText.clear();
+            ctx.damagePreview.hide();
+            ctx.topBattleText.clear();
         }
 
         if (input.isKeyPressed(KeyCode::Accept, false))
         {
-            Vec2i targetPos = m_state.m_cursor.getPosition();
+            Vec2i targetPos = ctx.cursor.getPosition();
             Unit *target = nullptr;
-            for (Unit *u : m_state.m_units)
+            for (Unit *u : ctx.units)
                 if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == targetPos)
                 {
                     target = u;
@@ -136,10 +138,10 @@ void HumanTurnController::handleActiveTurn(const Input &input)
                 }
 
             const SkillData *skill = nullptr;
-            if (!m_state.m_selectedSkillId.empty())
+            if (!ctx.selectedSkillId.empty())
             {
-                auto it = m_state.m_skillDB.find(m_state.m_selectedSkillId);
-                if (it != m_state.m_skillDB.end())
+                auto it = ctx.skillDB.find(ctx.selectedSkillId);
+                if (it != ctx.skillDB.end())
                     skill = &it->second;
             }
 
@@ -147,7 +149,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
 
             if (!canAttack && skill && skill->area > 0)
             {
-                for (Unit *u : m_state.m_units)
+                for (Unit *u : ctx.units)
                 {
                     if (u && !u->isDead() && u->getTeam() != 0 &&
                         manhattanDistance(u->getPosition(), targetPos) <= skill->area)
@@ -162,35 +164,35 @@ void HumanTurnController::handleActiveTurn(const Input &input)
                 return;
 
             int dist = manhattanDistance(active->getPosition(), targetPos);
-            if (dist > m_state.m_currentAttackRange)
+            if (dist > ctx.currentAttackRange)
                 return;
 
             const SkillData *skillToUse = nullptr;
-            if (!m_state.m_selectedSkillId.empty())
+            if (!ctx.selectedSkillId.empty())
             {
-                auto it = m_state.m_skillDB.find(m_state.m_selectedSkillId);
-                if (it != m_state.m_skillDB.end())
+                auto it = ctx.skillDB.find(ctx.selectedSkillId);
+                if (it != ctx.skillDB.end())
                     skillToUse = &it->second;
             }
 
             m_state.preparePendingAttack(active, targetPos, target, skillToUse);
 
-            if (m_state.m_pendingAttack.empty())
+            if (ctx.pendingAttack.empty())
                 return;
 
-            m_state.m_humanTurnPhase = BattleState::HumanTurnPhase::AttackConfirm;
-            m_state.m_pendingSkillId = m_state.m_selectedSkillId;
-            m_state.m_uiManager.popById("battle.confirm");
-            auto *confirm = m_state.m_uiManager.push<ConfirmWindow>("battle.confirm");
+            ctx.phase = BattleState::HumanTurnPhase::AttackConfirm;
+            ctx.pendingSkillId = ctx.selectedSkillId;
+            ctx.uiManager.popById("battle.confirm");
+            auto *confirm = ctx.uiManager.push<ConfirmWindow>("battle.confirm");
             confirm->setFont(App::getDefaultFont());
             confirm->setPrompt("Confirm?");
         }
         else if (input.isKeyPressed(KeyCode::Back, false))
         {
-            m_state.m_damagePreview.hide();
-            m_state.m_selectedSkillId.clear();
-            m_state.m_topBattleText.clear();
-            m_state.m_humanTurnPhase = BattleState::HumanTurnPhase::ActionMenu;
+            ctx.damagePreview.hide();
+            ctx.selectedSkillId.clear();
+            ctx.topBattleText.clear();
+            ctx.phase = BattleState::HumanTurnPhase::ActionMenu;
             m_state.openBattleMenu(m_state.canActiveUnitMove(), true, true, KeyCode::Back);
         }
     }

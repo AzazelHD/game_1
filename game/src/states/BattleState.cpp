@@ -426,6 +426,32 @@ void BattleState::openStatusMenu(Unit *unit)
     Input::instance().consumeKey(KeyCode::Accept);
 }
 
+BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
+{
+    return HumanTurnContext{
+        .controlMode = m_playerControlMode,
+        .hudOpen = m_hud.isOpen(),
+        .phase = m_humanTurnPhase,
+        .cursor = m_cursor,
+        .turnQueue = m_turnQueue,
+        .units = m_units,
+        .reachableTiles = m_reachableTiles,
+        .moveStartPos = m_moveStartPos,
+        .moveStartPointsLeft = m_moveStartPointsLeft,
+        .grid = m_grid,
+        .canUndoLastMove = m_canUndoLastMove,
+        .eventSystem = m_eventSystem,
+        .currentAttackRange = m_currentAttackRange,
+        .selectedSkillId = m_selectedSkillId,
+        .skillDB = m_skillDB,
+        .damagePreview = m_damagePreview,
+        .topBattleText = m_topBattleText,
+        .pendingAttack = m_pendingAttack,
+        .pendingSkillId = m_pendingSkillId,
+        .uiManager = m_uiManager,
+    };
+}
+
 bool BattleState::canActiveUnitMove() const
 {
     const Unit *active = m_turnQueue.getCurrentUnit();
@@ -606,7 +632,10 @@ void BattleState::processUIEvents(Unit *active)
                     continue;
 
                 BattleMenuItem item = m_hud.items()[index];
-                m_uiManager.popById("battle.actionmenu");
+                // hideById, not popById: the action menu is a persistent
+                // window owned by BattleHud (see BattleHud::m_menu) — popById
+                // would destroy it out from under BattleHud's cached pointer.
+                m_uiManager.hideById("battle.actionmenu");
                 if (item.enabled && item.onSelect)
                     item.onSelect();
                 continue;
@@ -644,7 +673,8 @@ void BattleState::processUIEvents(Unit *active)
                 continue;
 
             BattleMenuItem item = m_hud.items()[index];
-            m_uiManager.popById("battle.actionmenu");
+            // Same reasoning as the Deployment branch above: hide, don't pop.
+            m_uiManager.hideById("battle.actionmenu");
             if (item.enabled && item.onSelect)
                 item.onSelect();
             continue;

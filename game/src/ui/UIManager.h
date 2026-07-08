@@ -40,6 +40,11 @@ public:
 
     void popTop();
     void popById(const std::string &id);
+    // Hides a window in place instead of destroying it (see UIWindow::
+    // setVisible). Use this instead of popById for persistent windows —
+    // popById would erase the unique_ptr and dangle any raw pointer an
+    // owner (e.g. BattleHud) cached for reuse.
+    void hideById(const std::string &id);
     bool hasWindow(const std::string &id) const;
     void clear();
 
@@ -54,6 +59,9 @@ public:
 
 private:
     void wireEventEmitter(UIWindow &window);
+    // Topmost window that isn't hidden — the real "top of stack" once
+    // persistent/hidden windows are taken into account.
+    UIWindow *topVisibleWindow() const;
 
     std::vector<std::unique_ptr<UIWindow>> m_stack;
     std::vector<UIEvent> m_eventQueue;

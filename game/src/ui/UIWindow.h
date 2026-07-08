@@ -24,6 +24,14 @@ public:
     bool blocksInputBelow() const { return m_blocksInputBelow; }
     bool blocksRenderBelow() const { return m_blocksRenderBelow; }
 
+    // Persistent-window support: a hidden window stays on the UIManager
+    // stack (owned, alive, state preserved) but is skipped by handleInput/
+    // render/hasBlockingWindow, and hasWindow(id) reports it as absent.
+    // Lets owners like BattleHud create a window once and toggle it instead
+    // of push/pop-ing (and thereby destroying/reconstructing) it every time.
+    bool isVisible() const { return m_visible; }
+    void setVisible(bool visible) { m_visible = visible; }
+
     virtual void handleInput(const Input &input) = 0;
     virtual void update(float dt) = 0;
     virtual void render(Renderer *renderer) const = 0;
@@ -49,5 +57,6 @@ private:
     std::string m_id;
     bool m_blocksInputBelow = true;
     bool m_blocksRenderBelow = false;
+    bool m_visible = true;
     std::function<void(const UIEvent &)> m_emitEvent;
 };

@@ -23,15 +23,24 @@ namespace
 void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
 {
     m_items = std::move(items);
-    m_uiManager.popById("battle.actionmenu");
 
-    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.actionmenu");
-    menu->setFont(App::getDefaultFont());
+    // Created once; every later call just re-shows and re-populates the
+    // same instance instead of destroying/reconstructing it.
+    if (!m_menu)
+    {
+        m_menu = m_uiManager.push<ActionMenuWindow>("battle.actionmenu");
+        m_menu->setFont(App::getDefaultFont());
+    }
+    else
+    {
+        m_menu->setVisible(true);
+    }
+
     if (combatPhase)
     {
         UIScale::refresh();
         const float ui = UIScale::factor();
-        menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
+        m_menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
     }
 
     std::vector<ActionMenuWindow::Item> uiItems;
@@ -45,17 +54,25 @@ void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
             .enabled = item.enabled,
         });
     }
-    menu->setItems(std::move(uiItems));
+    // NOTE: setItems() still resets m_selected/m_scroll on every call. Kept
+    // as-is on purpose: the item set (and which ones are enabled) genuinely
+    // changes each time this reopens for a new unit/context, so re-landing
+    // on the first enabled item is the correct behavior, not stale reset
+    // logic left over from the old push/pop lifecycle.
+    m_menu->setItems(std::move(uiItems));
 }
 
 void BattleHud::clear()
 {
     m_items.clear();
-    m_uiManager.popById("battle.actionmenu");
+    // hideById, not popById: popById would destroy m_menu and leave our
+    // cached pointer dangling.
+    if (m_menu)
+        m_uiManager.hideById("battle.actionmenu");
     m_uiManager.popById("battle.confirm");
 }
 
 bool BattleHud::isOpen() const
 {
-    return m_uiManager.hasWindow("battle.actionmenu") || m_uiManager.hasWindow("battle.confirm");
+    return (m_menu && m_menu->isVisible()) || m_uiManager.hasWindow("battle.confirm");
 }

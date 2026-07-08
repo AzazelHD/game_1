@@ -30,10 +30,27 @@ void UIManager::popById(const std::string &id)
     m_stack.erase(eraseIt);
 }
 
+void UIManager::hideById(const std::string &id)
+{
+    for (auto &window : m_stack)
+    {
+        if (window && window->id() == id)
+        {
+            window->setVisible(false);
+            return;
+        }
+    }
+}
+
 bool UIManager::hasWindow(const std::string &id) const
 {
+    // Visible-only by design: every prior call site (BattleState's ESC/
+    // update-phase checks, BattleHud::isOpen) uses this to mean "is this
+    // window currently showing", which is exactly what it meant back when
+    // "not showing" implied "not on the stack at all". A hidden-but-alive
+    // persistent window must keep reporting as absent here.
     return std::any_of(m_stack.begin(), m_stack.end(), [&id](const std::unique_ptr<UIWindow> &w)
-                       { return w && w->id() == id; });
+                       { return w && w->id() == id && w->isVisible(); });
 }
 
 void UIManager::clear()
@@ -49,10 +66,7 @@ void UIManager::clear()
 
 void UIManager::handleInput(const Input &input)
 {
-    if (m_stack.empty())
-        return;
-
-    UIWindow *top = m_stack.back().get();
+    UIWindow *top = topVisibleWindow();
     if (top)
         top->handleInput(input);
 }
@@ -72,7 +86,7 @@ void UIManager::render(Renderer *renderer) const
     for (std::size_t i = m_stack.size(); i > 0; --i)
     {
         const UIWindow *window = m_stack[i - 1].get();
-        if (window && window->blocksRenderBelow())
+        if (window && window->isVisible() && window->blocksRenderBelow())
         {
             beginIndex = i - 1;
             break;
@@ -82,16 +96,14 @@ void UIManager::render(Renderer *renderer) const
     for (std::size_t i = beginIndex; i < m_stack.size(); ++i)
     {
         const auto &window = m_stack[i];
-        if (window)
+        if (window && window->isVisible())
             window->render(renderer);
     }
 }
 
 bool UIManager::hasBlockingWindow() const
 {
-    if (m_stack.empty())
-        return false;
-    const UIWindow *top = m_stack.back().get();
+    const UIWindow *top = topVisibleWindow();
     return top ? top->blocksInputBelow() : false;
 }
 
@@ -100,6 +112,16 @@ std::vector<UIEvent> UIManager::drainEvents()
     std::vector<UIEvent> events;
     events.swap(m_eventQueue);
     return events;
+}
+
+UIWindow *UIManager::topVisibleWindow() const
+{
+    for (auto it = m_stack.rbegin(); it != m_stack.rend(); ++it)
+    {
+        if (*it && (*it)->isVisible())
+            return it->get();
+    }
+    return nullptr;
 }
 
 void UIManager::wireEventEmitter(UIWindow &window)

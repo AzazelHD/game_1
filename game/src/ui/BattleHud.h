@@ -5,6 +5,7 @@
 #include <vector>
 
 class UIManager;
+class ActionMenuWindow;
 
 class BattleHud
 {
@@ -20,4 +21,7 @@ public:
 private:
     UIManager &m_uiManager;
     std::vector<BattleMenuItem> m_items;
+    // Created once on first setItems(), then only shown/hidden. Never
+    // popped, so this pointer stays valid for BattleHud's lifetime.
+    ActionMenuWindow *m_menu = nullptr;
 };
