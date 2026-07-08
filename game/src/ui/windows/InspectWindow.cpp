@@ -66,6 +66,9 @@ void InspectWindow::render(Renderer *renderer) const
     const float y = (GameConstants::VIEW_H - kPanelH) * 0.5f;
 
     renderer->setBlendMode(Renderer::BlendMode::Blend);
+    renderer->setDrawColor(Color{0, 0, 0, 160});
+    renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});
+
     renderer->setDrawColor(UITheme::PopupBG);
     renderer->fillRect(Rectf{x, y, kPanelW, kPanelH});
     renderer->setDrawColor(UITheme::PopupBorder);

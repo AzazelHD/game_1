@@ -407,16 +407,10 @@ void BattleState::syncCursorToSelection()
     // cursor over). The cursor only moves here; whether it's then allowed
     // to move freely again is decided by DeploymentSystem::isSelectionLocked()
     // at the point movement input is read.
-    //
-    // Reads deployedEntryFor(), NOT entry->position: partyEntries()'
-    // .position field is stale (frozen at {0,0} since initialize()) and
-    // never touched by placeGrabbed(). The real coordinate lives only in
-    // m_deployed. Using entry->position here is exactly what was sending
-    // the cursor to (0,0).
     if (const DeploymentEntry *entry = m_deployment.selectedEntry())
     {
-        if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(entry->unitId))
-            m_cursor.setPosition(placed->position);
+        if (m_deployment.isUnitPlaced(entry->unitId))
+            m_cursor.setPosition(entry->position);
     }
 }
 
@@ -531,32 +525,31 @@ void BattleState::processUIEvents(Unit *active)
                     m_uiManager.popById("battle.deploy.inspectmenu");
                     auto *menu = m_uiManager.push<ActionMenuWindow>("battle.deploy.inspectmenu");
                     menu->setFont(App::getDefaultFont());
+                    UIScale::refresh();
+                    const float ui = UIScale::factor();
+                    menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui,
+                                                 GameConstants::VIEW_H - 240.0f * ui});
                     menu->setItems({
                         ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
                     });
                     continue;
                 }
 
-                // A placed unit is under the cursor — regardless of whether
-                // it's also the QE-selected roster entry. This is checked by
-                // TILE, not by selectedEntry(), so that "cursor sitting on a
-                // placed unit" and "QE landed on it" are the exact same case
-                // instead of two paths that could disagree (which was the
-                // original bug: walking the cursor onto a placed unit without
-                // QE-selecting it first did nothing on Accept).
-                if (const DeploymentEntry *placedHere = m_deployment.deployedEntryAt(cursorPos))
+                const DeploymentEntry *selected = m_deployment.selectedEntry();
+                if (!selected)
+                    continue;
+
+                // Already placed (the cursor is pinned to it, per
+                // isSelectionLocked): pick it back up so it can be relocated.
+                if (m_deployment.isUnitPlaced(selected->unitId))
                 {
-                    if (m_deployment.unplaceUnit(placedHere->unitId) && m_deployment.grabUnit(placedHere->unitId))
+                    if (m_deployment.unplaceUnit(selected->unitId) && m_deployment.grabUnit(selected->unitId))
                     {
                         syncDeploymentPreviewUnits();
                         refreshDeploymentWindow();
                     }
                     continue;
                 }
-
-                const DeploymentEntry *selected = m_deployment.selectedEntry();
-                if (!selected)
-                    continue;
 
                 if (!m_deployment.isOccupied(cursorPos))
                 {
