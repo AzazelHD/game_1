@@ -409,8 +409,8 @@ void BattleState::syncCursorToSelection()
     // at the point movement input is read.
     if (const DeploymentEntry *entry = m_deployment.selectedEntry())
     {
-        if (m_deployment.isUnitPlaced(entry->unitId))
-            m_cursor.setPosition(entry->position);
+        if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(entry->unitId))
+            m_cursor.setPosition(placed->position);
     }
 }
 
@@ -532,6 +532,20 @@ void BattleState::processUIEvents(Unit *active)
                     menu->setItems({
                         ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
                     });
+                    continue;
+                }
+
+                // A placed unit under the cursor — checked by TILE, not by
+                // selectedEntry(), so walking the cursor onto a placed unit
+                // (without QE-selecting it) behaves the same as QE landing on it.
+                if (const DeploymentEntry *placedHere = m_deployment.deployedEntryAt(cursorPos))
+                {
+                    if (m_deployment.unplaceUnit(placedHere->unitId) &&
+                        m_deployment.grabUnit(placedHere->unitId))
+                    {
+                        syncDeploymentPreviewUnits();
+                        refreshDeploymentWindow();
+                    }
                     continue;
                 }
 
@@ -1274,14 +1288,19 @@ void BattleState::update(float dt)
             }
             else if (m_hoveredUnit)
             {
-                m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam() != 0);
+                // If the hovered tile holds one of our placed units, route it
+                // through the preview path so the red "X" placed-marker draws
+                // (setSingle renders via UnitPortrait::render, which has no marker).
+                if (const DeploymentEntry *placed = m_deployment.deployedEntryAt(cursorPos))
+                    setUnitPanelPreviewFromEntry(placed);
+                else
+                    m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam() != 0);
             }
             else
             {
                 setUnitPanelPreviewFromEntry(m_deployment.selectedEntry());
             }
         }
-        return;
     }
 
     if (m_showDefeatOverlay)
