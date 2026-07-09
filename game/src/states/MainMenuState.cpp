@@ -38,9 +38,10 @@ void MainMenuState::onEnter()
     auto *menu = m_uiManager.push<ActionMenuWindow>("menu.main");
     menu->setFont(g_mainMenuFont ? g_mainMenuFont : App::getDefaultFont());
 
-    constexpr float menuW = 260.0f;
-    constexpr float menuH = 170.0f;
-    menu->setPanelPosition(Vec2f{GameConstants::VIEW_CX - menuW * 0.5f, GameConstants::VIEW_CY - menuH * 0.5f + 46.0f});
+    // Center horizontally (box width now follows the font); only fix the
+    // vertical anchor below the title.
+    menu->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
+    menu->centerHorizontally(true);
     menu->setItems({
         ActionMenuWindow::Item{.id = "start", .label = "Start Game", .enabled = true},
         ActionMenuWindow::Item{.id = "options", .label = "Options", .enabled = true},

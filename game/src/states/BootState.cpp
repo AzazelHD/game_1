@@ -1,5 +1,9 @@
+#include "engine/core/App.h"
+#include "engine/core/Log.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
+#include "engine/renderer/Font.h"
+#include "engine/renderer/Renderer.h"
 #include "states/BootState.h"
 #include "states/MainMenuState.h"
 
@@ -12,12 +16,18 @@ BootState::BootState(StateMachine<Scene> &sm, Renderer *renderer)
 
 void BootState::onEnter()
 {
-    // Placeholder boot pipeline (currently synchronous):
-    // - preload shared assets
-    // - load config
-    // - init systems
+    // Load the single global UI font exactly once, at boot. Every state
+    // consumes App::getDefaultFont() from here on — no per-state loading.
+    if (!App::getDefaultFont())
+    {
+        Font *font = m_renderer
+                         ? m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 24.0f)
+                         : nullptr;
+        if (!font)
+            LOG_ERROR("Boot", "Failed to load default UI font");
+        App::setDefaultFont(font);
+    }
 
-    // If this becomes async later, set m_readyToTransition when done.
     m_readyToTransition = true;
 }
 

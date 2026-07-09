@@ -93,44 +93,51 @@ namespace
         Rectf sliderRect;
         Rectf pctRect;
     };
-
-    AudioRowLayout computeAudioRowLayout(float rowY, float rowH, float ui)
+    AudioRowLayout computeAudioRowLayout(Renderer *renderer,
+                                         const Font *font,
+                                         const std::string &labelText,
+                                         float rowY, float rowH, float ui)
     {
-        constexpr float kLabelW = 210.0f;
-        constexpr float kGapLabelControls = 24.0f;
-        constexpr float kSliderMarginTop = 16.0f;
-        constexpr float kPctMarginLeft = 28.0f;
-        const float kPctWidth = 65.0f;
-        constexpr float kRowInnerPad = 16.0f;
+        constexpr float kGapLabelControls = 24.0f; // gap between label box and controls box
+        constexpr float kSliderMarginTop = 16.0f;  // slider sits below the label baseline
+        constexpr float kPctMarginLeft = 28.0f;    // gap between slider and its "%" text
+        constexpr float kRowInnerPad = 16.0f;      // outer (pad) on both row edges
+
+        // Label width: shared across every audio row so the sliders stay
+        // vertically aligned. Measure the widest label instead of hardcoding.
+        float labelTextW = 0.0f;
+        if (renderer && font)
+        {
+            labelTextW = std::max({renderer->measureText(font, "Master Volume").x,
+                                   renderer->measureText(font, "Music Volume").x});
+        }
+
+        // "%" box: sized to the widest value it will ever show ("100%").
+        const float pctTextW = (renderer && font)
+                                   ? renderer->measureText(font, "100%").x
+                                   : 0.0f;
 
         const HorizontalLayout::Container labelContainer{
-            .items = {{kLabelW * ui, rowH, Insets{}}},
+            .items = {{labelTextW, rowH, Insets{}}},
+            // outer-left (pad)
             .padding = Insets{0.0f, 0.0f, 0.0f, kRowInnerPad * ui},
         };
-
-        constexpr float kControlsTopPad = 0.0f;
-        constexpr float kControlsRightPad = 0.0f;
-        constexpr float kControlsDownPad = 0.0f;
-        constexpr float kControlsLeftPad = 0.0f;
 
         const HorizontalLayout::Container controlsContainer{
             .items = {
                 {kTrackW * ui, kTrackH * ui, Insets{kSliderMarginTop * ui, 0.0f, 0.0f, 0.0f}},
-                {kPctWidth * ui, rowH, Insets{0.0f, 0.0f, 0.0f, kPctMarginLeft * ui}},
+                {pctTextW, rowH, Insets{0.0f, 0.0f, 0.0f, kPctMarginLeft * ui}},
             },
-            .padding = Insets{kControlsTopPad * ui, kControlsRightPad * ui, kControlsDownPad * ui, kControlsLeftPad * ui},
+            // outer-right (pad) — same value as the label's left pad
+            .padding = Insets{0.0f, kRowInnerPad * ui, 0.0f, 0.0f},
         };
 
         const float labelWidth = HorizontalLayout::computeBounds(
-                                     labelContainer.items,
-                                     Vec2f{},
-                                     labelContainer.padding)
+                                     labelContainer.items, Vec2f{}, labelContainer.padding)
                                      .w;
 
         const float controlsWidth = HorizontalLayout::computeBounds(
-                                        controlsContainer.items,
-                                        Vec2f{},
-                                        controlsContainer.padding)
+                                        controlsContainer.items, Vec2f{}, controlsContainer.padding)
                                         .w;
 
         const float totalWidth = labelWidth + (kGapLabelControls * ui) + controlsWidth;
@@ -184,16 +191,21 @@ void SettingsState::onEnter()
     style.handleHeight = 18.0f;
     style.offsetY = 0.0f;
 
-    const std::vector<Rectf> audioRows = computeUniformRows(1.0f);
-    const AudioRowLayout volumeLayout = computeAudioRowLayout(audioRows[0].y, audioRows[0].h, 1.0f);
-    const AudioRowLayout musicLayout = computeAudioRowLayout(audioRows[1].y, audioRows[1].h, 1.0f);
+    const Font *font = App::getDefaultFont();
+    if (m_renderer && font)
+    {
+        const std::vector<Rectf> audioRows = computeUniformRows(1.0f);
+        const AudioRowLayout volumeLayout = computeAudioRowLayout(m_renderer, font, "Master Volume", audioRows[0].y, audioRows[0].h, 1.0f);
+        const AudioRowLayout musicLayout = computeAudioRowLayout(m_renderer, font, "Music Volume", audioRows[1].y, audioRows[1].h, 1.0f);
 
-    m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
+        m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
+        m_musicSlider.setTrackRect(musicLayout.sliderRect);
+    }
+
     m_volumeSlider.setRange(0.0f, 1.0f);
     m_volumeSlider.setValue(g_sessionMasterVolume);
     m_volumeSlider.setRenderStyle(style);
 
-    m_musicSlider.setTrackRect(musicLayout.sliderRect);
     m_musicSlider.setRange(0.0f, 1.0f);
     m_musicSlider.setValue(g_sessionMusicVolume);
     m_musicSlider.setRenderStyle(style);
@@ -472,9 +484,13 @@ void SettingsState::update(float /*dt*/)
     UIScale::refresh();
     const float ui = UIScale::factor();
 
+    const Font *font = App::getDefaultFont();
+    if (!m_renderer || !font)
+        return;
+
     const std::vector<Rectf> audioRows = computeUniformRows(ui);
-    const AudioRowLayout volumeLayout = computeAudioRowLayout(audioRows[0].y, audioRows[0].h, ui);
-    const AudioRowLayout musicLayout = computeAudioRowLayout(audioRows[1].y, audioRows[1].h, ui);
+    const AudioRowLayout volumeLayout = computeAudioRowLayout(m_renderer, font, "Master Volume", audioRows[0].y, audioRows[0].h, ui);
+    const AudioRowLayout musicLayout = computeAudioRowLayout(m_renderer, font, "Music Volume", audioRows[1].y, audioRows[1].h, ui);
 
     m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
     m_musicSlider.setTrackRect(musicLayout.sliderRect);
@@ -600,9 +616,9 @@ void SettingsState::render(float /*alpha*/)
         const Rectf musicRow = audioRows[1];
         const Rectf backRow = audioRows[2];
 
-        const AudioRowLayout volumeLayoutR = computeAudioRowLayout(volumeRow.y, volumeRow.h, ui);
-        const AudioRowLayout musicLayoutR = computeAudioRowLayout(musicRow.y, musicRow.h, ui);
-        const AudioRowLayout backLayoutR = computeAudioRowLayout(backRow.y, backRow.h, ui);
+        const AudioRowLayout volumeLayoutR = computeAudioRowLayout(m_renderer, font, "Master Volume", volumeRow.y, volumeRow.h, ui);
+        const AudioRowLayout musicLayoutR = computeAudioRowLayout(m_renderer, font, "Music Volume", musicRow.y, musicRow.h, ui);
+        const AudioRowLayout backLayoutR = computeAudioRowLayout(m_renderer, font, "Back", backRow.y, backRow.h, ui);
 
         drawRow(m_renderer, volumeLayoutR.rowBox, m_focusIndex == 0);
         drawRow(m_renderer, musicLayoutR.rowBox, m_focusIndex == 1);

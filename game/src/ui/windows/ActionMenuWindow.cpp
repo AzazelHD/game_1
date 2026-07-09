@@ -105,24 +105,42 @@ void ActionMenuWindow::render(Renderer *renderer) const
     UIScale::refresh();
     const float ui = UIScale::factor();
 
-    const float menuW = kMenuW * ui;
-    const float menuHCap = kMenuH * ui;
-    const float itemH = kItemH * ui;
     const float itemSpacing = kItemSpacing * ui;
     const float pad = kPad * ui;
     const float markerGap = kMarkerGap * ui;
     const float opticalBias = kOpticalCenterBiasX * ui;
 
+    // Item height from the real font metrics (with a small floor) so the box
+    // grows vertically when the font gets bigger.
+    const float fontH = renderer->measureText(m_font, "Ag").y;
+    const float itemH = std::max(kItemH * ui, fontH + 6.0f * ui);
+
+    // Width from the widest label + selection markers + padding, never below
+    // the default width.
+    const float markerW = renderer->measureText(m_font, ">").x;
+    float maxTextW = 0.0f;
+    for (const Item &item : m_items)
+        maxTextW = std::max(maxTextW, renderer->measureText(m_font, clipLabel(item.label)).x);
+    const float menuW = std::max(kMenuW * ui,
+                                 maxTextW + 2.0f * (markerW + markerGap) + 2.0f * pad);
+
     const int count = static_cast<int>(m_items.size());
     const float contentH = count > 0
                                ? (static_cast<float>(count) * (itemH + itemSpacing) - itemSpacing + kBottomPadExtra * ui)
                                : itemH;
-    const float menuH = std::clamp(2.0f * pad + contentH, 64.0f * ui, menuHCap);
+    // Grow to fit content, but never taller than the screen.
+    const float menuH = std::min(2.0f * pad + contentH, GameConstants::VIEW_H - 40.0f * ui);
     const int visibleCount = std::max(1, static_cast<int>((menuH - 2.0f * pad + itemSpacing) / (itemH + itemSpacing)));
     const int start = std::clamp(m_scroll, 0, std::max(0, count - 1));
     const int end = std::min(count, start + visibleCount);
-    const float panelX = m_useCustomPanelPos ? m_panelPos.x : (GameConstants::VIEW_W - menuW) * 0.5f;
-    const float panelY = m_useCustomPanelPos ? m_panelPos.y : (GameConstants::VIEW_H - menuH) * 0.5f;
+
+    const float panelX = m_centerX
+                             ? (GameConstants::VIEW_W - menuW) * 0.5f
+                             : (m_useCustomPanelPos ? m_panelPos.x
+                                                    : (GameConstants::VIEW_W - menuW) * 0.5f);
+    const float panelY = (m_useCustomPanelPos || m_centerX)
+                             ? m_panelPos.y
+                             : (GameConstants::VIEW_H - menuH) * 0.5f;
 
     renderer->setBlendMode(Renderer::BlendMode::Blend);
     renderer->setDrawColor(UITheme::Panel);

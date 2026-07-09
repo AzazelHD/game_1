@@ -28,6 +28,10 @@ public:
         m_useCustomPanelPos = true;
     }
     void clearPanelPosition() { m_useCustomPanelPos = false; }
+    // Keep the panel horizontally centered on screen while using m_panelPos.y
+    // for its vertical placement. Lets the box grow width-wise (with the font)
+    // and stay centered regardless of the resulting width.
+    void centerHorizontally(bool on = true) { m_centerX = on; }
 
     void handleInput(const Input &input) override;
     void update(float dt) override;
@@ -41,5 +45,6 @@ private:
     int m_scroll = 0;
     Vec2f m_panelPos{0.0f, 0.0f};
     bool m_useCustomPanelPos = false;
+    bool m_centerX = false;
     const Font *m_font = nullptr;
 };
