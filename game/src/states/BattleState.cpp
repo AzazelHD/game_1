@@ -135,18 +135,7 @@ void BattleState::onEnter()
     m_debugRenderer = &DebugRenderer::instance();
     m_debugRenderer->setEnabled(true);
 
-    // ── 8. Load default UI font (once) & wire to UnitPanel ──
-    if (!App::getDefaultFont())
-    {
-
-        const char *fontPath = R"(assets/fonts/PixeloidSans.ttf)";
-        Font *font = m_renderer->loadFont(fontPath, 16);
-        if (!font)
-            LOG_ERROR("Battle", "Failed to load font: %s", fontPath);
-        App::setDefaultFont(font);
-    }
-
-    // ── 8.1. Load skill database ─────────────────────────────────────────────
+    // ── 8. Load skill database ─────────────────────────────────────────────
     try
     {
         auto skills = SkillLoader::loadAll("assets/skills");

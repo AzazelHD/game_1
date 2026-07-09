@@ -17,6 +17,7 @@
 namespace
 {
     Font *g_mainTitleFont = nullptr;
+    Font *g_mainMenuFont = nullptr;
 }
 
 MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool fadeInOnEnter)
@@ -31,14 +32,12 @@ void MainMenuState::onEnter()
     m_transitioning = false;
     m_uiManager.clear();
 
-    if (!App::getDefaultFont())
-    {
-        Font *font = m_renderer ? m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 24.0f) : nullptr;
-        App::setDefaultFont(font);
-    }
+    if (!g_mainMenuFont && m_renderer)
+        g_mainMenuFont = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 32.0f);
 
     auto *menu = m_uiManager.push<ActionMenuWindow>("menu.main");
-    menu->setFont(App::getDefaultFont());
+    menu->setFont(g_mainMenuFont ? g_mainMenuFont : App::getDefaultFont());
+
     constexpr float menuW = 260.0f;
     constexpr float menuH = 170.0f;
     menu->setPanelPosition(Vec2f{GameConstants::VIEW_CX - menuW * 0.5f, GameConstants::VIEW_CY - menuH * 0.5f + 46.0f});
@@ -49,7 +48,7 @@ void MainMenuState::onEnter()
     });
 
     if (!g_mainTitleFont && m_renderer)
-        g_mainTitleFont = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 56.0f);
+        g_mainTitleFont = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 72.0f);
 
     if (m_fadeInOnEnter)
     {

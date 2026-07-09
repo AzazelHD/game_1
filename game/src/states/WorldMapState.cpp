@@ -119,12 +119,6 @@ void WorldMapState::onEnter()
     m_uiManager.clear();
     m_pendingBattle = PendingBattle{};
 
-    if (!App::getDefaultFont() && m_renderer)
-    {
-        Font *font = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 22);
-        App::setDefaultFont(font);
-    }
-
     updateHoverNode();
     updateCamera();
 }
