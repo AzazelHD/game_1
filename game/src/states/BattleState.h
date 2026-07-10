@@ -10,7 +10,7 @@
 #include "states/HumanTurnController.h"
 #include "battle/Grid.h"
 #include "battle/BattleMap.h"
-#include "battle/TurnQueue.h"
+#include "battle/BattleSession.h"
 #include "battle/MovementRange.h"
 #include "battle/PendingAttackController.h"
 #include "renderer/BattleRenderer.h"
@@ -23,6 +23,7 @@
 #include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
 #include "ui/DamagePreview.h"
+#include "ui/FloatingTextSystem.h"
 #include "ui/windows/DeploymentWindow.h"
 #include "ui/windows/UnitPanelWindow.h"
 #include "data/SkillLoader.h"
@@ -97,8 +98,7 @@ public:
         bool hudOpen;
         HumanTurnPhase &phase;
         Cursor &cursor;
-        TurnQueue &turnQueue;
-        std::vector<Unit *> &units;
+        BattleSession &session;
         std::unordered_set<Vec2i, Vec2iHash> &reachableTiles;
         Vec2i &moveStartPos;
         int &moveStartPointsLeft;
@@ -157,6 +157,7 @@ private:
     {
         None,
         PlayerConfirmedAttack,
+        ResolvingHits,
         EnemyAction,
     };
 
@@ -178,9 +179,9 @@ private:
 
     // ── Gameplay systems ───────────────────────────────────────────────────
     Grid m_grid{};
-    std::vector<Unit *> m_units;
+    BattleSession m_session;                      // owns all COMBAT units + the turn queue
+    std::vector<Unit *> m_deploymentPreviewUnits; // DEPLOYMENT ONLY
     std::unordered_map<std::string, SkillData> m_skillDB;
-    TurnQueue m_turnQueue;
     const BattleDefinition *m_battleDefinition = nullptr;
     DeploymentSystem m_deployment;
     BattleEventSystem m_eventSystem;
@@ -259,6 +260,17 @@ private:
     PendingAttackController m_pendingAttack;
     std::string m_pendingSkillId;
 
+    struct PendingHitResult
+    {
+        Unit *target = nullptr;
+        CombatResult result;
+    };
+
+    std::vector<PendingHitResult> m_pendingHitResults;
+    std::size_t m_pendingHitIndex = 0;
+    bool m_pendingAnyDied = false;
+    FloatingTextSystem m_floatingText;
+
     // ── Battle flow helpers ────────────────────────────────────────────────
     void startBattleEnd(bool playerWon);
     bool checkVictory() const;
@@ -291,6 +303,9 @@ private:
 
     void cyclePendingAttackTarget(int delta);
     void updatePendingAttackPreview(Unit *active);
-    void applyPendingAttack(Unit *active, const SkillData *skill);
+
+    void beginAttackResolution(Unit *active, const SkillData *skill);
+    void processNextPendingResult();
+    void finishAttackResolution();
     void cancelPendingAttack();
 };

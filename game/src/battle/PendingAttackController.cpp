@@ -19,9 +19,13 @@ void PendingAttackController::begin(Unit *active, Vec2i targetPos, Unit *directT
 
     if (skill && skill->area > 0)
     {
+        // AoE hits everyone in range regardless of team — including the
+        // caster themself if they're standing in the blast. Only
+        // single-target (area == 0) is restricted to enemies, and that
+        // restriction lives in HumanTurnController's targeting instead.
         for (Unit *u : units)
         {
-            if (!u || u->isDead() || u->getTeam() == active->getTeam())
+            if (!u || u->isDead())
                 continue;
             if (manhattanDistance(u->getPosition(), targetPos) <= skill->area)
                 m_targets.push_back(u);

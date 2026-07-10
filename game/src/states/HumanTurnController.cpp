@@ -17,7 +17,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
     if (ctx.controlMode != BattleState::PlayerControlMode::Human)
         return;
 
-    Unit *active = ctx.turnQueue.getCurrentUnit();
+    Unit *active = ctx.session.getCurrentUnit();
     if (!active || active->getTeam() != 0)
         return;
 
@@ -38,7 +38,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             else
             {
                 Unit *hovered = nullptr;
-                for (Unit *u : ctx.units)
+                for (Unit *u : ctx.session.getUnitPtrs())
                     if (u && !u->isDead() && u->getPosition() == cursorPos)
                     {
                         hovered = u;
@@ -86,7 +86,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
     {
         Vec2i cursorPos = ctx.cursor.getPosition();
         Unit *hoveredEnemy = nullptr;
-        for (Unit *u : ctx.units)
+        for (Unit *u : ctx.session.getUnitPtrs())
             if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == cursorPos)
             {
                 hoveredEnemy = u;
@@ -130,7 +130,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
         {
             Vec2i targetPos = ctx.cursor.getPosition();
             Unit *target = nullptr;
-            for (Unit *u : ctx.units)
+            for (Unit *u : ctx.session.getUnitPtrs())
                 if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == targetPos)
                 {
                     target = u;
@@ -149,7 +149,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
 
             if (!canAttack && skill && skill->area > 0)
             {
-                for (Unit *u : ctx.units)
+                for (Unit *u : ctx.session.getUnitPtrs())
                 {
                     if (u && !u->isDead() && u->getTeam() != 0 &&
                         manhattanDistance(u->getPosition(), targetPos) <= skill->area)
@@ -179,6 +179,12 @@ void HumanTurnController::handleActiveTurn(const Input &input)
 
             if (ctx.pendingAttack.empty())
                 return;
+
+            // Snap the cursor to whichever target ended up focused first —
+            // regardless of who's first in the vector — instead of leaving
+            // it on the casting tile.
+            if (Unit *focus = ctx.pendingAttack.focusedTarget())
+                ctx.cursor.setPosition(focus->getPosition());
 
             ctx.phase = BattleState::HumanTurnPhase::AttackConfirm;
             ctx.pendingSkillId = ctx.selectedSkillId;

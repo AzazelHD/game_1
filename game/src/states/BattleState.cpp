@@ -75,7 +75,9 @@ void BattleState::onEnter()
     m_selectedSkillId.clear();
     m_reachableTiles.clear();
     m_currentAttackRange = 1;
-    m_units.clear();
+    m_session.init({});
+    m_deploymentPreviewUnits.clear();
+    m_floatingText.clear();
     m_pendingRewardXp = 0;
     m_flowPhase = BattleFlowPhase::Deployment;
     m_showDefeatOverlay = false;
@@ -189,12 +191,12 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         .enabled = canMove,
         .onSelect = [this]()
         {
-            Unit *active = m_turnQueue.getCurrentUnit();
+            Unit *active = m_session.getCurrentUnit();
             if (active)
                 m_reachableTiles = MovementRange::compute(m_grid, m_battleMap,
                                                           active->getPosition(),
                                                           active->getMoveRangeLeft(),
-                                                          active->getTeam(), m_units,
+                                                          active->getTeam(), m_session.getUnitPtrs(),
                                                           active->getJump());
 
             m_humanTurnPhase = HumanTurnPhase::MoveTarget;
@@ -213,7 +215,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
             m_hud.clear();
         }});
 
-    Unit *active = m_turnQueue.getCurrentUnit();
+    Unit *active = m_session.getCurrentUnit();
     if (active && !active->getSkillIds().empty())
     {
         items.push_back(BattleMenuItem{
@@ -228,7 +230,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         .enabled = canAttack,
         .onSelect = [this]()
         {
-            Unit *active = m_turnQueue.getCurrentUnit();
+            Unit *active = m_session.getCurrentUnit();
             if (active)
             {
                 active->setMajorAction(MajorAction::Defend);
@@ -253,7 +255,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
 
 void BattleState::showSkillMenu()
 {
-    Unit *active = m_turnQueue.getCurrentUnit();
+    Unit *active = m_session.getCurrentUnit();
     if (!active)
         return;
 
@@ -296,7 +298,7 @@ void BattleState::showSkillMenu()
         .enabled = true,
         .onSelect = [this]()
         {
-            Unit *active = m_turnQueue.getCurrentUnit();
+            Unit *active = m_session.getCurrentUnit();
             if (active)
                 showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
             else
@@ -422,8 +424,7 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
         .hudOpen = m_hud.isOpen(),
         .phase = m_humanTurnPhase,
         .cursor = m_cursor,
-        .turnQueue = m_turnQueue,
-        .units = m_units,
+        .session = m_session,
         .reachableTiles = m_reachableTiles,
         .moveStartPos = m_moveStartPos,
         .moveStartPointsLeft = m_moveStartPointsLeft,
@@ -443,7 +444,7 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
 
 bool BattleState::canActiveUnitMove() const
 {
-    const Unit *active = m_turnQueue.getCurrentUnit();
+    const Unit *active = m_session.getCurrentUnit();
     if (!active)
         return false;
     return active->getMoveRangeLeft() > 0 && (!active->hasMoved() || active->hasActed());
@@ -684,6 +685,14 @@ void BattleState::processUIEvents(Unit *active)
             m_uiManager.hideById("battle.actionmenu");
             if (item.enabled && item.onSelect)
                 item.onSelect();
+            // The Accept press that selected this menu item is still "live"
+            // for the rest of this frame — without consuming it here, the
+            // very next input pass (HumanTurnController::handleActiveTurn,
+            // called right after this in the same handleInput() call) sees
+            // the same edge and can immediately fire whatever new phase we
+            // just entered (e.g. AoE targeting the cursor's current tile
+            // before the player ever pressed Accept themselves).
+            Input::instance().consumeKey(KeyCode::Accept);
             continue;
         }
 
@@ -728,6 +737,8 @@ void BattleState::processUIEvents(Unit *active)
         {
             cyclePendingAttackTarget(-1);
             updatePendingAttackPreview(active);
+            if (Unit *focus = m_pendingAttack.focusedTarget())
+                m_cursor.setPosition(focus->getPosition());
             continue;
         }
 
@@ -735,6 +746,8 @@ void BattleState::processUIEvents(Unit *active)
         {
             cyclePendingAttackTarget(1);
             updatePendingAttackPreview(active);
+            if (Unit *focus = m_pendingAttack.focusedTarget())
+                m_cursor.setPosition(focus->getPosition());
             continue;
         }
 
@@ -771,7 +784,7 @@ void BattleState::processUIEvents(Unit *active)
 
 void BattleState::preparePendingAttack(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill)
 {
-    m_pendingAttack.begin(active, targetPos, directTarget, skill, m_units);
+    m_pendingAttack.begin(active, targetPos, directTarget, skill, m_session.getUnitPtrs());
     updatePendingAttackPreview(active);
 }
 
@@ -809,41 +822,110 @@ void BattleState::updatePendingAttackPreview(Unit *active)
     m_topBattleText = textBuf;
 }
 
-void BattleState::applyPendingAttack(Unit *active, const SkillData *skill)
+void BattleState::beginAttackResolution(Unit *active, const SkillData *skill)
 {
     if (!active)
+    {
+        finishAttackResolution();
         return;
+    }
 
-    bool anyDied = false;
+    // Roll every target's hit/damage NOW, up front — deterministic for the
+    // rest of the sequence, rather than re-rolling mid-animation later.
+    m_pendingHitResults.clear();
+    m_pendingHitIndex = 0;
+    m_pendingAnyDied = false;
 
     for (Unit *u : m_pendingAttack.targets())
     {
         if (!u || u->isDead())
             continue;
-
         HitContext ctx = makeHitContext(active, u, skill);
-
-        CombatResult result = CombatSystem::resolve(ctx);
-        if (result.hit)
-        {
-            u->takeDamage(result.damage);
-            if (u->isDead())
-                anyDied = true;
-            LOG_INFO("Battle", "%s uses %s on %s for %d damage!",
-                     active->getName().c_str(),
-                     skill ? skill->name.c_str() : "Attack",
-                     u->getName().c_str(), result.damage);
-        }
-        else
-        {
-            LOG_INFO("Battle", "%s misses %s", active->getName().c_str(), u->getName().c_str());
-        }
+        m_pendingHitResults.push_back(PendingHitResult{.target = u, .result = CombatSystem::resolve(ctx)});
     }
 
-    if (skill)
-        active->setCurrentMp(active->getCurrentMp() - skill->mpCost);
+    if (skill && skill->castOncePerArea)
+    {
+        // TODO: play the skill's single cast animation once here (e.g. a
+        // dragon's breath), covering the whole area — before any individual
+        // hit/miss is shown. Something like:
+        //   m_combatAnimations.enqueue(skill->id + "_cast_once", castDuration);
+    }
 
-    active->setMajorAction(skill ? MajorAction::Skill : MajorAction::Attack);
+    m_pendingResolution = PendingResolution::ResolvingHits;
+    m_turnTimer = 0.4f; // TODO: tune per-hit pacing, maybe per-skill
+}
+
+void BattleState::processNextPendingResult()
+{
+    if (m_pendingHitIndex >= m_pendingHitResults.size())
+    {
+        finishAttackResolution();
+        return;
+    }
+
+    PendingHitResult &entry = m_pendingHitResults[m_pendingHitIndex];
+    m_session.applyDamage(*entry.target, entry.result);
+
+    const SkillData *skill = nullptr;
+    if (!m_pendingSkillId.empty())
+    {
+        auto it = m_skillDB.find(m_pendingSkillId);
+        if (it != m_skillDB.end())
+            skill = &it->second;
+    }
+    const bool castOnce = skill && skill->castOncePerArea;
+
+    if (entry.result.hit)
+    {
+        if (entry.target->isDead())
+            m_pendingAnyDied = true;
+
+        m_floatingText.enqueue(std::to_string(entry.result.damage), entry.target->getPosition(),
+                               Color{255, 90, 90, 255});
+
+        // TODO: play per-target cast animation here if !castOnce (e.g. a
+        // mage's fire bolt jumping target to target), plus a hit-impact
+        // animation on entry.target regardless of castOnce:
+        //   if (!castOnce) m_combatAnimations.enqueue(skill->id + "_cast", ...);
+        //   m_combatAnimations.enqueue("hit_impact", ...);
+
+        LOG_INFO("Battle", "Attack hits %s for %d damage!",
+                 entry.target->getName().c_str(), entry.result.damage);
+    }
+    else
+    {
+        m_floatingText.enqueue("MISS", entry.target->getPosition(), Color{200, 200, 200, 255});
+
+        // TODO: play a dodge/evade animation on entry.target:
+        //   m_combatAnimations.enqueue("dodge", ...);
+
+        LOG_INFO("Battle", "Attack misses %s", entry.target->getName().c_str());
+    }
+
+    ++m_pendingHitIndex;
+    m_turnTimer = 0.4f; // TODO: tune per-hit pacing; stays in WaitingForAnimation
+}
+
+void BattleState::finishAttackResolution()
+{
+    Unit *active = m_pendingActor ? m_pendingActor : m_session.getCurrentUnit();
+
+    const SkillData *skill = nullptr;
+    if (!m_pendingSkillId.empty())
+    {
+        auto it = m_skillDB.find(m_pendingSkillId);
+        if (it != m_skillDB.end())
+            skill = &it->second;
+    }
+
+    if (active)
+    {
+        if (skill)
+            active->setCurrentMp(active->getCurrentMp() - skill->mpCost);
+        active->setMajorAction(skill ? MajorAction::Skill : MajorAction::Attack);
+    }
+
     m_canUndoLastMove = false;
     m_selectedSkillId.clear();
     m_pendingSkillId.clear();
@@ -851,12 +933,25 @@ void BattleState::applyPendingAttack(Unit *active, const SkillData *skill)
     m_damagePreview.hide();
     m_pendingAttack.clear();
     m_topBattleText.clear();
+    m_pendingHitResults.clear();
+    m_pendingHitIndex = 0;
+
+    m_session.checkResult();
+
     m_hud.clear();
     m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-    openBattleMenu(canActiveUnitMove(), false, true, KeyCode::Accept);
+    if (active)
+        openBattleMenu(canActiveUnitMove(), false, true, KeyCode::Accept);
 
-    if (anyDied)
+    if (m_pendingAnyDied)
         m_eventSystem.emit(BattleTriggerType::OnUnitDeath);
+    m_pendingAnyDied = false;
+
+    m_pendingResolution = PendingResolution::None;
+    m_pendingActor = nullptr;
+    m_pendingTarget = nullptr;
+    m_pendingActionLabel.clear();
+    m_turnState = TurnState::ProcessingTurn;
 }
 
 void BattleState::cancelPendingAttack()
@@ -902,9 +997,9 @@ void BattleState::syncDeploymentPreviewUnits()
     m_inspectTargetUnit = nullptr;
     m_uiManager.popById("battle.deploy.inspectmenu");
 
-    for (Unit *u : m_units)
+    for (Unit *u : m_deploymentPreviewUnits)
         delete u;
-    m_units.clear();
+    m_deploymentPreviewUnits.clear();
 
     for (int y = 0; y < m_grid.getHeight(); ++y)
     {
@@ -918,7 +1013,7 @@ void BattleState::syncDeploymentPreviewUnits()
         if (!u)
             continue;
 
-        m_units.push_back(u);
+        m_deploymentPreviewUnits.push_back(u);
         if (m_grid.isValid(u->getPosition()))
             m_grid.getTile(u->getPosition()).occupied = true;
     }
@@ -952,7 +1047,7 @@ void BattleState::syncDeploymentPreviewUnits()
         if (!u)
             continue;
 
-        m_units.push_back(u);
+        m_deploymentPreviewUnits.push_back(u);
         m_grid.getTile(pos).occupied = true;
     }
 }
@@ -978,40 +1073,28 @@ void BattleState::startCombatPhase()
     m_inspectTargetUnit = nullptr;
     m_uiManager.popById("battle.deploy.inspectmenu");
 
-    for (Unit *u : m_units)
-        delete u;
-    m_units.clear();
-
+    // Tear down the preview list, not m_units — m_units is combat-only and
+    // is about to be filled for the first time, right below, from
+    // BattleParticipantsBuilder.
     for (int y = 0; y < m_grid.getHeight(); ++y)
     {
         for (int x = 0; x < m_grid.getWidth(); ++x)
             m_grid.getTile(Vec2i{x, y}).occupied = false;
     }
 
-    BattleParticipants participants = BattleParticipantsBuilder::build(*m_battleDefinition, m_battleMap, m_deployment);
-    if (participants.playerUnits.empty())
+    std::vector<UnitSpawn> spawns = BattleParticipantsBuilder::build(*m_battleDefinition, m_battleMap, m_deployment);
+    if (spawns.empty())
         return;
 
-    for (Unit *u : participants.playerUnits)
+    m_session.init(spawns);
+
+    for (Unit *u : m_session.getUnitPtrs())
     {
-        if (!u)
-            continue;
-        m_units.push_back(u);
-        if (m_grid.isValid(u->getPosition()))
+        if (u && m_grid.isValid(u->getPosition()))
             m_grid.getTile(u->getPosition()).occupied = true;
     }
 
-    for (Unit *u : participants.enemyUnits)
-    {
-        if (!u)
-            continue;
-        m_units.push_back(u);
-        if (m_grid.isValid(u->getPosition()))
-            m_grid.getTile(u->getPosition()).occupied = true;
-    }
-
-    m_turnQueue.init(m_units);
-    if (Unit *first = m_turnQueue.getCurrentUnit(); first)
+    if (Unit *first = m_session.getCurrentUnit(); first)
         m_cursor.setPosition(first->getPosition());
 
     m_uiManager.popById("battle.deployment");
@@ -1065,20 +1148,20 @@ void BattleState::spawnEnemyFromEvent(const std::string &templatePath)
     if (!found)
         return;
 
-    Unit *unit = UnitFactory::createUnitFromJson(templatePath, spawnPos, 2);
-    if (!unit)
-        return;
-
-    m_units.push_back(unit);
     m_grid.getTile(spawnPos).occupied = true;
-    m_turnQueue.insert(unit, TurnQueue::BASE_WAIT_COST / static_cast<float>(std::max(1, unit->getSpeed())));
+    m_session.spawnUnit(UnitSpawn{
+        .unitFilePath = templatePath,
+        .startPos = spawnPos,
+        .team = 2,
+    });
 }
 
 void BattleState::onExit()
 {
-    for (Unit *u : m_units)
+    // m_session owns its Units by value — no manual delete needed.
+    for (Unit *u : m_deploymentPreviewUnits)
         delete u;
-    m_units.clear();
+    m_deploymentPreviewUnits.clear();
 
     m_uiManager.clear();
     m_unitPanelWindow = nullptr;
@@ -1137,9 +1220,9 @@ void BattleState::handleInput()
             // getCurrentUnit() asserts on an empty timeline, which is exactly
             // the case during Deployment (the turn queue doesn't exist yet).
             // Only Combat has a "currently active unit" concept.
-            Unit *active = (m_flowPhase == BattleFlowPhase::Combat)
-                               ? m_turnQueue.getCurrentUnit()
-                               : nullptr;
+            Unit *active = nullptr;
+            if (m_flowPhase == BattleFlowPhase::Combat)
+                active = m_session.getCurrentUnit();
 
             // The action menu specifically should not be cancellable via
             // Back once the active unit has committed to its action and
@@ -1175,7 +1258,7 @@ void BattleState::handleInput()
             cancelPendingAttack();
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
 
-            const Unit *active = m_turnQueue.getCurrentUnit();
+            const Unit *active = m_session.getCurrentUnit();
             const bool canAttack = active && !active->hasActed();
             openBattleMenu(canActiveUnitMove(), canAttack, true, KeyCode::Back);
             return;
@@ -1199,12 +1282,12 @@ void BattleState::handleInput()
         {
             m_playerControlMode = PlayerControlMode::AI;
             LOG_INFO("Battle", "Switched to AI control (immediate takeover)");
-            Unit *active = m_turnQueue.getCurrentUnit();
+            Unit *active = m_session.getCurrentUnit();
             if (active && active->getTeam() == 0 && !active->isDead())
             {
                 m_hud.clear();
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_units);
+                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
                 m_cursor.setPosition(active->getPosition());
                 m_turnTimer = 0.15f;
                 m_turnState = TurnState::WaitingForAnimation;
@@ -1212,9 +1295,13 @@ void BattleState::handleInput()
         }
     }
 
+    // m_units is populated exclusively by startCombatPhase(), in the same
+    // call that flips m_flowPhase to Combat — the phase check alone is a
+    // sufficient and correct guard; probing m_units.empty() alongside it
+    // was redundant.
     Unit *active = nullptr;
-    if (m_flowPhase == BattleFlowPhase::Combat && !m_units.empty())
-        active = m_turnQueue.getCurrentUnit();
+    if (m_flowPhase == BattleFlowPhase::Combat)
+        active = m_session.getCurrentUnit();
 
     m_uiManager.handleInput(input);
     processUIEvents(active);
@@ -1240,6 +1327,7 @@ void BattleState::update(float dt)
 
     m_uiManager.update(dt);
     m_combatAnimations.update(dt);
+    m_floatingText.update(dt);
 
     if (m_transition.isActive())
     {
@@ -1290,6 +1378,13 @@ void BattleState::update(float dt)
                 setUnitPanelPreviewFromEntry(m_deployment.selectedEntry());
             }
         }
+
+        // Deployment has its own cursor/hover handling above (including the
+        // isSelectionLocked() gate on movement) — it must not fall through
+        // into the shared Combat code below, which calls m_cursor.update()
+        // unconditionally and would advance the cursor a second time this
+        // same frame, plus recompute m_hoveredUnit redundantly.
+        return;
     }
 
     if (m_showDefeatOverlay)
@@ -1298,13 +1393,13 @@ void BattleState::update(float dt)
 #ifdef _DEBUG
     if (m_autoPlayPhase == AutoPlayPhase::ShowMenu)
     {
-        Unit *active = m_turnQueue.getCurrentUnit();
+        Unit *active = m_session.getCurrentUnit();
         if (active)
         {
-            int action = m_autoPlayActionIndex; // 0=Move, 1=Attack, 2=Wait
-            if (action == 0 || action == 1)     // Move or Attack → let the AI do its thing
+            int action = m_autoPlayActionIndex;
+            if (action == 0 || action == 1)
             {
-                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_units);
+                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
                 m_cursor.setPosition(active->getPosition());
                 m_turnTimer = 0.15f;
                 m_turnState = TurnState::WaitingForAnimation;
@@ -1349,15 +1444,25 @@ void BattleState::update(float dt)
     Vec2i cursorPos = m_cursor.getPosition();
     m_hoveredUnit = unitAt(cursorPos);
 
+    // The turn-state machine (and everything that calls
+    // m_turnQueue.getCurrentUnit()) is only valid once the queue has been
+    // initialised in startCombatPhase(). During Deployment m_units is already
+    // populated with preview units, so without this guard the Idle case would
+    // call processCurrentTurn() -> getCurrentUnit() and assert on the empty
+    // timeline.
+    if (m_flowPhase != BattleFlowPhase::Combat)
+        return;
+
     // Turn state machine simulation loops
     switch (m_turnState)
     {
     case TurnState::Idle:
-        if (!m_units.empty())
-        {
-            m_turnState = TurnState::ProcessingTurn;
-            processCurrentTurn();
-        }
+        // Reaching this line already implies m_flowPhase == Combat (guarded
+        // above) and m_units populated (guaranteed by startCombatPhase()) —
+        // no separate "is there anything to process" check needed. This was
+        // the exact false "combat is ready" signal that caused the assert.
+        m_turnState = TurnState::ProcessingTurn;
+        processCurrentTurn();
         break;
 
     case TurnState::WaitingForAnimation:
@@ -1374,28 +1479,30 @@ void BattleState::update(float dt)
                         skill = &it->second;
                 }
 
-                Unit *active = m_pendingActor ? m_pendingActor : m_turnQueue.getCurrentUnit();
-                applyPendingAttack(active, skill);
+                Unit *active = m_pendingActor ? m_pendingActor : m_session.getCurrentUnit();
+                beginAttackResolution(active, skill);
+                // beginAttackResolution sets m_pendingResolution = ResolvingHits
+                // and its own m_turnTimer — stay in WaitingForAnimation, do
+                // NOT fall through to ProcessingTurn yet.
+                break;
+            }
 
-                m_pendingResolution = PendingResolution::None;
-                m_pendingActor = nullptr;
-                m_pendingTarget = nullptr;
-                m_pendingActionLabel.clear();
-                m_topBattleText.clear();
-                m_turnState = TurnState::ProcessingTurn;
+            if (m_pendingResolution == PendingResolution::ResolvingHits)
+            {
+                processNextPendingResult();
                 break;
             }
 
             if (m_pendingResolution == PendingResolution::EnemyAction)
             {
-                Unit *active = m_pendingActor ? m_pendingActor : m_turnQueue.getCurrentUnit();
+                Unit *active = m_pendingActor ? m_pendingActor : m_session.getCurrentUnit();
                 if (active && !active->isDead())
-                    EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_units);
+                    EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
 
                 int playersAliveAfter = 0;
-                for (const Unit *u : m_units)
+                for (const Unit &u : m_session.getUnits())
                 {
-                    if (u && !u->isDead() && u->getTeam() == 0)
+                    if (!u.isDead() && u.getTeam() == 0)
                         ++playersAliveAfter;
                 }
                 if (playersAliveAfter < m_pendingEnemyAliveBefore)
@@ -1490,8 +1597,8 @@ bool BattleState::checkDefeat() const
 int BattleState::countAliveEnemies() const
 {
     int n = 0;
-    for (const Unit *u : m_units)
-        if (u && !u->isDead() && u->getTeam() >= 2)
+    for (const Unit &u : m_session.getUnits())
+        if (!u.isDead() && u.getTeam() >= 2)
             n++;
     return n;
 }
@@ -1499,20 +1606,20 @@ int BattleState::countAliveEnemies() const
 int BattleState::countAlivePlayers() const
 {
     int n = 0;
-    for (const Unit *u : m_units)
-        if (u && !u->isDead() && u->getTeam() == 0)
+    for (const Unit &u : m_session.getUnits())
+        if (!u.isDead() && u.getTeam() == 0)
             n++;
     return n;
 }
 
 void BattleState::processCurrentTurn()
 {
-    Unit *active = m_turnQueue.getCurrentUnit();
+    Unit *active = m_session.getCurrentUnit();
     if (!active || active->isDead())
     {
         const float timeCost = TurnQueue::BASE_ACTION_COST /
                                (active ? static_cast<float>(active->getSpeed()) : 100.0f);
-        m_turnQueue.advance(timeCost);
+        m_session.advanceTurn(timeCost);
         m_turnState = TurnState::Idle;
         if (checkDefeat() || checkVictory())
             return;
@@ -1533,14 +1640,14 @@ void BattleState::processCurrentTurn()
     {
         m_pendingResolution = PendingResolution::EnemyAction;
         m_pendingActor = active;
-        m_pendingTarget = EnemyAI::chooseTarget(*active, m_units);
+        m_pendingTarget = EnemyAI::chooseTarget(*active, m_session.getUnitPtrs());
         m_pendingActionLabel = "Attack";
         m_topBattleText = m_pendingActionLabel;
 
         m_pendingEnemyAliveBefore = 0;
-        for (const Unit *u : m_units)
+        for (const Unit &u : m_session.getUnits())
         {
-            if (u && !u->isDead() && u->getTeam() == 0)
+            if (!u.isDead() && u.getTeam() == 0)
                 ++m_pendingEnemyAliveBefore;
         }
 
@@ -1555,7 +1662,7 @@ void BattleState::processCurrentTurn()
         if (m_playerControlMode == PlayerControlMode::AI)
         {
 #ifdef _DEBUG
-            int actionIndex = EnemyAI::chooseAction(*active, m_grid, m_units);
+            int actionIndex = EnemyAI::chooseAction(*active, m_grid, m_session.getUnitPtrs());
             m_autoPlayActionIndex = actionIndex;
             m_autoPlayPhase = AutoPlayPhase::ShowMenu;
             m_autoPlayTimer = 0.1f;
@@ -1577,24 +1684,27 @@ void BattleState::advanceToNextUnit()
 {
     m_eventSystem.emit(BattleTriggerType::OnTurnEnd);
 
-    Unit *active = m_turnQueue.getCurrentUnit();
+    Unit *active = m_session.getCurrentUnit();
     if (active)
     {
-        float timeCost = 0.0f;
-        if (active->hasMoved())
-            timeCost += TurnQueue::BASE_MOVE_COST;
-        if (active->hasActed())
-            timeCost += TurnQueue::BASE_ACTION_COST;
-        if (timeCost == 0.0f)
-            timeCost = TurnQueue::BASE_WAIT_COST; // waited
+        float timeCost;
+        if (active->hasMoved() && active->hasActed())
+            timeCost = TurnQueue::BASE_MOVE_AND_ACTION_COST;
+        else if (active->hasActed())
+            timeCost = TurnQueue::BASE_ACTION_COST;
+        else if (active->hasMoved())
+            timeCost = TurnQueue::BASE_MOVE_COST;
+        else
+            timeCost = TurnQueue::BASE_WAIT_COST;
+
         timeCost /= static_cast<float>(active->getSpeed());
-        m_turnQueue.advance(timeCost);
+        m_session.advanceTurn(timeCost);
     }
 
     m_canUndoLastMove = false; // turn is over — nothing left to undo
 
     // Turn banner — no round number, just the unit name
-    Unit *nextUnit = m_turnQueue.getCurrentUnit();
+    Unit *nextUnit = m_session.getCurrentUnit();
     if (nextUnit && m_unitPanelWindow)
         m_unitPanelWindow->setTurnInfo(nextUnit, 0); // 0 means round-less
 
@@ -1670,7 +1780,7 @@ void BattleState::render(float alpha)
             .cursorHoverOffset = m_cursorHoverOffset,
             .cursorTriW = m_cursorTriW,
             .cursorTriH = m_cursorTriH,
-            .units = m_units,
+            .units = (m_flowPhase == BattleFlowPhase::Deployment) ? m_deploymentPreviewUnits : m_session.getUnitPtrs(),
             .debugRenderer = m_debugRenderer,
             .showSpawnOverlays = (m_flowPhase == BattleFlowPhase::Deployment),
             .overlayMode = overlayMode,
@@ -1706,14 +1816,14 @@ void BattleState::render(float alpha)
         if (m_flowPhase != BattleFlowPhase::Deployment)
         {
             Unit *active = nullptr;
-            if (m_flowPhase == BattleFlowPhase::Combat && !m_units.empty())
-                active = m_turnQueue.getCurrentUnit();
+            if (m_flowPhase == BattleFlowPhase::Combat)
+                active = m_session.getCurrentUnit();
             m_unitPanelWindow->setTurnInfo(active, 0);
 
             if (m_pendingResolution != PendingResolution::None && m_pendingActor)
             {
                 if (m_pendingTarget && !m_pendingTarget->isDead())
-                    m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget);
+                    m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget, m_pendingTarget->getTeam() != 0);
                 else
                     m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam() != 0);
             }
@@ -1727,10 +1837,13 @@ void BattleState::render(float alpha)
                 else
                     target = m_hoveredUnit;
 
-                if (active && !active->isDead() && target && !target->isDead())
-                    m_unitPanelWindow->setDuel(active, target);
-                else if (active && !active->isDead())
-                    m_unitPanelWindow->setSingle(active, active->getTeam() != 0);
+                if (active && !active->isDead())
+                {
+                    if (target && !target->isDead())
+                        m_unitPanelWindow->setDuel(active, target, target->getTeam() != 0);
+                    else
+                        m_unitPanelWindow->setSingle(active, active->getTeam() != 0);
+                }
                 else
                     m_unitPanelWindow->clearPanels();
             }
@@ -1862,7 +1975,7 @@ void BattleState::render(float alpha)
 void BattleState::computeAttackRangeTiles()
 {
     m_attackRangeTiles.clear();
-    Unit *active = m_turnQueue.getCurrentUnit();
+    Unit *active = m_session.getCurrentUnit();
     if (!active)
         return;
 
@@ -1880,7 +1993,10 @@ void BattleState::computeAttackRangeTiles()
 
 Unit *BattleState::unitAt(Vec2i pos) const
 {
-    for (Unit *u : m_units)
+    const std::vector<Unit *> &units =
+        (m_flowPhase == BattleFlowPhase::Deployment) ? m_deploymentPreviewUnits : m_session.getUnitPtrs();
+
+    for (Unit *u : units)
         if (u && !u->isDead() && u->getPosition() == pos)
             return u;
     return nullptr;

@@ -42,12 +42,12 @@ void UnitPanelWindow::setSingle(const Unit *unit, bool isEnemy)
     m_singleEnemy = isEnemy;
 }
 
-void UnitPanelWindow::setDuel(const Unit *left, const Unit *right)
+void UnitPanelWindow::setDuel(const Unit *left, const Unit *right, bool rightIsEnemy)
 {
     m_hasPreview = false;
     m_leftUnit = left;
     m_rightUnit = right;
-    m_singleEnemy = false;
+    m_rightIsEnemy = rightIsEnemy;
 }
 
 void UnitPanelWindow::setPreview(std::string name, int level, int hp, int mp, bool isEnemy, bool isPlaced)
@@ -98,17 +98,20 @@ void UnitPanelWindow::render(Renderer *renderer) const
 
     if (m_leftUnit && m_rightUnit)
     {
-        const Rectf leftRect = UnitPortrait::render(renderer,
-                                                    m_font,
-                                                    *m_leftUnit,
-                                                    Vec2f{leftX, baseY},
-                                                    UnitPortrait::PortraitStyle{.mirrored = false, .enemy = false, .transparent = false});
+        const Rectf leftRect =
+            UnitPortrait::render(renderer,
+                                 m_font,
+                                 *m_leftUnit,
+                                 Vec2f{leftX, baseY},
+                                 UnitPortrait::PortraitStyle{.mirrored = false, .enemy = false, .transparent = false});
+
         const float rightX = GameConstants::VIEW_W - leftRect.w - 16.0f * ui;
+
         UnitPortrait::render(renderer,
                              m_font,
                              *m_rightUnit,
                              Vec2f{rightX, baseY},
-                             UnitPortrait::PortraitStyle{.mirrored = true, .enemy = true, .transparent = false});
+                             UnitPortrait::PortraitStyle{.mirrored = true, .enemy = m_rightIsEnemy, .transparent = false});
         return;
     }
 

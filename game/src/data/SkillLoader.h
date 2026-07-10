@@ -28,6 +28,13 @@ struct SkillData
     int area = 0;                             // AoE radius (0 = single target)
     int mpCost = 0;                           // MP required to use
     std::vector<SkillEffectType> effectTypes; // "damage", "heal", "buff", "debuff"
+
+    // true  = cast animation plays ONCE before resolving all targets (e.g.
+    //         a dragon's breath weapon) — TODO: play it in beginAttackResolution().
+    // false = cast animation plays before EACH target (e.g. a mage's
+    //         fire bolt jumping target to target) — TODO: play it per-step
+    //         in processNextPendingResult().
+    bool castOncePerArea = false;
 };
 
 // SkillLoader reads skill definitions from JSON.

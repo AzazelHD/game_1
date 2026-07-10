@@ -41,9 +41,17 @@ struct TurnEntry
 class TurnQueue
 {
 public:
-    static constexpr float BASE_WAIT_COST = 250.f;
-    static constexpr float BASE_MOVE_COST = 500.f;
-    static constexpr float BASE_ACTION_COST = 750.f;
+    // Each cost is its own dedicated number (not summed from the others).
+    // Order cheapest → most expensive:  wait < move < action == defend < move+action.
+    // Dividing by speed is what makes turn frequency proportional to speed:
+    // a unit with 2x the speed of another, doing the same action repeatedly,
+    // ends up acting exactly 2x as often over time — same math as an FFT-style
+    // CT/ATB gauge, just expressed as "time until next turn" instead of a
+    // counter filling toward a threshold.
+    static constexpr float BASE_WAIT_COST = 40.f;
+    static constexpr float BASE_MOVE_COST = 50.f;
+    static constexpr float BASE_ACTION_COST = 75.f;
+    static constexpr float BASE_MOVE_AND_ACTION_COST = 100.f;
 
     // Populate the timeline from a list of units and build the initial preview.
     // Units are inserted with timeUntilTurn = (BASE_MOVE_COST + BASE_ACTION_COST) / speed,

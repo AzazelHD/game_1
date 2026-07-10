@@ -1,28 +1,26 @@
+#include "config/BattleCatalog.h"
+#include "battle/BattleMap.h"
 #include "systems/BattleParticipantsBuilder.h"
 
-#include "battle/BattleMap.h"
-#include "battle/UnitFactory.h"
-#include "config/BattleCatalog.h"
-
-BattleParticipants BattleParticipantsBuilder::build(const BattleDefinition &definition,
-                                                    const BattleMap &battleMap,
-                                                    const DeploymentSystem &deployment)
+std::vector<UnitSpawn> BattleParticipantsBuilder::build(const BattleDefinition &definition,
+                                                        const BattleMap &battleMap,
+                                                        const DeploymentSystem &deployment)
 {
-    BattleParticipants result;
+    std::vector<UnitSpawn> spawns;
 
     for (const DeploymentEntry &placed : deployment.deployed())
     {
-        Unit *u = UnitFactory::createUnitFromJson(placed.templatePath, placed.position, 0);
-        if (u)
-            result.playerUnits.push_back(u);
+        spawns.push_back(UnitSpawn{
+            .unitFilePath = placed.templatePath,
+            .startPos = placed.position,
+            .team = 0,
+        });
     }
 
     std::vector<GameTile *> enemySpawns;
     for (const auto &pair : battleMap.enemySpawnsByTeam)
-    {
         for (GameTile *tile : pair.second)
             enemySpawns.push_back(tile);
-    }
 
     std::size_t spawnIndex = 0;
     for (const EnemyDefinition &enemy : definition.enemies)
@@ -34,11 +32,12 @@ BattleParticipants BattleParticipantsBuilder::build(const BattleDefinition &defi
             pos = Vec2i{tile->col, tile->row};
             ++spawnIndex;
         }
-
-        Unit *u = UnitFactory::createUnitFromJson(enemy.templatePath, pos, enemy.team);
-        if (u)
-            result.enemyUnits.push_back(u);
+        spawns.push_back(UnitSpawn{
+            .unitFilePath = enemy.templatePath,
+            .startPos = pos,
+            .team = enemy.team,
+        });
     }
 
-    return result;
+    return spawns;
 }

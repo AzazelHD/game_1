@@ -12,6 +12,8 @@ void BattleSession::init(const std::vector<UnitSpawn> &spawns)
 {
     m_units.clear();
     m_units.reserve(UNIT_CAPACITY);
+    m_unitPtrs.clear();
+    m_unitPtrs.reserve(UNIT_CAPACITY);
     m_criticalUnits.clear();
     m_bossUnits.clear();
     m_result = BattleResult::Ongoing;
@@ -19,6 +21,7 @@ void BattleSession::init(const std::vector<UnitSpawn> &spawns)
     for (const auto &spawn : spawns)
     {
         Unit &unit = buildUnit(spawn);
+        m_unitPtrs.push_back(&unit);
 
         if (spawn.isCritical)
             m_criticalUnits.push_back(&unit);
@@ -26,18 +29,13 @@ void BattleSession::init(const std::vector<UnitSpawn> &spawns)
             m_bossUnits.push_back(&unit);
     }
 
-    // Collect raw pointers for TurnQueue — safe because m_units never reallocates
-    std::vector<Unit *> ptrs;
-    ptrs.reserve(m_units.size());
-    for (auto &u : m_units)
-        ptrs.push_back(&u);
-
-    m_queue.init(ptrs);
+    m_queue.init(m_unitPtrs);
 }
 
 Unit BattleSession::makeUnit(const UnitSpawn &spawn)
 {
     UnitData data = UnitLoader::load(spawn.unitFilePath);
+    data.team = spawn.team;
     const RaceData &raceData = getRaceData(data.race);
     const GenderData &genderData = getGenderData(data.gender);
 
@@ -50,6 +48,7 @@ void BattleSession::spawnUnit(const UnitSpawn &spawn)
            "Unit capacity exceeded — increase UNIT_CAPACITY");
 
     Unit &unit = buildUnit(spawn);
+    m_unitPtrs.push_back(&unit);
     float speed = static_cast<float>(unit.getSpeed());
     float timeCost = TurnQueue::BASE_MOVE_COST / speed;
 
@@ -104,38 +103,19 @@ void BattleSession::update(float dt)
     (void)dt;
 }
 
-void BattleSession::applyResult(Unit &attacker, Unit &target,
-                                const CombatResult &result, float turnCost)
+void BattleSession::applyDamage(Unit &target, const CombatResult &result)
 {
-    // Apply damage or healing
-    if (result.hit)
-    {
-        if (result.absorbed)
-            target.heal(result.damage);
-        else
-            target.takeDamage(result.damage);
-    }
+    if (!result.hit)
+        return;
 
-    // If target died and disappears, remove from timeline
-    if (target.isDead())
-    {
-        target.setState(UnitState::Dead);
+    if (result.absorbed)
+        target.heal(result.damage);
+    else
+        target.takeDamage(result.damage);
 
-        // NOTE: BattleState is responsible for calling replaceUnit() if wave mode.
-        // Here we only handle the disappear-on-death case for normal missions.
-        // For persistent dead (zombies etc.), unit stays in timeline as-is.
-    }
-
-    // Advance attacker's turn
-    m_queue.advance(turnCost);
-
-    // Check win/lose after every action
-    checkBattleResult();
-}
-
-BattleResult BattleSession::getResult() const
-{
-    return m_result;
+    // Death already flips the unit's state inside takeDamage() — nothing
+    // else to do here. Left as a hook point for wave-mode replacement logic
+    // (BattleState is responsible for calling replaceUnit() if wave mode).
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +125,7 @@ BattleResult BattleSession::getResult() const
 Unit &BattleSession::buildUnit(const UnitSpawn &spawn)
 {
     UnitData data = UnitLoader::load(spawn.unitFilePath);
+    data.team = spawn.team;
     const RaceData &raceData = getRaceData(data.race);
     const GenderData &genderData = getGenderData(data.gender);
 

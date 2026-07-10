@@ -1,12 +1,15 @@
 #pragma once
-#include <string>
+
 #include "battle/UnitData.h"
+
+#include <string>
+#include <random>
 
 class Unit;
 
 enum class AttackSide
 {
-    Front, // +0 accuracy
+    Front, // +0 accuracy, -damage multiplier
     Side,  // +10 accuracy
     Rear,  // +20 accuracy, +damage multiplier
 };
@@ -69,9 +72,21 @@ public:
     static constexpr float AFFINITY_IMMUNE = 0.00f;
 
 private:
+    static std::mt19937 &rng();
     static bool rollHit(const HitContext &ctx);
     static bool rollCrit();
     static int computeDamage(const HitContext &ctx);
+    // Shared by resolve() and preview(): basePower + attacker stat, with the
+    // AttackSide multiplier applied. No variance, no crit, no defense/affinity
+    // yet — those differ between resolve() (adds variance+crit) and preview()
+    // (neither), so they stay in each caller.
+    static int computeBaseOffense(const HitContext &ctx);
+    // Applies element affinity to `offense` in place, and records the result
+    // (and, for Absorb, sets result.absorbed) into `outResult`. Shared verbatim
+    // between resolve() and preview() — the affinity switch was identical in both.
+    static void applyAffinity(const HitContext &ctx, int &offense, CombatResult &outResult);
     static Affinity getAffinity(const Unit &target, Element element);
     static int sideAccuracyBonus(AttackSide side);
+    static int applySideMultiplier(int offense, AttackSide side);
+    static int rollVariance(int variance);
 };
