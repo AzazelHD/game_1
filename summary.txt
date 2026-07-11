@@ -1,0 +1,51 @@
+TRPG Battle System — Consolidated Summary
+        Fully resolved this /
+    previous session(files touched, no further detail)
+
+        ESC as real stack navigation — BattleState.cpp forwards Back to whatever's on top of the UI stack instead of manual hasWindow/popById chains. Persistent action menu(show / hide instead of create / destroy) — UIWindow.h(visible flag), UIManager.h
+    /.cpp(hideById, visibility - aware handleInput / render / hasBlockingWindow),
+    BattleHud.h /.cpp(caches ActionMenuWindow *).SelectableList extraction — shared selection + scroll helper, used by ActionMenuWindow, PartyWindow, InspectWindow.friend class HumanTurnController → real API — BattleState.h exposes HumanTurnContext struct + makeHumanTurnContext();
+HumanTurnController.cpp uses ctx.field instead of reaching into BattleState internals.Deployment cursor / selection bugs — DeploymentSystem.h /.cpp(deployedEntryFor / deployedEntryAt), BattleState.cpp(syncCursorToSelection, tile - based Accept handling).Inspect submenu positioning — ActionMenuWindow.h /.cpp gained setAnchorBottomRight().Red "X" placed - marker on hover — BattleState::update() routes hover through the same preview path as QE - cycling.Settings layout — engine / ui / HorizontalLayout.h gained computeBounds / Container / layoutRow(self - sizing boxes);
+SettingsState.cpp rewritten to use them; kTrackW restored to 280.
+Settings background color vs. main menu — SettingsState.cpp: Color{6,10,20,220} → Color{12,14,20,255} (closer to MainMenuState's {18,21,29}, still visibly darker).
+m_units double-purpose deployment/combat bug (assert crash) — split into m_units (combat-only) and m_deploymentPreviewUnits, fixed across BattleState.cpp.
+BattleSession connected (was dead code) — BattleState.h/.cpp migrated off raw m_units/TurnQueue onto BattleSession m_session; BattleParticipantsBuilder rewritten to return std::vector<UnitSpawn> instead of constructing Unit* directly; team-assignment bug fixed in BattleSession::buildUnit/makeUnit.
+CombatSystem deduplication + seeded RNG — shared computeBaseOffense/applySideMultiplier/applyAffinity; std::rand() replaced with seeded std::mt19937.
+Turn-cost rebalance — TurnQueue.h dedicated constants (BASE_WAIT_COST=20, BASE_MOVE_COST=35, BASE_ACTION_COST=70, BASE_MOVE_AND_ACTION_COST=90, not summed); BattleState::advanceToNextUnit() and TurnQueue::init()/BattleSession::spawnUnit/replaceUnit all consistent.
+Team-based portrait colors — UnitPortrait.h/.cpp (PortraitStyle.team + teamFrameColor()), UnitPanelWindow.h/.cpp (setSingle/setDuel/setPreview take int team), all BattleState.cpp call sites updated.
+AoE targeting fixes — PendingAttackController.cpp no longer excludes the caster's own team from AoE; cursor now follows the focused target (initial + QE rotation) in HumanTurnController.cpp and BattleState.cpp; stray unconsumed Accept keypress firing AoE without player input fixed via Input::instance().consumeKey(KeyCode::Accept) in processUIEvents().
+Attack resolution animation scaffold (no real animations yet — no assets exist) — new ui/FloatingTextSystem.h/.cpp; BattleState.h/.cpp gained beginAttackResolution/processNextPendingResult/finishAttackResolution replacing the old synchronous applyPendingAttack; SkillData gained castOncePerArea flag, wired into SkillLoader.cpp JSON parsing.
+Victory/Defeat unification — BattleCatalog.h gained configurable BattleVictoryRule/BattleDefeatRule per BattleDefinition (default KillAll/AllAlliesDead, no changes needed to existing 3 maps); BattleSession bug fixed (allTeamDead(1) was checking a team that never exists — enemies are team≥2, not 1, so victory was vacuously true from frame 1); BattleState::checkVictory()/checkDefeat() now read m_session.getResult() directly instead of counting manually; EnemyAI::takeTurn call sites in BattleState gained m_session.checkResult() since EnemyAI applies damage directly and doesn't refresh the cached result itself; dead countAliveEnemies()/countAlivePlayers() removed.
+
+Still open — nothing implemented
+
+BattleState SRP / god-class breakup (largest item, both TODO lists agree on this). Scope, unchanged from original plan:
+
+Extract menu construction (showBattleMenu/showSkillMenu/showSystemMenu) out of BattleState.
+Extract pending-attack flow — now larger than when this was first proposed, since this session added beginAttackResolution/processNextPendingResult/finishAttackResolution + PendingHitResult state, all still inside BattleState.
+Isolate the AutoPlayPhase debug/autoplay state machine, currently inline in update().
+Will touch most of states/. Recommended to do last since everything else feeds into it.
+
+
+Turn queue UI widget — data layer ready (BattleSession::getPreview()), rendering widget not built. Blocked on user's layout preference (portrait strip vs. text list) — user said to drop this for now.
+Real animations — CombatAnimationSystem::render() and FloatingTextSystem::render() are empty stubs with TODOs at each call site. Blocked on actual animation assets not existing yet (user confirmed no animations built). FloatingTextSystem::render() will need the same iso/camera transform BattleRenderer::drawUnitAt() uses (BattleRenderer.h/.cpp already reviewed, has the reference pattern to follow).
+Multi-target AoE display — user confirmed single focused-target-with-correct-color (already fixed) is sufficient; showing ALL AoE targets simultaneously in the bottom-right panel was explicitly declined as unnecessary scope.
+
+Notes for next session
+
+User is tracking token budget carefully; prefer small self-contained fixes over large multi-file refactors unless explicitly told there's budget for it.
+EnemyAI.h/.cpp, BattleRenderer.h/.cpp, BattleRendererContext.h, MainMenuState.cpp, UnitPanelWindow.h/.cpp, UnitPortrait.h/.cpp, HorizontalLayout.h, VerticalLayout.h, Insets.h, SettingsState.cpp, TurnQueue.h/.cpp, BattleSession.h/.cpp, BattleParticipantsBuilder.h/.cpp, SkillLoader.h/.cpp, PendingAttackController.h/.cpp, DamagePreview.h/.cpp, ConfirmWindow.h/.cpp, ActionMenuWindow.h/.cpp, DeploymentSystem.h/.cpp, DeploymentWindow.h/.cpp, CombatSystem.h/.cpp, Unit.h/.cpp, UnitData.h, BattleCatalog.h/.cpp have all been reviewed in full this session — reuse rather than re-request unless the user says they've since edited them again.
+Not yet reviewed: BattleHud.h/.cpp, Cursor.h/.cpp, UIManager.h/.cpp, UIWindow.h, PartyWindow.h/.cpp, InspectWindow.h/.cpp, DialogWindow.h/.cpp.
+
+NUEVO pendiente — processUIEvents() es una god-function (~400 líneas)
+Candidato principal para cuando se aborde el punto 5 (SRP de BattleState). Estructura actual: un único for sobre eventos con una cadena larga de if (event.windowId == "..." && event.type == ...), mezclando:
+
+Eventos de Deployment (battle.deployment, battle.deploy.inspectmenu, battle.actionmenu en fase Deployment)
+Eventos de Combat (battle.actionmenu, battle.skillmenu, battle.confirm — con NavigatePrevious/NavigateNext/ConfirmResult)
+Eventos compartidos (battle.dialog, battle.inspect, battle.deployment.confirm)
+
+División sugerida cuando se aborde: separar en algo como processDeploymentUIEvents(event) / processCombatUIEvents(event, active) / processSharedUIEvents(event), despachadas desde un processUIEvents mucho más corto. También hay duplicación real entre el manejo de battle.actionmenu en Deployment y en Combat (misma estructura ActionSelected/hideById/item.onSelect(), con pequeñas diferencias) que podría unificarse una vez separado por fase.
+No implementado — pendiente de la sesión de refactor grande.
+
+NUEVO pendiente — Multi-cast skills (ej. "Double Cast" de FFTA) — diseño CERRADO
+SkillData ganaría int castCount = 1. Flujo: bucle de castCount iteraciones de (elegir skill vía battle.skillmenu reabierto y refrescado → elegir objetivo vía AttackTarget), cada paso es su propio nivel de pila — ESC retrocede exactamente un nivel en todo momento (elegir objetivo de cast N → elegir skill de cast N → elegir objetivo de cast N-1 → ...), decisión explícita de mejorar sobre el comportamiento de FFTA (que saltaba directo al menú de acciones), sin coste extra ya que es el comportamiento por defecto de la pila. Objetivos pueden repetirse o ser distintos entre casts. Tras elegir todos los objetivos: una única confirmación (battle.confirm) cubre el combo completo. Resolución: beginAttackResolution/processNextPendingResult se ejecuta una vez completa por cast, en cadena — animación+texto flotante del cast 1 termina antes de que empiece el cast 2. Tras terminar todos los casts: vuelve al flujo normal (Move si quedan puntos, o Wait/Defend), sin diferencias respecto a una acción simple. Genérico y reutilizable para cualquier skill futura con castCount > 1. No implementado — pendiente de sesión dedicada dado el alcance (menús, targeting, máquina de resolución).

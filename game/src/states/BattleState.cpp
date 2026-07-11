@@ -81,6 +81,7 @@ void BattleState::onEnter()
     m_pendingRewardXp = 0;
     m_flowPhase = BattleFlowPhase::Deployment;
     m_showDefeatOverlay = false;
+    m_showVictoryOverlay = false;
     m_pendingResolution = PendingResolution::None;
     m_pendingActor = nullptr;
     m_pendingTarget = nullptr;
@@ -193,11 +194,14 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         {
             Unit *active = m_session.getCurrentUnit();
             if (active)
+            {
                 m_reachableTiles = MovementRange::compute(m_grid, m_battleMap,
                                                           active->getPosition(),
                                                           active->getMoveRangeLeft(),
                                                           active->getTeam(), m_session.getUnitPtrs(),
                                                           active->getJump());
+                m_cursor.setPosition(active->getPosition());
+            }
 
             m_humanTurnPhase = HumanTurnPhase::MoveTarget;
             m_hud.clear();
@@ -211,6 +215,8 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
             m_currentAttackRange = 1;
             m_selectedSkillId.clear();
             computeAttackRangeTiles();
+            if (Unit *active = m_session.getCurrentUnit())
+                m_cursor.setPosition(active->getPosition());
             m_humanTurnPhase = HumanTurnPhase::AttackTarget;
             m_hud.clear();
         }});
@@ -259,15 +265,10 @@ void BattleState::showSkillMenu()
     if (!active)
         return;
 
-    LOG_INFO("Battle", "showSkillMenu: unit %s has %zu skill IDs",
-             active->getName().c_str(), active->getSkillIds().size());
-
-    std::vector<BattleMenuItem> items;
+    m_skillMenuItems.clear();
 
     for (const std::string &skillId : active->getSkillIds())
     {
-        LOG_INFO("Battle", "  -> %s", skillId.c_str());
-
         auto it = m_skillDB.find(skillId);
         if (it == m_skillDB.end())
             continue;
@@ -276,7 +277,7 @@ void BattleState::showSkillMenu()
         std::string label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
         bool canUse = (active->getCurrentMp() >= skill.mpCost);
 
-        items.push_back(BattleMenuItem{
+        m_skillMenuItems.push_back(BattleMenuItem{
             .label = label,
             .enabled = canUse,
             .onSelect = [this, skillId]()
@@ -288,24 +289,39 @@ void BattleState::showSkillMenu()
                     m_selectedSkillId = skillId;
                     computeAttackRangeTiles();
                 }
+                if (Unit *active = m_session.getCurrentUnit())
+                    m_cursor.setPosition(active->getPosition());
                 m_humanTurnPhase = HumanTurnPhase::AttackTarget;
+                m_uiManager.popById("battle.skillmenu");
                 m_hud.clear();
             }});
     }
 
-    items.push_back(BattleMenuItem{
-        .label = "Back",
-        .enabled = true,
-        .onSelect = [this]()
-        {
-            Unit *active = m_session.getCurrentUnit();
-            if (active)
-                showBattleMenu(!active->hasMoved(), !active->hasActed(), true);
-            else
-                m_hud.clear();
-        }});
+    // A real push onto the UI stack — a second, distinct level above
+    // battle.actionmenu, which stays untouched underneath. Back pops just
+    // this window and battle.actionmenu is revealed exactly as it was, the
+    // same way any other stacked window already behaves.
+    m_uiManager.popById("battle.skillmenu");
+    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.skillmenu");
+    menu->setFont(App::getDefaultFont());
+    if (m_flowPhase == BattleFlowPhase::Combat)
+    {
+        UIScale::refresh();
+        const float ui = UIScale::factor();
+        menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
+    }
 
-    m_hud.setItems(std::move(items), m_flowPhase == BattleFlowPhase::Combat);
+    std::vector<ActionMenuWindow::Item> uiItems;
+    uiItems.reserve(m_skillMenuItems.size());
+    for (int i = 0; i < static_cast<int>(m_skillMenuItems.size()); ++i)
+    {
+        uiItems.push_back(ActionMenuWindow::Item{
+            .id = std::to_string(i),
+            .label = m_skillMenuItems[i].label,
+            .enabled = m_skillMenuItems[i].enabled,
+        });
+    }
+    menu->setItems(std::move(uiItems));
 }
 
 void BattleState::showSystemMenu()
@@ -362,6 +378,21 @@ void BattleState::showInspectWindow(Unit *unit)
     inspect->setTitle("Unit Inspect");
     inspect->setLines(InspectWindow::buildLines(unit->getData()));
     m_inspectWindow = inspect;
+}
+
+void BattleState::openUnitInspectMenu(Unit *unit)
+{
+    if (!unit)
+        return;
+
+    m_inspectTargetUnit = unit;
+    m_uiManager.popById("battle.inspectmenu");
+    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.inspectmenu");
+    menu->setFont(App::getDefaultFont());
+    menu->setAnchorBottomRight();
+    menu->setItems({
+        ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
+    });
 }
 
 void BattleState::showInspectWindowFromTemplate(const std::string &templatePath)
@@ -511,17 +542,7 @@ void BattleState::processUIEvents(Unit *active)
                 // since Accept on an enemy could grow more options later).
                 if (m_hoveredUnit && m_hoveredUnit->getTeam() != 0)
                 {
-                    m_inspectTargetUnit = m_hoveredUnit;
-                    m_uiManager.popById("battle.deploy.inspectmenu");
-                    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.deploy.inspectmenu");
-                    menu->setFont(App::getDefaultFont());
-                    UIScale::refresh();
-                    const float ui = UIScale::factor();
-                    menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui,
-                                                 GameConstants::VIEW_H - 240.0f * ui});
-                    menu->setItems({
-                        ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
-                    });
+                    openUnitInspectMenu(m_hoveredUnit);
                     continue;
                 }
 
@@ -530,8 +551,9 @@ void BattleState::processUIEvents(Unit *active)
                 // (without QE-selecting it) behaves the same as QE landing on it.
                 if (const DeploymentEntry *placedHere = m_deployment.deployedEntryAt(cursorPos))
                 {
-                    if (m_deployment.unplaceUnit(placedHere->unitId) &&
-                        m_deployment.grabUnit(placedHere->unitId))
+                    const std::string unitId = placedHere->unitId;
+                    if (m_deployment.unplaceUnit(unitId) &&
+                        m_deployment.grabUnit(unitId))
                     {
                         syncDeploymentPreviewUnits();
                         refreshDeploymentWindow();
@@ -613,11 +635,11 @@ void BattleState::processUIEvents(Unit *active)
             }
         }
 
-        if (m_flowPhase == BattleFlowPhase::Deployment && event.windowId == "battle.deploy.inspectmenu")
+        if (event.windowId == "battle.inspectmenu")
         {
             if (event.type == UIEventType::ActionSelected && event.actionId == "inspect")
             {
-                m_uiManager.popById("battle.deploy.inspectmenu");
+                m_uiManager.popById("battle.inspectmenu");
                 if (m_inspectTargetUnit && !m_inspectTargetUnit->isDead())
                     showInspectWindow(m_inspectTargetUnit);
                 continue;
@@ -625,7 +647,7 @@ void BattleState::processUIEvents(Unit *active)
 
             if (event.type == UIEventType::ActionCanceled)
             {
-                m_uiManager.popById("battle.deploy.inspectmenu");
+                m_uiManager.popById("battle.inspectmenu");
                 m_inspectTargetUnit = nullptr;
                 continue;
             }
@@ -693,6 +715,28 @@ void BattleState::processUIEvents(Unit *active)
             // just entered (e.g. AoE targeting the cursor's current tile
             // before the player ever pressed Accept themselves).
             Input::instance().consumeKey(KeyCode::Accept);
+            continue;
+        }
+
+        if (event.windowId == "battle.skillmenu" && event.type == UIEventType::ActionSelected)
+        {
+            const int index = event.index;
+            if (index < 0 || index >= static_cast<int>(m_skillMenuItems.size()))
+                continue;
+
+            BattleMenuItem item = m_skillMenuItems[index];
+            if (item.enabled && item.onSelect)
+                item.onSelect();
+            Input::instance().consumeKey(KeyCode::Accept);
+            continue;
+        }
+
+        if (event.windowId == "battle.skillmenu" && event.type == UIEventType::ActionCanceled)
+        {
+            // Pop just this level — battle.actionmenu underneath was never
+            // touched, so it's revealed exactly as it was. No flag needed:
+            // this IS the stack working correctly.
+            m_uiManager.popById("battle.skillmenu");
             continue;
         }
 
@@ -938,11 +982,6 @@ void BattleState::finishAttackResolution()
 
     m_session.checkResult();
 
-    m_hud.clear();
-    m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-    if (active)
-        openBattleMenu(canActiveUnitMove(), false, true, KeyCode::Accept);
-
     if (m_pendingAnyDied)
         m_eventSystem.emit(BattleTriggerType::OnUnitDeath);
     m_pendingAnyDied = false;
@@ -952,6 +991,22 @@ void BattleState::finishAttackResolution()
     m_pendingTarget = nullptr;
     m_pendingActionLabel.clear();
     m_turnState = TurnState::ProcessingTurn;
+
+    if (checkDefeat())
+    {
+        startBattleEnd(false);
+        return;
+    }
+    if (checkVictory())
+    {
+        startBattleEnd(true);
+        return;
+    }
+
+    m_hud.clear();
+    m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+    if (active)
+        openBattleMenu(canActiveUnitMove(), false, true, KeyCode::Accept);
 }
 
 void BattleState::cancelPendingAttack()
@@ -995,7 +1050,7 @@ void BattleState::syncDeploymentPreviewUnits()
 {
     m_hoveredUnit = nullptr;
     m_inspectTargetUnit = nullptr;
-    m_uiManager.popById("battle.deploy.inspectmenu");
+    m_uiManager.popById("battle.inspectmenu");
 
     for (Unit *u : m_deploymentPreviewUnits)
         delete u;
@@ -1071,7 +1126,7 @@ void BattleState::startCombatPhase()
 
     m_hoveredUnit = nullptr;
     m_inspectTargetUnit = nullptr;
-    m_uiManager.popById("battle.deploy.inspectmenu");
+    m_uiManager.popById("battle.inspectmenu");
 
     // Tear down the preview list, not m_units — m_units is combat-only and
     // is about to be filled for the first time, right below, from
@@ -1086,7 +1141,7 @@ void BattleState::startCombatPhase()
     if (spawns.empty())
         return;
 
-    m_session.init(spawns);
+    m_session.init(spawns, m_battleDefinition->victoryRule, m_battleDefinition->defeatRule);
 
     for (Unit *u : m_session.getUnitPtrs())
     {
@@ -1184,14 +1239,15 @@ void BattleState::handleInput()
 {
     const Input &input = Input::instance();
 
-    if (m_showDefeatOverlay)
+    if (m_showDefeatOverlay || m_showVictoryOverlay)
     {
         if (input.isKeyPressed(KeyCode::Accept, false) ||
             input.isKeyPressed(KeyCode::Back, false) ||
             input.isKeyPressed(KeyCode::Advance, false))
         {
+            const bool won = m_showVictoryOverlay;
             if (m_onBattleFinished)
-                m_onBattleFinished(false);
+                m_onBattleFinished(won);
             else
                 m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer, true));
         }
@@ -1259,6 +1315,8 @@ void BattleState::handleInput()
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
 
             const Unit *active = m_session.getCurrentUnit();
+            if (active)
+                m_cursor.setPosition(active->getPosition());
             const bool canAttack = active && !active->hasActed();
             openBattleMenu(canActiveUnitMove(), canAttack, true, KeyCode::Back);
             return;
@@ -1288,6 +1346,7 @@ void BattleState::handleInput()
                 m_hud.clear();
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
                 EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
+                m_session.checkResult();
                 m_cursor.setPosition(active->getPosition());
                 m_turnTimer = 0.15f;
                 m_turnState = TurnState::WaitingForAnimation;
@@ -1341,7 +1400,7 @@ void BattleState::update(float dt)
             m_uiManager.hasWindow("battle.actionmenu") ||
             m_uiManager.hasWindow("battle.deployment.confirm") ||
             m_uiManager.hasWindow("battle.inspect") ||
-            m_uiManager.hasWindow("battle.deploy.inspectmenu") ||
+            m_uiManager.hasWindow("battle.inspectmenu") ||
             m_uiManager.hasWindow("battle.dialog");
 
         // Cursor movement is locked while the roster selection is pinned to
@@ -1371,7 +1430,7 @@ void BattleState::update(float dt)
                 if (const DeploymentEntry *placed = m_deployment.deployedEntryAt(cursorPos))
                     setUnitPanelPreviewFromEntry(placed);
                 else
-                    m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam() != 0);
+                    m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam());
             }
             else
             {
@@ -1387,7 +1446,7 @@ void BattleState::update(float dt)
         return;
     }
 
-    if (m_showDefeatOverlay)
+    if (m_showDefeatOverlay || m_showVictoryOverlay)
         return;
 
 #ifdef _DEBUG
@@ -1397,9 +1456,10 @@ void BattleState::update(float dt)
         if (active)
         {
             int action = m_autoPlayActionIndex;
-            if (action == 0 || action == 1)
+            if (action == 0 || action == 1) // Move or Attack → let the AI do its thing
             {
                 EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
+                m_session.checkResult(); // same reasoning as the EnemyAction branch above
                 m_cursor.setPosition(active->getPosition());
                 m_turnTimer = 0.15f;
                 m_turnState = TurnState::WaitingForAnimation;
@@ -1499,6 +1559,13 @@ void BattleState::update(float dt)
                 if (active && !active->isDead())
                     EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
 
+                // EnemyAI applies damage directly via Unit::takeDamage(), not
+                // through m_session.applyDamage() — it's deliberately
+                // stateless and doesn't know about BattleSession. So the
+                // cached BattleResult won't reflect an enemy's kill unless we
+                // refresh it here, right after the AI's turn resolves.
+                m_session.checkResult();
+
                 int playersAliveAfter = 0;
                 for (const Unit &u : m_session.getUnits())
                 {
@@ -1551,65 +1618,38 @@ void BattleState::startBattleEnd(bool playerWon)
     if (m_transition.isActive())
         return;
 
-    if (!playerWon)
-    {
-        m_playerWon = false;
-        m_showDefeatOverlay = true;
-        m_hud.clear();
-        m_uiManager.popById("battle.confirm");
-        m_uiManager.popById("battle.dialog");
-        return;
-    }
-
     m_playerWon = playerWon;
+    m_hud.clear();
+    m_uiManager.popById("battle.confirm");
+    m_uiManager.popById("battle.dialog");
 
     if (playerWon)
+    {
+        m_showVictoryOverlay = true;
         m_eventSystem.emit(BattleTriggerType::OnVictory);
+    }
     else
+    {
+        m_showDefeatOverlay = true;
         m_eventSystem.emit(BattleTriggerType::OnDefeat);
-
-    m_transition.start({.transition = ScreenTransitions::FadeOut,
-                        .duration = 0.5f,
-                        .easing = easeInOut,
-                        .onComplete = [this]()
-                        {
-                            if (m_onBattleFinished)
-                                m_onBattleFinished(m_playerWon);
-                            else
-                                m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer, true));
-                        }});
+    }
 }
 
 bool BattleState::checkVictory() const
 {
-    int enemyCount = countAliveEnemies();
-    LOG_INFO("Battle", "checkVictory: %d enemies alive", enemyCount);
-    return enemyCount == 0;
+    // Single source of truth: BattleSession::checkResult() is refreshed
+    // right after every point where a unit could die (player attacks via
+    // finishAttackResolution(), enemy attacks via the EnemyAI call sites in
+    // update()/handleInput()) — so the cached result here is always current.
+    // This also means victory now respects whatever BattleVictoryRule the
+    // BattleDefinition set (KillAll / KillBoss / SurviveTurns), not just a
+    // hardcoded "all enemies dead".
+    return m_session.getResult() == BattleResult::Victory;
 }
 
 bool BattleState::checkDefeat() const
 {
-    int playerCount = countAlivePlayers();
-    LOG_INFO("Battle", "checkDefeat: %d players alive", playerCount);
-    return playerCount == 0;
-}
-
-int BattleState::countAliveEnemies() const
-{
-    int n = 0;
-    for (const Unit &u : m_session.getUnits())
-        if (!u.isDead() && u.getTeam() >= 2)
-            n++;
-    return n;
-}
-
-int BattleState::countAlivePlayers() const
-{
-    int n = 0;
-    for (const Unit &u : m_session.getUnits())
-        if (!u.isDead() && u.getTeam() == 0)
-            n++;
-    return n;
+    return m_session.getResult() == BattleResult::Defeat;
 }
 
 void BattleState::processCurrentTurn()
@@ -1825,7 +1865,7 @@ void BattleState::render(float alpha)
                 if (m_pendingTarget && !m_pendingTarget->isDead())
                     m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget, m_pendingTarget->getTeam() != 0);
                 else
-                    m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam() != 0);
+                    m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam());
             }
             else if (m_playerControlMode == PlayerControlMode::Human &&
                      (m_humanTurnPhase == HumanTurnPhase::AttackTarget ||
@@ -1842,19 +1882,15 @@ void BattleState::render(float alpha)
                     if (target && !target->isDead())
                         m_unitPanelWindow->setDuel(active, target, target->getTeam() != 0);
                     else
-                        m_unitPanelWindow->setSingle(active, active->getTeam() != 0);
+                        m_unitPanelWindow->setSingle(active, active->getTeam());
                 }
                 else
                     m_unitPanelWindow->clearPanels();
             }
             else if (m_hoveredUnit)
-            {
-                m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam() != 0);
-            }
+                m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam());
             else
-            {
                 m_unitPanelWindow->clearPanels();
-            }
         }
     }
 
@@ -1970,6 +2006,38 @@ void BattleState::render(float alpha)
                                    false);
         }
     }
+
+    if (m_showVictoryOverlay)
+    {
+        m_renderer->setBlendMode(Renderer::BlendMode::Blend);
+        m_renderer->setDrawColor(Color{22, 92, 40, 228});
+        m_renderer->fillRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
+        m_renderer->setDrawColor(Color{120, 255, 150, 255});
+        m_renderer->drawRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
+
+        if (const Font *font = App::getDefaultFont())
+        {
+            const std::string victory = "VICTORY";
+            const float victoryW = static_cast<float>(victory.size()) * 8.0f;
+            m_renderer->renderText(font,
+                                   victory,
+                                   Vec2f{(GameConstants::VIEW_W - victoryW) * 0.5f, GameConstants::VIEW_H * 0.5f - 26.0f},
+                                   Color{210, 255, 210, 255},
+                                   false,
+                                   false,
+                                   false);
+
+            const std::string hint = "Press Enter/Space/Esc";
+            const float hintW = static_cast<float>(hint.size()) * 8.0f;
+            m_renderer->renderText(font,
+                                   hint,
+                                   Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, GameConstants::VIEW_H * 0.5f + 24.0f},
+                                   UITheme::Text,
+                                   false,
+                                   false,
+                                   false);
+        }
+    }
 }
 
 void BattleState::computeAttackRangeTiles()
@@ -2053,6 +2121,6 @@ void BattleState::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
     }
     catch (...)
     {
-        m_unitPanelWindow->setPreview(entry->unitId, 1, 1, 0, false, isPlaced);
+        m_unitPanelWindow->setPreview(entry->unitId, 1, 1, 0, 0, isPlaced);
     }
 }

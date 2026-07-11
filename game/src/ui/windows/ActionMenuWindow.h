@@ -26,8 +26,19 @@ public:
     {
         m_panelPos = topLeft;
         m_useCustomPanelPos = true;
+        m_anchorBottomRight = false;
     }
-    void clearPanelPosition() { m_useCustomPanelPos = false; }
+    void setAnchorBottomRight(Vec2f margin = Vec2f{16.0f, 16.0f})
+    {
+        m_anchorBottomRight = true;
+        m_useCustomPanelPos = false;
+        m_bottomRightMargin = margin;
+    }
+    void clearPanelPosition()
+    {
+        m_useCustomPanelPos = false;
+        m_anchorBottomRight = false;
+    }
     // Keep the panel horizontally centered on screen while using m_panelPos.y
     // for its vertical placement. Lets the box grow width-wise (with the font)
     // and stay centered regardless of the resulting width.
@@ -45,6 +56,8 @@ private:
     int m_scroll = 0;
     Vec2f m_panelPos{0.0f, 0.0f};
     bool m_useCustomPanelPos = false;
+    bool m_anchorBottomRight = false;
+    Vec2f m_bottomRightMargin{16.0f, 16.0f};
     bool m_centerX = false;
     const Font *m_font = nullptr;
 };

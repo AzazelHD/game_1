@@ -46,7 +46,12 @@ void HumanTurnController::handleActiveTurn(const Input &input)
                     }
 
                 if (hovered)
-                    m_state.showInspectWindow(hovered);
+                {
+                    if (hovered == active)
+                        m_state.showInspectWindow(hovered); // yourself: straight to stats
+                    else
+                        m_state.openUnitInspectMenu(hovered); // anyone else — ally, neutral, or enemy
+                }
                 else
                     ctx.cursor.setPosition(active->getPosition());
             }

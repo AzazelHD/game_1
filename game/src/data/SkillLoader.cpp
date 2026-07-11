@@ -55,6 +55,7 @@ SkillData SkillLoader::load(const std::string &filePath)
     skill.range = j.value("range", 1);
     skill.area = j.value("area", 0);
     skill.mpCost = j.value("mpCost", 0);
+    skill.castOncePerArea = j.value("castOncePerArea", false);
 
     if (j.contains("effectTypes") && j["effectTypes"].is_array())
     {

@@ -44,15 +44,23 @@ namespace
                     Color color,
                     Renderer::HorizontalAlign hAlign)
     {
-        renderer->renderTextInRect(font,
-                                   text,
-                                   rect,
-                                   color,
-                                   hAlign,
-                                   Renderer::VerticalAlign::Middle,
-                                   false,
-                                   false,
-                                   false);
+        renderer->renderTextInRect(font, text, rect, color, hAlign, Renderer::VerticalAlign::Middle,
+                                   false, false, false);
+    }
+}
+
+Color teamFrameColor(int team)
+{
+    switch (team)
+    {
+    case -1:
+        return UITheme::NEUTRAL;
+    case 0:
+        return UITheme::PLAYER;
+    case 1:
+        return UITheme::ALLY;
+    default:
+        return UITheme::ENEMY;
     }
 }
 
@@ -106,7 +114,7 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
     renderer->setBlendMode(Renderer::BlendMode::Blend);
     renderer->setDrawColor(UITheme::Panel);
     renderer->fillRect(box);
-    renderer->setDrawColor(style.enemy ? UITheme::Danger : UITheme::Info);
+    renderer->setDrawColor(teamFrameColor(style.team));
     renderer->drawRect(box);
 
     Rectf textRect = box;

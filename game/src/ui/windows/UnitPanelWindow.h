@@ -14,9 +14,9 @@ public:
 
     void setFont(const Font *font) { m_font = font; }
     void setTurnInfo(const Unit *activeUnit, int round);
-    void setSingle(const Unit *unit, bool isEnemy);
+    void setSingle(const Unit *unit, int team);
     void setDuel(const Unit *left, const Unit *right, bool rightIsEnemy);
-    void setPreview(std::string name, int level, int hp, int mp, bool isEnemy, bool isPlaced = false);
+    void setPreview(std::string name, int level, int hp, int mp, int team, bool isPlaced = false);
     void clearPreview();
     void clearPanels();
 
@@ -34,7 +34,7 @@ private:
 
     const Unit *m_leftUnit = nullptr;
     const Unit *m_rightUnit = nullptr;
-    bool m_singleEnemy = false;
+    int m_singleTeam = 2;
     bool m_rightIsEnemy = true;
 
     bool m_hasPreview = false;
@@ -42,6 +42,6 @@ private:
     int m_previewLevel = 1;
     int m_previewHp = 1;
     int m_previewMp = 0;
-    bool m_previewEnemy = false;
+    int m_previewTeam = 2;
     bool m_previewPlaced = false;
 };

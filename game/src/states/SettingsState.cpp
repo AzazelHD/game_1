@@ -505,7 +505,7 @@ void SettingsState::render(float /*alpha*/)
     const float ui = UIScale::factor();
 
     m_renderer->setBlendMode(Renderer::BlendMode::Blend);
-    m_renderer->setDrawColor(Color{6, 10, 20, 220});
+    m_renderer->setDrawColor(Color{12, 14, 20, 255});
     m_renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});
 
     const Font *font = App::getDefaultFont();

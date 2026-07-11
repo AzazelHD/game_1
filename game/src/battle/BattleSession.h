@@ -1,9 +1,12 @@
 #pragma once
-#include <vector>
-#include <string>
+
+#include "config/BattleCatalog.h"
 #include "battle/Unit.h"
 #include "battle/TurnQueue.h"
 #include "battle/CombatSystem.h"
+
+#include <vector>
+#include <string>
 
 enum class BattleResult
 {
@@ -45,7 +48,9 @@ public:
     // Load all units from spawn list and initialise the turn queue.
     // Reserves UNIT_CAPACITY slots upfront so mid-battle spawns are safe.
     // TurnQueue holds non-owning Unit* pointers — m_units must never reallocate.
-    void init(const std::vector<UnitSpawn> &spawns);
+    void init(const std::vector<UnitSpawn> &spawns,
+              BattleVictoryRule victoryRule = {},
+              BattleDefeatRule defeatRule = {});
 
     // Constructs a Unit from a spawn without adding it to m_units.
     // Used by replaceUnit() to overwrite an existing slot in place.
@@ -66,6 +71,9 @@ public:
 
     // Current battle result.
     BattleResult getResult() const { return m_result; }
+    BattleVictoryRule m_victoryRule{};
+    BattleDefeatRule m_defeatRule{};
+    int m_turnsElapsed = 0;
 
     // Read-only access for rendering.
     const std::vector<Unit> &getUnits() const { return m_units; }
@@ -79,7 +87,11 @@ public:
     Unit *getCurrentUnit() const { return m_queue.getCurrentUnit(); }
     // Pass-through for callers that need to advance the turn without going
     // through applyResult() (e.g. skipping a dead unit's turn).
-    void advanceTurn(float timeCost) { m_queue.advance(timeCost); }
+    void advanceTurn(float timeCost)
+    {
+        m_queue.advance(timeCost);
+        ++m_turnsElapsed;
+    }
 
     // Applies a resolved hit's damage/heal to `target`. Does NOT advance the
     // turn queue — this game allows multiple actions/targets (e.g. an AoE
@@ -113,4 +125,8 @@ private:
 
     // True if all units on a given team are dead.
     bool allTeamDead(int team) const;
+
+    bool evaluateVictory() const;
+    bool evaluateDefeat() const;
+    bool allEnemiesDead() const;
 };

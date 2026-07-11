@@ -121,6 +121,7 @@ public:
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
     bool canActiveUnitMove() const;
     void showInspectWindow(Unit *unit);
+    void openUnitInspectMenu(Unit *unit);
     HitContext makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const;
     void preparePendingAttack(Unit *active,
                               Vec2i targetPos,
@@ -198,6 +199,7 @@ private:
 
     bool m_playerWon = false;
     bool m_showDefeatOverlay = false;
+    bool m_showVictoryOverlay = false;
 
     ScreenTransition m_transition;
 
@@ -254,6 +256,7 @@ private:
     Unit *m_inspectTargetUnit = nullptr;
 
     std::string m_selectedSkillId;
+    std::vector<BattleMenuItem> m_skillMenuItems;
 
     CombatAnimationSystem m_combatAnimations;
 
@@ -275,8 +278,6 @@ private:
     void startBattleEnd(bool playerWon);
     bool checkVictory() const;
     bool checkDefeat() const;
-    int countAliveEnemies() const;
-    int countAlivePlayers() const;
 
     void computeAttackRangeTiles();
 

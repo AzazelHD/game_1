@@ -47,7 +47,9 @@ void TurnQueue::init(std::vector<Unit *> units)
         Unit *u = units[i];
         float speed = static_cast<float>(u->getSpeed());
         assert(speed > 0.f);
-        float time = (BASE_MOVE_COST + BASE_ACTION_COST) / speed + static_cast<float>(i) * 0.001f;
+        // Uses the dedicated move+action constant (not a sum of the two
+        // separate ones) — matches BattleState::advanceToNextUnit()'s costing.
+        float time = BASE_MOVE_AND_ACTION_COST / speed + static_cast<float>(i) * 0.001f;
 
         m_timeline.push_back({u, time});
     }

@@ -62,6 +62,30 @@ struct BattleRewards
     std::vector<std::string> items;
 };
 
+enum class VictoryConditionType
+{
+    KillAll,
+    KillBoss,
+    SurviveTurns,
+};
+
+enum class DefeatConditionType
+{
+    AllAlliesDead,
+    CriticalUnitDied,
+};
+
+struct BattleVictoryRule
+{
+    VictoryConditionType type = VictoryConditionType::KillAll;
+    int turnsToSurvive = 0; // used only when type == SurviveTurns
+};
+
+struct BattleDefeatRule
+{
+    DefeatConditionType type = DefeatConditionType::AllAlliesDead;
+};
+
 struct BattleDefinition
 {
     std::string id;
@@ -76,6 +100,8 @@ struct BattleDefinition
     BattleObjective objectives;
     BattleRewards rewards;
     std::vector<BattleEvent> events;
+    BattleVictoryRule victoryRule{};
+    BattleDefeatRule defeatRule{};
 };
 
 const BattleDefinition &getBattleDefinition(const std::string &mapPath);

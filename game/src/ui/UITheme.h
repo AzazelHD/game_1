@@ -16,4 +16,8 @@ namespace UITheme
     inline constexpr Color Danger = Color{0xB6, 0x4B, 0x4B, 255};
     inline constexpr Color Success = Color{0x4F, 0xA3, 0x6D, 255};
     inline constexpr Color Info = Color{0x52, 0x78, 0xC4, 255};
+    inline constexpr Color PLAYER = Color{0x00, 0x78, 0xFF, 255};
+    inline constexpr Color ALLY = Color{0x00, 0x64, 0x00, 255};
+    inline constexpr Color ENEMY = Color{0xA0, 0x28, 0x28, 255};
+    inline constexpr Color NEUTRAL = Color{0x50, 0x50, 0x50, 255};
 }

@@ -34,12 +34,12 @@ void UnitPanelWindow::setTurnInfo(const Unit *activeUnit, int round)
     m_round = round;
 }
 
-void UnitPanelWindow::setSingle(const Unit *unit, bool isEnemy)
+void UnitPanelWindow::setSingle(const Unit *unit, int team)
 {
     m_hasPreview = false;
     m_leftUnit = unit;
     m_rightUnit = nullptr;
-    m_singleEnemy = isEnemy;
+    m_singleTeam = team;
 }
 
 void UnitPanelWindow::setDuel(const Unit *left, const Unit *right, bool rightIsEnemy)
@@ -50,13 +50,13 @@ void UnitPanelWindow::setDuel(const Unit *left, const Unit *right, bool rightIsE
     m_rightIsEnemy = rightIsEnemy;
 }
 
-void UnitPanelWindow::setPreview(std::string name, int level, int hp, int mp, bool isEnemy, bool isPlaced)
+void UnitPanelWindow::setPreview(std::string name, int level, int hp, int mp, int team, bool isPlaced)
 {
     m_previewName = std::move(name);
     m_previewLevel = level;
     m_previewHp = hp;
     m_previewMp = mp;
-    m_previewEnemy = isEnemy;
+    m_previewTeam = team;
     m_previewPlaced = isPlaced;
     m_hasPreview = true;
     m_leftUnit = nullptr;
@@ -103,7 +103,7 @@ void UnitPanelWindow::render(Renderer *renderer) const
                                  m_font,
                                  *m_leftUnit,
                                  Vec2f{leftX, baseY},
-                                 UnitPortrait::PortraitStyle{.mirrored = false, .enemy = false, .transparent = false});
+                                 UnitPortrait::PortraitStyle{.team = m_leftUnit->getTeam(), .mirrored = false, .transparent = false});
 
         const float rightX = GameConstants::VIEW_W - leftRect.w - 16.0f * ui;
 
@@ -111,7 +111,7 @@ void UnitPanelWindow::render(Renderer *renderer) const
                              m_font,
                              *m_rightUnit,
                              Vec2f{rightX, baseY},
-                             UnitPortrait::PortraitStyle{.mirrored = true, .enemy = m_rightIsEnemy, .transparent = false});
+                             UnitPortrait::PortraitStyle{.team = m_rightUnit->getTeam(), .mirrored = true, .transparent = false});
         return;
     }
 
@@ -121,7 +121,7 @@ void UnitPanelWindow::render(Renderer *renderer) const
                              m_font,
                              *m_leftUnit,
                              Vec2f{leftX, baseY},
-                             UnitPortrait::PortraitStyle{.mirrored = false, .enemy = m_singleEnemy, .transparent = false});
+                             UnitPortrait::PortraitStyle{.team = m_singleTeam, .mirrored = false, .transparent = false});
         return;
     }
 
@@ -136,7 +136,7 @@ void UnitPanelWindow::render(Renderer *renderer) const
                                       m_previewMp,
                                       m_previewMp,
                                       Vec2f{leftX, baseY},
-                                      UnitPortrait::PortraitStyle{.mirrored = false, .enemy = m_previewEnemy, .transparent = false, .showPlacedMarker = m_previewPlaced});
+                                      UnitPortrait::PortraitStyle{.team = m_previewTeam, .mirrored = false, .transparent = false, .showPlacedMarker = m_previewPlaced});
     }
 }
 

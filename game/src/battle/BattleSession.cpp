@@ -8,7 +8,9 @@
 // public
 // ---------------------------------------------------------------------------
 
-void BattleSession::init(const std::vector<UnitSpawn> &spawns)
+void BattleSession::init(const std::vector<UnitSpawn> &spawns,
+                         BattleVictoryRule victoryRule,
+                         BattleDefeatRule defeatRule)
 {
     m_units.clear();
     m_units.reserve(UNIT_CAPACITY);
@@ -17,6 +19,9 @@ void BattleSession::init(const std::vector<UnitSpawn> &spawns)
     m_criticalUnits.clear();
     m_bossUnits.clear();
     m_result = BattleResult::Ongoing;
+    m_victoryRule = victoryRule;
+    m_defeatRule = defeatRule;
+    m_turnsElapsed = 0;
 
     for (const auto &spawn : spawns)
     {
@@ -50,7 +55,7 @@ void BattleSession::spawnUnit(const UnitSpawn &spawn)
     Unit &unit = buildUnit(spawn);
     m_unitPtrs.push_back(&unit);
     float speed = static_cast<float>(unit.getSpeed());
-    float timeCost = TurnQueue::BASE_MOVE_COST / speed;
+    float timeCost = TurnQueue::BASE_MOVE_AND_ACTION_COST / speed;
 
     m_queue.insert(&unit, timeCost);
 
@@ -91,7 +96,7 @@ void BattleSession::replaceUnit(Unit *dead, const UnitSpawn &spawn)
 
     // Insert into timeline as if it just moved
     float speed = static_cast<float>(it->getSpeed());
-    float timeCost = TurnQueue::BASE_MOVE_COST / speed;
+    float timeCost = TurnQueue::BASE_MOVE_AND_ACTION_COST / speed;
     m_queue.insert(&(*it), timeCost);
 }
 
@@ -138,38 +143,50 @@ void BattleSession::checkBattleResult()
     if (m_result != BattleResult::Ongoing)
         return;
 
-    // Defeat: any critical unit died
-    for (const Unit *u : m_criticalUnits)
+    // Defeat checked before victory, same priority order as the old
+    // critical-unit-first logic.
+    if (evaluateDefeat())
     {
-        if (u->isDead())
-        {
-            m_result = BattleResult::Defeat;
-            return;
-        }
+        m_result = BattleResult::Defeat;
+        return;
     }
 
-    // Victory: any boss unit died
-    for (const Unit *u : m_bossUnits)
-    {
-        if (u->isDead())
-        {
-            m_result = BattleResult::Victory;
-            return;
-        }
-    }
-
-    // Standard: all enemies dead = victory, all allies dead = defeat
-    // Team 0 = players, Team 1 = enemies (by convention)
-    if (allTeamDead(1))
+    if (evaluateVictory())
     {
         m_result = BattleResult::Victory;
         return;
     }
+}
 
-    if (allTeamDead(0))
+bool BattleSession::evaluateDefeat() const
+{
+    switch (m_defeatRule.type)
     {
-        m_result = BattleResult::Defeat;
-        return;
+    case DefeatConditionType::CriticalUnitDied:
+        for (const Unit *u : m_criticalUnits)
+            if (u->isDead())
+                return true;
+        return false;
+    case DefeatConditionType::AllAlliesDead:
+    default:
+        return allTeamDead(0); // players are always team 0
+    }
+}
+
+bool BattleSession::evaluateVictory() const
+{
+    switch (m_victoryRule.type)
+    {
+    case VictoryConditionType::KillBoss:
+        for (const Unit *u : m_bossUnits)
+            if (u->isDead())
+                return true;
+        return false;
+    case VictoryConditionType::SurviveTurns:
+        return m_turnsElapsed >= m_victoryRule.turnsToSurvive;
+    case VictoryConditionType::KillAll:
+    default:
+        return allEnemiesDead();
     }
 }
 
@@ -178,6 +195,21 @@ bool BattleSession::allTeamDead(int team) const
     for (const auto &u : m_units)
     {
         if (u.getTeam() == team && !u.isDead())
+            return false;
+    }
+    return true;
+}
+
+// Enemies are team >= 2 in this codebase (see EnemyDefinition::team default
+// and BattleCatalog's entries), NOT team 1 — allTeamDead(1) was always
+// vacuously true (no unit ever has team==1), meaning the old KillAll check
+// would have reported victory instantly, the moment any BattleSession-backed
+// battle started. This mirrors BattleState::countAliveEnemies()'s convention.
+bool BattleSession::allEnemiesDead() const
+{
+    for (const auto &u : m_units)
+    {
+        if (u.getTeam() >= 2 && !u.isDead())
             return false;
     }
     return true;

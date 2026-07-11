@@ -134,13 +134,13 @@ void ActionMenuWindow::render(Renderer *renderer) const
     const int start = std::clamp(m_scroll, 0, std::max(0, count - 1));
     const int end = std::min(count, start + visibleCount);
 
-    const float panelX = m_centerX
-                             ? (GameConstants::VIEW_W - menuW) * 0.5f
-                             : (m_useCustomPanelPos ? m_panelPos.x
-                                                    : (GameConstants::VIEW_W - menuW) * 0.5f);
-    const float panelY = (m_useCustomPanelPos || m_centerX)
-                             ? m_panelPos.y
-                             : (GameConstants::VIEW_H - menuH) * 0.5f;
+    const float panelX = m_centerX             ? (GameConstants::VIEW_W - menuW) * 0.5f
+                         : m_useCustomPanelPos ? m_panelPos.x
+                         : m_anchorBottomRight ? (GameConstants::VIEW_W - menuW - m_bottomRightMargin.x * ui)
+                                               : (GameConstants::VIEW_W - menuW) * 0.5f;
+    const float panelY = (m_useCustomPanelPos || m_centerX) ? m_panelPos.y
+                         : m_anchorBottomRight              ? (GameConstants::VIEW_H - menuH - m_bottomRightMargin.y * ui)
+                                                            : (GameConstants::VIEW_H - menuH) * 0.5f;
 
     renderer->setBlendMode(Renderer::BlendMode::Blend);
     renderer->setDrawColor(UITheme::Panel);
