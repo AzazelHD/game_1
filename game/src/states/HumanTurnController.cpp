@@ -2,6 +2,7 @@
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/math/MathUtils.h"
+#include "engine/renderer/FontManager.h"
 #include "states/HumanTurnController.h"
 #include "states/BattleState.h"
 #include "battle/Unit.h"
@@ -195,7 +196,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             ctx.pendingSkillId = ctx.selectedSkillId;
             ctx.uiManager.popById("battle.confirm");
             auto *confirm = ctx.uiManager.push<ConfirmWindow>("battle.confirm");
-            confirm->setFont(App::getDefaultFont());
+            confirm->setFont(FontManager::instance().get(FontRole::Body));
             confirm->setPrompt("Confirm?");
         }
         else if (input.isKeyPressed(KeyCode::Back, false))

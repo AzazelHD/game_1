@@ -8,9 +8,11 @@
 #include "ui/UIScale.h"
 #include "ui/UnitPortrait.h"
 
-#include <filesystem>
+#include <cmath>
 #include <cstdio>
 #include <string>
+#include <algorithm>
+#include <filesystem>
 
 namespace
 {
@@ -62,6 +64,39 @@ Color teamFrameColor(int team)
     default:
         return UITheme::ENEMY;
     }
+}
+
+void UnitPortrait::drawPlaceholderSprite(Renderer *renderer,
+                                         const Font *font,
+                                         Vec2f center,
+                                         float diameter,
+                                         int team,
+                                         const std::string &letter,
+                                         std::uint8_t alpha)
+{
+    if (!renderer)
+        return;
+
+    const float radius = diameter * 0.5f;
+    renderer->setBlendMode(Renderer::BlendMode::Blend);
+    Color fillColor = teamFrameColor(team);
+    fillColor.a = alpha;
+    renderer->setDrawColor(fillColor);
+
+    const int r = static_cast<int>(std::ceil(radius));
+    for (int y = -r; y <= r; ++y)
+    {
+        const float dx = std::sqrt(std::max(0.0f, radius * radius - static_cast<float>(y * y)));
+        renderer->drawLine(Vec2f{center.x - dx, center.y + static_cast<float>(y)},
+                           Vec2f{center.x + dx, center.y + static_cast<float>(y)});
+    }
+
+    if (!font || letter.empty())
+        return;
+
+    const Vec2f textSize = renderer->measureText(font, letter);
+    const Vec2f textPos{center.x - textSize.x * 0.5f, center.y - textSize.y * 0.5f};
+    renderer->renderText(font, letter, textPos, Color{255, 255, 255, 255}, true, false, false);
 }
 
 Rectf UnitPortrait::render(Renderer *renderer,
@@ -143,6 +178,16 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
                                   Rectf{imageRect.x + 2.0f, imageRect.y + 2.0f, imageRect.w - 4.0f, imageRect.h - 4.0f},
                                   style.mirrored);
             delete portrait;
+        }
+        else
+        {
+            // No real sprite on disk yet — placeholder circle+letter sized
+            // to fill the image slot, letter drawn larger than the map/hand
+            // version to fit the bigger box.
+            const float diameter = std::min(imageRect.w, imageRect.h) - 4.0f * scale;
+            const Vec2f center{imageRect.x + imageRect.w * 0.5f, imageRect.y + imageRect.h * 0.5f};
+            const std::string letter = name.empty() ? std::string() : std::string(1, name[0]);
+            drawPlaceholderSprite(renderer, font, center, diameter, style.team, letter);
         }
     }
 

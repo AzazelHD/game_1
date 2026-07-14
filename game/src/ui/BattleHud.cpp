@@ -1,9 +1,9 @@
+#include "config/GameConstants.h"
 #include "ui/BattleHud.h"
 #include "ui/UIManager.h"
 #include "ui/UIScale.h"
 #include "ui/windows/ActionMenuWindow.h"
-#include "config/GameConstants.h"
-#include "engine/core/App.h"
+#include "engine/renderer/FontManager.h"
 #include "engine/math/Vec2.h"
 
 #include <string>
@@ -29,7 +29,7 @@ void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
     if (!m_menu)
     {
         m_menu = m_uiManager.push<ActionMenuWindow>("battle.actionmenu");
-        m_menu->setFont(App::getDefaultFont());
+        m_menu->setFont(FontManager::instance().get(FontRole::Body));
     }
     else
     {

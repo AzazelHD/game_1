@@ -7,6 +7,7 @@
 #include "engine/math/Rect.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
+#include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/ui/Insets.h"
 #include "engine/ui/VerticalLayout.h"
@@ -191,7 +192,7 @@ void SettingsState::onEnter()
     style.handleHeight = 18.0f;
     style.offsetY = 0.0f;
 
-    const Font *font = App::getDefaultFont();
+    const Font *font = FontManager::instance().get(FontRole::Heading);
     if (m_renderer && font)
     {
         const std::vector<Rectf> audioRows = computeUniformRows(1.0f);
@@ -481,11 +482,14 @@ void SettingsState::handleInput()
 
 void SettingsState::update(float /*dt*/)
 {
+    if (!m_renderer)
+        return;
+
     UIScale::refresh();
     const float ui = UIScale::factor();
 
-    const Font *font = App::getDefaultFont();
-    if (!m_renderer || !font)
+    const Font *font = FontManager::instance().get(FontRole::Heading);
+    if (!font)
         return;
 
     const std::vector<Rectf> audioRows = computeUniformRows(ui);
@@ -508,7 +512,7 @@ void SettingsState::render(float /*alpha*/)
     m_renderer->setDrawColor(Color{12, 14, 20, 255});
     m_renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});
 
-    const Font *font = App::getDefaultFont();
+    const Font *font = FontManager::instance().get(FontRole::Heading);
     if (!font)
         return;
 

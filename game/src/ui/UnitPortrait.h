@@ -4,6 +4,7 @@
 #include "engine/math/Vec2.h"
 
 #include <string>
+#include <cstdint>
 
 class Renderer;
 class Font;
@@ -36,4 +37,16 @@ namespace UnitPortrait
                           Vec2f topLeft,
                           const PortraitStyle &style,
                           const std::string &spriteSetId = "");
+
+    // Draws a circle + centered initial letter — a generated placeholder
+    // sprite used everywhere a real unit image doesn't exist yet (map
+    // circles, grabbed-in-hand marker, and the portrait's image slot).
+    // `diameter` controls the circle size; the letter is sized relative to it.
+    void drawPlaceholderSprite(Renderer *renderer,
+                               const Font *font,
+                               Vec2f center,
+                               float diameter,
+                               int team,
+                               const std::string &letter,
+                               std::uint8_t alpha = 255);
 }

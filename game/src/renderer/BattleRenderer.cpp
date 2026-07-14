@@ -1,6 +1,9 @@
 #include "engine/math/Vec2.h"
 #include "engine/math/MathUtils.h"
+#include "engine/core/App.h"
 #include "engine/renderer/Color.h"
+#include "engine/renderer/Font.h"
+#include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/DebugRenderer.h"
 #include "engine/renderer/Camera.h"
@@ -9,6 +12,7 @@
 #include "battle/BattleMap.h"
 #include "battle/Unit.h"
 #include "ui/Cursor.h"
+#include "ui/UnitPortrait.h"
 
 #include <algorithm>
 
@@ -174,7 +178,9 @@ std::vector<UnitRenderProxy> BattleRenderer::buildUnitRenderList(const std::vect
     {
         if (!u)
             continue;
-        out.push_back({u->getPosition(), u->getTeam(), !u->isDead()});
+        const std::string &name = u->getName();
+        const std::string label = name.empty() ? std::string() : std::string(1, name[0]);
+        out.push_back({u->getPosition(), u->getTeam(), !u->isDead(), label});
     }
 
     return out;
@@ -225,7 +231,7 @@ void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
     const float cy = ay - elev - m.halfTH - floatOffset;
     float radius = m.halfTW * 0.6f;
 
-    debugRenderer->addScreenCircle(Vec2f(cx, cy), radius, color, true);
+    UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, radius * 2.0f, unit->team, unit->debugLabel);
 }
 
 // ── Cursor rendering (using passed parameters) ──────────────────────────────

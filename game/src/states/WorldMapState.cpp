@@ -1,14 +1,14 @@
-#include "states/WorldMapState.h"
-
-#include "config/GameConstants.h"
-#include "battle/UnitData.h"
-#include "data/UnitLoader.h"
 #include "engine/core/App.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
+#include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
+#include "states/WorldMapState.h"
+#include "config/GameConstants.h"
+#include "battle/UnitData.h"
+#include "data/UnitLoader.h"
 #include "world/WorldPathfinding.h"
 #include "states/BattleState.h"
 #include "states/SettingsState.h"
@@ -146,7 +146,7 @@ void WorldMapState::handleInput()
         else
         {
             auto *menu = m_uiManager.push<ActionMenuWindow>("world.menu");
-            menu->setFont(App::getDefaultFont());
+            menu->setFont(FontManager::instance().get(FontRole::Heading));
             menu->setItems({
                 ActionMenuWindow::Item{.id = "party", .label = "Party", .enabled = true},
                 ActionMenuWindow::Item{.id = "options", .label = "Options", .enabled = true},
@@ -452,7 +452,7 @@ void WorldMapState::onArriveAtNode(int nodeId)
     m_pendingBattle = PendingBattle{.nodeId = nodeId, .mapPath = it->second.battleMapPath};
 
     auto *confirm = m_uiManager.push<ConfirmWindow>("worldmap.battle.confirm");
-    confirm->setFont(App::getDefaultFont());
+    confirm->setFont(FontManager::instance().get(FontRole::Body));
     confirm->setPrompt("Start Battle?");
 }
 
@@ -497,7 +497,7 @@ void WorldMapState::processUIEvents()
             if (event.actionId == "party")
             {
                 auto *party = m_uiManager.push<PartyWindow>("world.party");
-                party->setFont(App::getDefaultFont());
+                party->setFont(FontManager::instance().get(FontRole::Body));
 
                 std::vector<PartyWindow::Entry> entries;
                 entries.reserve(2);

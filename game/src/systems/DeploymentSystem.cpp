@@ -1,12 +1,10 @@
 #include "systems/DeploymentSystem.h"
-
 #include "systems/RosterSystem.h"
-
 #include <algorithm>
 
 void DeploymentSystem::initialize(int maxUnits,
                                   std::unordered_set<Vec2i, Vec2iHash> spawnTiles,
-                                  std::vector<std::string> partyUnitIds,
+                                  std::vector<int> partyInstanceIds,
                                   const RosterSystem &roster)
 {
     m_initialized = true;
@@ -15,16 +13,16 @@ void DeploymentSystem::initialize(int maxUnits,
     m_partyEntries.clear();
     m_deployed.clear();
     m_selectedIndex = 0;
-    m_grabbedUnitId.clear();
+    m_grabbedInstanceId = -1;
 
-    for (const std::string &id : partyUnitIds)
+    for (int id : partyInstanceIds)
     {
         const RosterUnit *unit = roster.findById(id);
         if (!unit)
             continue;
 
         m_partyEntries.push_back(DeploymentEntry{
-            .unitId = unit->unitId,
+            .instanceId = unit->instanceId,
             .templatePath = unit->templatePath,
             .position = Vec2i{0, 0},
         });
@@ -46,11 +44,11 @@ bool DeploymentSystem::isOccupied(Vec2i pos) const
     return false;
 }
 
-bool DeploymentSystem::isUnitPlaced(const std::string &unitId) const
+bool DeploymentSystem::isUnitPlaced(int instanceId) const
 {
     for (const DeploymentEntry &e : m_deployed)
     {
-        if (e.unitId == unitId)
+        if (e.instanceId == instanceId)
             return true;
     }
     return false;
@@ -65,29 +63,33 @@ bool DeploymentSystem::grabSelected()
     if (!selected)
         return false;
 
-    if (isUnitPlaced(selected->unitId))
+    if (isUnitPlaced(selected->instanceId))
         return false;
 
-    return grabUnit(selected->unitId);
+    return grabUnit(selected->instanceId);
 }
 
-bool DeploymentSystem::grabUnit(const std::string &unitId)
+bool DeploymentSystem::grabUnit(int instanceId)
 {
-    if (!m_initialized || unitId.empty())
+    if (!m_initialized || instanceId < 0)
         return false;
 
-    auto it = std::find_if(m_partyEntries.begin(), m_partyEntries.end(), [&unitId](const DeploymentEntry &entry)
-                           { return entry.unitId == unitId; });
+    auto it = std::find_if(m_partyEntries.begin(), m_partyEntries.end(), [instanceId](const DeploymentEntry &entry)
+                           { return entry.instanceId == instanceId; });
     if (it == m_partyEntries.end())
         return false;
 
-    m_grabbedUnitId = unitId;
+    // Whatever you're holding IS the selection — grabbing a unit (fresh
+    // from the roster, or picked back up from a placed tile) always moves
+    // the roster selection to match it.
+    m_selectedIndex = static_cast<std::size_t>(std::distance(m_partyEntries.begin(), it));
+    m_grabbedInstanceId = instanceId;
     return true;
 }
 
 void DeploymentSystem::releaseGrabbed()
 {
-    m_grabbedUnitId.clear();
+    m_grabbedInstanceId = -1;
 }
 
 bool DeploymentSystem::placeGrabbed(Vec2i pos)
@@ -105,26 +107,72 @@ bool DeploymentSystem::placeGrabbed(Vec2i pos)
     if (!grabbed)
         return false;
 
-    if (isUnitPlaced(grabbed->unitId))
+    if (isUnitPlaced(grabbed->instanceId))
         return false;
 
     DeploymentEntry placed = *grabbed;
     placed.position = pos;
     m_deployed.push_back(std::move(placed));
-    m_grabbedUnitId.clear();
+    m_grabbedInstanceId = -1;
 
-    // Move the roster selection to the next entry so the player doesn't have
-    // to manually cycle past the unit they just placed.
-    if (!m_partyEntries.empty())
-        m_selectedIndex = (m_selectedIndex + 1) % m_partyEntries.size();
+    // Land the selection on whichever unplaced unit is first in roster
+    // order — same rule every time, regardless of whether this was a
+    // fresh pick or a reposition. If everything is placed, selection just
+    // stays put.
+    for (std::size_t i = 0; i < m_partyEntries.size(); ++i)
+    {
+        if (!isUnitPlaced(m_partyEntries[i].instanceId))
+        {
+            m_selectedIndex = i;
+            break;
+        }
+    }
 
     return true;
 }
 
-bool DeploymentSystem::unplaceUnit(const std::string &unitId)
+bool DeploymentSystem::swapGrabbedWithPlacedAt(Vec2i pos)
 {
-    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [&unitId](const DeploymentEntry &entry)
-                           { return entry.unitId == unitId; });
+    if (!m_initialized || !hasGrabbedUnit())
+        return false;
+
+    if (!isSpawnTile(pos))
+        return false;
+
+    const DeploymentEntry *occupant = deployedEntryAt(pos);
+    if (!occupant)
+        return false;
+
+    const int occupantId = occupant->instanceId;
+    const DeploymentEntry *grabbed = grabbedEntry();
+    if (!grabbed)
+        return false;
+
+    const std::string templatePath = grabbed->templatePath;
+    const int grabbedId = grabbed->instanceId;
+
+    // Remove B from the field, place A in its slot.
+    if (!unplaceUnit(occupantId))
+        return false;
+
+    DeploymentEntry placedA{
+        .instanceId = grabbedId,
+        .templatePath = templatePath,
+        .position = pos,
+    };
+    m_deployed.push_back(std::move(placedA));
+
+    // B is now the one in hand.
+    m_grabbedInstanceId = -1;
+    grabUnit(occupantId);
+
+    return true;
+}
+
+bool DeploymentSystem::unplaceUnit(int instanceId)
+{
+    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [instanceId](const DeploymentEntry &entry)
+                           { return entry.instanceId == instanceId; });
     if (it == m_deployed.end())
         return false;
 
@@ -134,12 +182,22 @@ bool DeploymentSystem::unplaceUnit(const std::string &unitId)
 
 void DeploymentSystem::cycleSelection(int delta)
 {
-    if (m_partyEntries.empty() || hasGrabbedUnit())
+    if (m_partyEntries.empty())
         return;
 
     const int count = static_cast<int>(m_partyEntries.size());
     const int next = (static_cast<int>(m_selectedIndex) + delta + count) % count;
     m_selectedIndex = static_cast<std::size_t>(next);
+
+    // Cycling while holding a unit swaps what's in hand: drop whatever was
+    // grabbed (it simply returns to the roster unplaced — it was never
+    // placed on the field, so there's nothing to unplace), then grab the
+    // newly-selected entry instead.
+    if (hasGrabbedUnit())
+    {
+        m_grabbedInstanceId = -1;
+        grabUnit(m_partyEntries[m_selectedIndex].instanceId);
+    }
 }
 
 const DeploymentEntry *DeploymentSystem::selectedEntry() const
@@ -155,14 +213,14 @@ const DeploymentEntry *DeploymentSystem::grabbedEntry() const
         return nullptr;
 
     auto it = std::find_if(m_partyEntries.begin(), m_partyEntries.end(), [this](const DeploymentEntry &entry)
-                           { return entry.unitId == m_grabbedUnitId; });
+                           { return entry.instanceId == m_grabbedInstanceId; });
     return it == m_partyEntries.end() ? nullptr : &(*it);
 }
 
-const DeploymentEntry *DeploymentSystem::deployedEntryFor(const std::string &unitId) const
+const DeploymentEntry *DeploymentSystem::deployedEntryFor(int instanceId) const
 {
-    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [&unitId](const DeploymentEntry &entry)
-                           { return entry.unitId == unitId; });
+    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [instanceId](const DeploymentEntry &entry)
+                           { return entry.instanceId == instanceId; });
     return it == m_deployed.end() ? nullptr : &(*it);
 }
 

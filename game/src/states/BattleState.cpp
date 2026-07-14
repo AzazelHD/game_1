@@ -11,6 +11,7 @@
 #include "engine/renderer/Texture.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/DebugRenderer.h"
+#include "engine/renderer/FontManager.h"
 #include "engine/effects/ScreenTransition.h"
 #include "config/BattleCatalog.h"
 #include "states/BattleState.h"
@@ -26,6 +27,9 @@
 #include "renderer/BattleRendererContext.h"
 #include "ai/EnemyAI.h"
 #include "ui/Cursor.h"
+#include "ui/UITheme.h"
+#include "ui/UIScale.h"
+#include "ui/UnitPortrait.h"
 #include "ui/windows/ActionMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/DialogWindow.h"
@@ -33,8 +37,6 @@
 #include "ui/windows/InspectWindow.h"
 #include "data/SkillLoader.h"
 #include "data/UnitLoader.h"
-#include "ui/UITheme.h"
-#include "ui/UIScale.h"
 
 #include <algorithm>
 #include <memory>
@@ -49,6 +51,19 @@
 namespace
 {
     constexpr float SPRITE_H = 36.0f;
+
+    std::string loadUnitDisplayName(const std::string &templatePath)
+    {
+        try
+        {
+            const UnitData data = UnitLoader::load(templatePath);
+            return data.name;
+        }
+        catch (...)
+        {
+            return std::string();
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,9 +169,9 @@ void BattleState::onEnter()
 
     m_uiManager.clear();
     m_unitPanelWindow = m_uiManager.push<UnitPanelWindow>("battle.unitpanel");
-    m_unitPanelWindow->setFont(App::getDefaultFont());
+    m_unitPanelWindow->setFont(FontManager::instance().get(FontRole::Body));
     m_deploymentWindow = m_uiManager.push<DeploymentWindow>("battle.deployment");
-    m_deploymentWindow->setFont(App::getDefaultFont());
+    m_deploymentWindow->setFont(FontManager::instance().get(FontRole::Body));
 
     m_hud.clear();
 
@@ -303,7 +318,7 @@ void BattleState::showSkillMenu()
     // same way any other stacked window already behaves.
     m_uiManager.popById("battle.skillmenu");
     auto *menu = m_uiManager.push<ActionMenuWindow>("battle.skillmenu");
-    menu->setFont(App::getDefaultFont());
+    menu->setFont(FontManager::instance().get(FontRole::Body));
     if (m_flowPhase == BattleFlowPhase::Combat)
     {
         UIScale::refresh();
@@ -338,7 +353,7 @@ void BattleState::showSystemMenu()
             {
                 m_uiManager.popById("battle.deployment.confirm");
                 auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
-                confirm->setFont(App::getDefaultFont());
+                confirm->setFont(FontManager::instance().get(FontRole::Body));
                 confirm->setPrompt("Start Battle?");
             }};
     }
@@ -374,7 +389,7 @@ void BattleState::showInspectWindow(Unit *unit)
 
     m_uiManager.popById("battle.inspect");
     auto *inspect = m_uiManager.push<InspectWindow>("battle.inspect");
-    inspect->setFont(App::getDefaultFont());
+    inspect->setFont(FontManager::instance().get(FontRole::Body));
     inspect->setTitle("Unit Inspect");
     inspect->setLines(InspectWindow::buildLines(unit->getData()));
     m_inspectWindow = inspect;
@@ -388,7 +403,7 @@ void BattleState::openUnitInspectMenu(Unit *unit)
     m_inspectTargetUnit = unit;
     m_uiManager.popById("battle.inspectmenu");
     auto *menu = m_uiManager.push<ActionMenuWindow>("battle.inspectmenu");
-    menu->setFont(App::getDefaultFont());
+    menu->setFont(FontManager::instance().get(FontRole::Body));
     menu->setAnchorBottomRight();
     menu->setItems({
         ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
@@ -409,7 +424,7 @@ void BattleState::showInspectWindowFromTemplate(const std::string &templatePath)
 
         m_uiManager.popById("battle.inspect");
         auto *inspect = m_uiManager.push<InspectWindow>("battle.inspect");
-        inspect->setFont(App::getDefaultFont());
+        inspect->setFont(FontManager::instance().get(FontRole::Body));
         inspect->setTitle("Unit Inspect");
         inspect->setLines(InspectWindow::buildLines(previewUnit.getData()));
         m_inspectWindow = inspect;
@@ -431,7 +446,7 @@ void BattleState::syncCursorToSelection()
     // at the point movement input is read.
     if (const DeploymentEntry *entry = m_deployment.selectedEntry())
     {
-        if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(entry->unitId))
+        if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(entry->instanceId))
             m_cursor.setPosition(placed->position);
     }
 }
@@ -520,9 +535,22 @@ void BattleState::processUIEvents(Unit *active)
 
                 if (m_deployment.hasGrabbedUnit())
                 {
-                    if (!m_deployment.isSpawnTile(cursorPos) || m_deployment.isOccupied(cursorPos))
+                    if (!m_deployment.isSpawnTile(cursorPos))
                     {
                         // TODO: play "impossible action" sound (or similar) here
+                        continue;
+                    }
+
+                    // Occupied by one of YOUR OWN placed units: swap places
+                    // instead of blocking — you end up holding whichever
+                    // unit was there.
+                    if (m_deployment.isOccupied(cursorPos))
+                    {
+                        if (m_deployment.swapGrabbedWithPlacedAt(cursorPos))
+                        {
+                            syncDeploymentPreviewUnits();
+                            refreshDeploymentWindow();
+                        }
                         continue;
                     }
 
@@ -551,9 +579,9 @@ void BattleState::processUIEvents(Unit *active)
                 // (without QE-selecting it) behaves the same as QE landing on it.
                 if (const DeploymentEntry *placedHere = m_deployment.deployedEntryAt(cursorPos))
                 {
-                    const std::string unitId = placedHere->unitId;
-                    if (m_deployment.unplaceUnit(unitId) &&
-                        m_deployment.grabUnit(unitId))
+                    const int instanceId = placedHere->instanceId;
+                    if (m_deployment.unplaceUnit(instanceId) &&
+                        m_deployment.grabUnit(instanceId))
                     {
                         syncDeploymentPreviewUnits();
                         refreshDeploymentWindow();
@@ -567,9 +595,9 @@ void BattleState::processUIEvents(Unit *active)
 
                 // Already placed (the cursor is pinned to it, per
                 // isSelectionLocked): pick it back up so it can be relocated.
-                if (m_deployment.isUnitPlaced(selected->unitId))
+                if (m_deployment.isUnitPlaced(selected->instanceId))
                 {
-                    if (m_deployment.unplaceUnit(selected->unitId) && m_deployment.grabUnit(selected->unitId))
+                    if (m_deployment.unplaceUnit(selected->instanceId) && m_deployment.grabUnit(selected->instanceId))
                     {
                         syncDeploymentPreviewUnits();
                         refreshDeploymentWindow();
@@ -596,11 +624,17 @@ void BattleState::processUIEvents(Unit *active)
             }
             if (event.actionId == "details")
             {
-                // Details (Tab): inspect whatever is hovered (ours or an
-                // enemy preview) directly, no submenu. If nothing is
-                // hovered, inspect whatever is currently QE-selected in the
-                // roster — even if it hasn't been placed yet, since we can
-                // read its stats straight from its template.
+                // Details (Tab): inspect, in priority order —
+                //   1. Whatever's grabbed in hand (if anything).
+                //   2. Whatever's hovered under the cursor (ours or enemy preview).
+                //   3. Whatever's QE-selected in the roster (even unplaced —
+                //      stats read straight from its template).
+                if (const DeploymentEntry *grabbed = m_deployment.grabbedEntry())
+                {
+                    showInspectWindowFromTemplate(grabbed->templatePath);
+                    continue;
+                }
+
                 if (m_hoveredUnit && !m_hoveredUnit->isDead())
                 {
                     showInspectWindow(m_hoveredUnit);
@@ -629,7 +663,7 @@ void BattleState::processUIEvents(Unit *active)
 
                 m_uiManager.popById("battle.deployment.confirm");
                 auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
-                confirm->setFont(App::getDefaultFont());
+                confirm->setFont(FontManager::instance().get(FontRole::Body));
                 confirm->setPrompt("Start Battle?");
                 continue;
             }
@@ -1114,8 +1148,8 @@ void BattleState::refreshDeploymentWindow()
 
     const DeploymentEntry *selected = m_deployment.selectedEntry();
     const DeploymentEntry *grabbed = m_deployment.grabbedEntry();
-    m_deploymentWindow->setSelectedUnitLabel(selected ? selected->unitId : std::string());
-    m_deploymentWindow->setGrabbedState(grabbed != nullptr, grabbed ? grabbed->unitId : std::string());
+    m_deploymentWindow->setSelectedUnitLabel(selected ? loadUnitDisplayName(selected->templatePath) : std::string());
+    m_deploymentWindow->setGrabbedState(grabbed != nullptr, grabbed ? loadUnitDisplayName(grabbed->templatePath) : std::string());
     m_deploymentWindow->setDeploymentStatus(m_deployment.placedCount(), m_deployment.maxUnits(), m_deployment.canStartBattle());
 }
 
@@ -1174,7 +1208,7 @@ void BattleState::showDialogueFromEvent(const std::string &text)
 {
     m_uiManager.popById("battle.dialog");
     auto *dialog = m_uiManager.push<DialogWindow>("battle.dialog");
-    dialog->setFont(App::getDefaultFont());
+    dialog->setFont(FontManager::instance().get(FontRole::Body));
     dialog->start({DialogWindow::Line{.speaker = "System", .text = text}});
 }
 
@@ -1830,7 +1864,7 @@ void BattleState::render(float alpha)
         m_battleRenderer->drawScene(renderCtx);
     }
 
-    if (m_flowPhase == BattleFlowPhase::Deployment && m_deployment.hasGrabbedUnit() && m_debugRenderer)
+    if (m_flowPhase == BattleFlowPhase::Deployment && m_deployment.hasGrabbedUnit())
     {
         const Vec2i cursorPos = m_cursor.getPosition();
         if (m_battleMap.isValid(cursorPos.x, cursorPos.y))
@@ -1847,7 +1881,16 @@ void BattleState::render(float alpha)
 
             const float cx = ax;
             const float cy = ay - elev - halfTH - 6.0f * s;
-            m_debugRenderer->addScreenCircle(Vec2f{cx, cy}, halfTW * 0.6f, Color{64, 128, 255, 120}, true);
+
+            const DeploymentEntry *grabbed = m_deployment.grabbedEntry();
+            std::string letter;
+            if (grabbed)
+            {
+                const std::string name = loadUnitDisplayName(grabbed->templatePath);
+                if (!name.empty())
+                    letter = std::string(1, name[0]);
+            }
+            UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, halfTW * 1.2f, 0, letter, 120);
         }
     }
 
@@ -1896,7 +1939,7 @@ void BattleState::render(float alpha)
 
     if (m_flowPhase == BattleFlowPhase::Deployment)
     {
-        const Font *font = App::getDefaultFont();
+        const Font *font = FontManager::instance().get(FontRole::Body);
         if (font)
         {
             const std::string deploymentLabel = "Deployment Phase";
@@ -1937,7 +1980,7 @@ void BattleState::render(float alpha)
 
     if (!m_topBattleText.empty())
     {
-        if (const Font *font = App::getDefaultFont())
+        if (const Font *font = FontManager::instance().get(FontRole::Body))
         {
             m_renderer->renderTextInRect(font,
                                          m_topBattleText,
@@ -1952,7 +1995,7 @@ void BattleState::render(float alpha)
     }
 
     // ── Damage preview (always drawn if visible) ──
-    m_damagePreview.render(m_renderer, App::getDefaultFont());
+    m_damagePreview.render(m_renderer, FontManager::instance().get(FontRole::Body));
 
     m_combatAnimations.render(m_renderer);
 
@@ -1983,7 +2026,7 @@ void BattleState::render(float alpha)
         m_renderer->setDrawColor(Color{255, 120, 120, 255});
         m_renderer->drawRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
 
-        if (const Font *font = App::getDefaultFont())
+        if (const Font *font = FontManager::instance().get(FontRole::Body))
         {
             const std::string defeat = "DEFEAT";
             const float defeatW = static_cast<float>(defeat.size()) * 8.0f;
@@ -2015,7 +2058,7 @@ void BattleState::render(float alpha)
         m_renderer->setDrawColor(Color{120, 255, 150, 255});
         m_renderer->drawRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
 
-        if (const Font *font = App::getDefaultFont())
+        if (const Font *font = FontManager::instance().get(FontRole::Body))
         {
             const std::string victory = "VICTORY";
             const float victoryW = static_cast<float>(victory.size()) * 8.0f;
@@ -2104,7 +2147,7 @@ void BattleState::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
         return;
     }
 
-    const bool isPlaced = m_deployment.isUnitPlaced(entry->unitId);
+    const bool isPlaced = m_deployment.isUnitPlaced(entry->instanceId);
 
     try
     {
@@ -2121,6 +2164,6 @@ void BattleState::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
     }
     catch (...)
     {
-        m_unitPanelWindow->setPreview(entry->unitId, 1, 1, 0, 0, isPlaced);
+        m_unitPanelWindow->setPreview("Unit " + std::to_string(entry->instanceId), 1, 1, 0, 0, isPlaced);
     }
 }

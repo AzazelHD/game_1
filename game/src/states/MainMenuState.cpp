@@ -2,23 +2,17 @@
 #include "states/MainMenuState.h"
 #include "states/WorldMapState.h"
 #include "states/SettingsState.h"
-#include "engine/core/App.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/MathUtils.h"
 #include "engine/statemachine/StateMachine.h"
 #include "engine/renderer/Font.h"
+#include "engine/renderer/FontManager.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/windows/ActionMenuWindow.h"
 #include <SDL3/SDL.h>
-
-namespace
-{
-    Font *g_mainTitleFont = nullptr;
-    Font *g_mainMenuFont = nullptr;
-}
 
 MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool fadeInOnEnter)
     : m_stateMachine(sm),
@@ -32,11 +26,8 @@ void MainMenuState::onEnter()
     m_transitioning = false;
     m_uiManager.clear();
 
-    if (!g_mainMenuFont && m_renderer)
-        g_mainMenuFont = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 32.0f);
-
     auto *menu = m_uiManager.push<ActionMenuWindow>("menu.main");
-    menu->setFont(g_mainMenuFont ? g_mainMenuFont : App::getDefaultFont());
+    menu->setFont(FontManager::instance().get(FontRole::Heading));
 
     // Center horizontally (box width now follows the font); only fix the
     // vertical anchor below the title.
@@ -47,9 +38,6 @@ void MainMenuState::onEnter()
         ActionMenuWindow::Item{.id = "options", .label = "Options", .enabled = true},
         ActionMenuWindow::Item{.id = "quit", .label = "Quit", .enabled = true},
     });
-
-    if (!g_mainTitleFont && m_renderer)
-        g_mainTitleFont = m_renderer->loadFont("assets/fonts/PixeloidSans.ttf", 72.0f);
 
     if (m_fadeInOnEnter)
     {
@@ -94,21 +82,16 @@ void MainMenuState::render(float alpha)
     (void)alpha;
     m_renderer->clear(Color{18, 21, 29, 255});
 
-    const Font *font = App::getDefaultFont();
-    const Font *titleFont = g_mainTitleFont ? g_mainTitleFont : font;
-    if (titleFont)
-    {
-        const std::string title = "TRPG";
-        m_renderer->renderTextInRect(titleFont,
-                                     title,
-                                     Rectf{0.0f, 130.0f, GameConstants::VIEW_W, 64.0f},
-                                     Color{235, 240, 250, 255},
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-    }
+    const std::string title = "TRPG";
+    m_renderer->renderTextInRect(FontManager::instance().get(FontRole::Title),
+                                 title,
+                                 Rectf{0.0f, 130.0f, GameConstants::VIEW_W, 64.0f},
+                                 Color{235, 240, 250, 255},
+                                 Renderer::HorizontalAlign::Center,
+                                 Renderer::VerticalAlign::Middle,
+                                 false,
+                                 false,
+                                 false);
 
     m_uiManager.render(m_renderer);
 

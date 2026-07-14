@@ -1,8 +1,15 @@
 #include "systems/RosterSystem.h"
 
+#include <algorithm>
+
 void RosterSystem::setUnits(std::vector<RosterUnit> units)
 {
     m_units = std::move(units);
+
+    // Keep the next-id counter ahead of whatever was loaded (e.g. from a
+    // save file), so recruit() never hands out an id that's already in use.
+    for (const RosterUnit &u : m_units)
+        m_nextInstanceId = std::max(m_nextInstanceId, u.instanceId + 1);
 }
 
 void RosterSystem::ensureDefaultUnits()
@@ -10,24 +17,36 @@ void RosterSystem::ensureDefaultUnits()
     if (!m_units.empty())
         return;
 
-    m_units.push_back(RosterUnit{
-        .unitId = "soldier",
-        .templatePath = "assets/units/soldier.json",
-        .recruited = true,
-    });
-
-    m_units.push_back(RosterUnit{
-        .unitId = "aria",
-        .templatePath = "assets/units/aria.json",
-        .recruited = true,
-    });
+    recruit("assets/units/aria.json", "Aria", true);
+    recruit("assets/units/soldier.json", "Soldier");
 }
 
-const RosterUnit *RosterSystem::findById(const std::string &unitId) const
+RosterUnit *RosterSystem::recruit(std::string templatePath, std::string customName, bool isCritical)
+{
+    m_units.push_back(RosterUnit{
+        .instanceId = m_nextInstanceId++,
+        .templatePath = std::move(templatePath),
+        .customName = std::move(customName),
+        .isCritical = isCritical,
+        .recruited = true,
+    });
+    return &m_units.back();
+}
+
+void RosterSystem::dismiss(int instanceId)
+{
+    m_units.erase(
+        std::remove_if(m_units.begin(), m_units.end(),
+                       [instanceId](const RosterUnit &u)
+                       { return u.instanceId == instanceId; }),
+        m_units.end());
+}
+
+const RosterUnit *RosterSystem::findById(int instanceId) const
 {
     for (const RosterUnit &u : m_units)
     {
-        if (u.unitId == unitId)
+        if (u.instanceId == instanceId)
             return &u;
     }
     return nullptr;

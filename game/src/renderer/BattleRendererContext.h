@@ -4,9 +4,10 @@
 #include "engine/math/Vec2.h"
 #include "battle/MovementRange.h"
 
+#include <vector>
+#include <string>
 #include <cstdint>
 #include <unordered_set>
-#include <vector>
 
 class Camera;
 class Texture;
@@ -48,6 +49,7 @@ struct UnitRenderProxy
     Vec2i pos;
     int team;
     bool alive;
+    std::string debugLabel; // first letter of the unit's name
 };
 
 struct BattleRendererContext

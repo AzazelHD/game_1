@@ -46,7 +46,6 @@ set(GAME_SOURCES
     src/ui/Cursor.cpp
     src/ui/UIManager.cpp
     src/ui/DamagePreview.cpp
-    src/ui/DialogSystem.cpp
     src/ui/UIScale.cpp
     src/ui/UnitPortrait.cpp
     src/ui/BattleHud.cpp  
@@ -109,7 +108,6 @@ set(GAME_HEADERS
     src/ui/UIWindow.h
     src/ui/UIManager.h
     src/ui/DamagePreview.h
-    src/ui/DialogSystem.h
     src/ui/UIScale.h
     src/ui/UnitPortrait.h
     src/ui/BattleHud.h  
