@@ -225,3 +225,4 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             }
         }
     }
+}

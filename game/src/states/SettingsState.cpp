@@ -367,23 +367,6 @@ void SettingsState::handleGraphicsInput(const Input &input)
 
 void SettingsState::handleAudioInput(const Input &input)
 {
-    if (m_editingSlider)
-    {
-        Slider *activeSlider = (m_focusIndex == 0) ? &m_volumeSlider : &m_musicSlider;
-
-        if (input.isKeyPressed(KeyCode::Left, true) || input.isKeyPressed(KeyCode::A, true))
-            activeSlider->step(-0.05f);
-        if (input.isKeyPressed(KeyCode::Right, true) || input.isKeyPressed(KeyCode::D, true))
-            activeSlider->step(0.05f);
-
-        if (input.isKeyPressed(KeyCode::Accept, false) || input.isKeyPressed(KeyCode::Back, false))
-        {
-            m_editingSlider = false;
-            applySettings();
-        }
-        return;
-    }
-
     if (input.isKeyPressed(KeyCode::Up, true) || input.isKeyPressed(KeyCode::W, true))
         m_focusIndex = std::max(0, m_focusIndex - 1);
     if (input.isKeyPressed(KeyCode::Down, true) || input.isKeyPressed(KeyCode::S, true))
@@ -393,19 +376,19 @@ void SettingsState::handleAudioInput(const Input &input)
     {
         Slider *activeSlider = (m_focusIndex == 0) ? &m_volumeSlider : &m_musicSlider;
         if (input.isKeyPressed(KeyCode::Left, true) || input.isKeyPressed(KeyCode::A, true))
+        {
             activeSlider->step(-0.03f);
+            applySettings();
+        }
         if (input.isKeyPressed(KeyCode::Right, true) || input.isKeyPressed(KeyCode::D, true))
+        {
             activeSlider->step(0.03f);
+            applySettings();
+        }
     }
 
-    if (input.isKeyPressed(KeyCode::Accept, false))
+    if (input.isKeyPressed(KeyCode::Accept, false) && m_focusIndex == 2)
     {
-        if (m_focusIndex <= 1)
-        {
-            m_editingSlider = true;
-            return;
-        }
-
         m_page = Page::Main;
         m_focusIndex = 1;
         return;
