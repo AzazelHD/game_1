@@ -134,7 +134,7 @@ void WorldMapState::handleInput()
 
     if (input.isKeyPressed(KeyCode::Back, false))
     {
-        if (m_uiManager.hasWindow("worldmap.battle.confirm"))
+        if (m_uiManager.hasWindow(WindowId::WorldMapEncounterConfirm))
         {
             m_uiManager.handleInput(input);
             processUIEvents();
@@ -145,12 +145,12 @@ void WorldMapState::handleInput()
             m_uiManager.popTop();
         else
         {
-            auto *menu = m_uiManager.push<ActionMenuWindow>("world.menu");
+            auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::WorldMap);
             menu->setFont(FontManager::instance().get(FontRole::Heading));
             menu->setItems({
-                ActionMenuWindow::Item{.id = "party", .label = "Party", .enabled = true},
-                ActionMenuWindow::Item{.id = "options", .label = "Options", .enabled = true},
-                ActionMenuWindow::Item{.id = "quit", .label = "Quit", .enabled = true},
+                ActionMenuWindow::Item{.id = ActionId::OpenPartyMenu, .label = "Party", .enabled = true},
+                ActionMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
+                ActionMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
             });
         }
         return;
@@ -158,7 +158,7 @@ void WorldMapState::handleInput()
 
     if (!m_uiManager.empty())
     {
-        if (m_uiManager.hasWindow("worldmap.battle.confirm"))
+        if (m_uiManager.hasWindow(WindowId::WorldMapEncounterConfirm))
         {
             if (input.isKeyPressed(KeyCode::Accept, false) ||
                 input.isKeyPressed(KeyCode::Back, false) ||
@@ -451,7 +451,7 @@ void WorldMapState::onArriveAtNode(int nodeId)
 
     m_pendingBattle = PendingBattle{.nodeId = nodeId, .mapPath = it->second.battleMapPath};
 
-    auto *confirm = m_uiManager.push<ConfirmWindow>("worldmap.battle.confirm");
+    auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::WorldMapEncounterConfirm);
     confirm->setFont(FontManager::instance().get(FontRole::Body));
     confirm->setPrompt("Start Battle?");
 }
@@ -482,9 +482,9 @@ void WorldMapState::processUIEvents()
     auto events = m_uiManager.drainEvents();
     for (const UIEvent &event : events)
     {
-        if (event.windowId == "worldmap.battle.confirm" && event.type == UIEventType::ConfirmResult)
+        if (event.windowId == WindowId::WorldMapEncounterConfirm && event.type == UIEventType::ConfirmResult)
         {
-            m_uiManager.popById("worldmap.battle.confirm");
+            m_uiManager.popById(WindowId::WorldMapEncounterConfirm);
             if (event.confirmed)
                 startBattle(m_pendingBattle);
             else
@@ -492,11 +492,11 @@ void WorldMapState::processUIEvents()
             continue;
         }
 
-        if (event.windowId == "world.menu" && event.type == UIEventType::ActionSelected)
+        if (event.windowId == WindowId::WorldMap && event.type == UIEventType::ActionSelected)
         {
-            if (event.actionId == "party")
+            if (event.actionId == ActionId::OpenPartyMenu)
             {
-                auto *party = m_uiManager.push<PartyWindow>("world.party");
+                auto *party = m_uiManager.push<PartyWindow>(WindowId::PartyMenu);
                 party->setFont(FontManager::instance().get(FontRole::Body));
 
                 std::vector<PartyWindow::Entry> entries;
@@ -519,11 +519,11 @@ void WorldMapState::processUIEvents()
                 entries.push_back(PartyWindow::Entry{.name = "Soldier", .hasSprite = soldierHasSprite});
                 party->setEntries(std::move(entries));
             }
-            else if (event.actionId == "options")
+            else if (event.actionId == ActionId::OpenSettings)
             {
                 m_sm.push(std::make_unique<SettingsState>(m_sm, m_renderer));
             }
-            else if (event.actionId == "quit")
+            else if (event.actionId == ActionId::QuitGame)
             {
                 SDL_Event quitEvent{};
                 quitEvent.type = SDL_EVENT_QUIT;
@@ -532,7 +532,7 @@ void WorldMapState::processUIEvents()
             continue;
         }
 
-        if ((event.windowId == "world.menu" || event.windowId == "world.party") && event.type == UIEventType::ActionCanceled)
+        if ((event.windowId == WindowId::WorldMap || event.windowId == WindowId::PartyMenu) && event.type == UIEventType::ActionCanceled)
         {
             m_uiManager.popById(event.windowId);
             continue;

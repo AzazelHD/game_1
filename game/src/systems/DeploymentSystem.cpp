@@ -1,11 +1,14 @@
+#include "config/BattleCatalog.h"
 #include "systems/DeploymentSystem.h"
 #include "systems/RosterSystem.h"
+
 #include <algorithm>
 
 void DeploymentSystem::initialize(int maxUnits,
                                   std::unordered_set<Vec2i, Vec2iHash> spawnTiles,
                                   std::vector<int> partyInstanceIds,
-                                  const RosterSystem &roster)
+                                  const RosterSystem &roster,
+                                  const std::vector<ForcedUnitRule> &forcedUnits)
 {
     m_initialized = true;
     m_maxUnits = std::max(1, maxUnits);
@@ -27,11 +30,46 @@ void DeploymentSystem::initialize(int maxUnits,
             .position = Vec2i{0, 0},
         });
     }
+
+    for (const ForcedUnitRule &rule : forcedUnits)
+    {
+        const RosterUnit *unit = roster.findByRef(rule.unitRef);
+        if (!unit)
+            continue;
+
+        m_deployed.push_back(DeploymentEntry{
+            .instanceId = unit->instanceId,
+            .templatePath = unit->templatePath,
+            .position = rule.position,
+            .locked = true,
+            .critical = rule.isCritical,
+        });
+    }
 }
 
 bool DeploymentSystem::isSpawnTile(Vec2i pos) const
 {
     return m_spawnTiles.find(pos) != m_spawnTiles.end();
+}
+
+std::unordered_set<Vec2i, Vec2iHash> DeploymentSystem::visibleSpawnTiles() const
+{
+    std::unordered_set<Vec2i, Vec2iHash> result;
+    for (const Vec2i &tile : m_spawnTiles)
+    {
+        bool lockedHere = false;
+        for (const DeploymentEntry &e : m_deployed)
+        {
+            if (e.locked && e.position == tile)
+            {
+                lockedHere = true;
+                break;
+            }
+        }
+        if (!lockedHere)
+            result.insert(tile);
+    }
+    return result;
 }
 
 bool DeploymentSystem::isOccupied(Vec2i pos) const
@@ -73,6 +111,12 @@ bool DeploymentSystem::grabUnit(int instanceId)
 {
     if (!m_initialized || instanceId < 0)
         return false;
+
+    if (const DeploymentEntry *placed = deployedEntryFor(instanceId))
+    {
+        if (placed->locked)
+            return false;
+    }
 
     auto it = std::find_if(m_partyEntries.begin(), m_partyEntries.end(), [instanceId](const DeploymentEntry &entry)
                            { return entry.instanceId == instanceId; });
@@ -140,7 +184,7 @@ bool DeploymentSystem::swapGrabbedWithPlacedAt(Vec2i pos)
         return false;
 
     const DeploymentEntry *occupant = deployedEntryAt(pos);
-    if (!occupant)
+    if (!occupant || occupant->locked)
         return false;
 
     const int occupantId = occupant->instanceId;
@@ -174,6 +218,9 @@ bool DeploymentSystem::unplaceUnit(int instanceId)
     auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [instanceId](const DeploymentEntry &entry)
                            { return entry.instanceId == instanceId; });
     if (it == m_deployed.end())
+        return false;
+
+    if (it->locked)
         return false;
 
     m_deployed.erase(it);

@@ -1,10 +1,11 @@
 #pragma once
 
+#include "engine/math/Vec2.h"
 #include "engine/renderer/Color.h"
 
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <unordered_map>
 
 enum class BattleTriggerType
 {
@@ -86,6 +87,13 @@ struct BattleDefeatRule
     DefeatConditionType type = DefeatConditionType::AllAlliesDead;
 };
 
+struct ForcedUnitRule
+{
+    std::string unitRef;
+    Vec2i position{0, 0};
+    bool isCritical = false;
+};
+
 struct BattleDefinition
 {
     std::string id;
@@ -97,6 +105,7 @@ struct BattleDefinition
     int maxUnits = 1;
     std::vector<EnemyDefinition> enemies;
     std::vector<std::string> playerUnits;
+    std::vector<ForcedUnitRule> forcedUnits;
     BattleObjective objectives;
     BattleRewards rewards;
     std::vector<BattleEvent> events;

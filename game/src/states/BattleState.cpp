@@ -168,9 +168,9 @@ void BattleState::onEnter()
     }
 
     m_uiManager.clear();
-    m_unitPanelWindow = m_uiManager.push<UnitPanelWindow>("battle.unitpanel");
+    m_unitPanelWindow = m_uiManager.push<UnitPanelWindow>(WindowId::BattleUnitPanel);
     m_unitPanelWindow->setFont(FontManager::instance().get(FontRole::Body));
-    m_deploymentWindow = m_uiManager.push<DeploymentWindow>("battle.deployment");
+    m_deploymentWindow = m_uiManager.push<DeploymentWindow>(WindowId::BattleDeployment);
     m_deploymentWindow->setFont(FontManager::instance().get(FontRole::Body));
 
     m_hud.clear();
@@ -213,11 +213,11 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
                 m_reachableTiles = MovementRange::compute(m_grid, m_battleMap,
                                                           active->getPosition(),
                                                           active->getMoveRangeLeft(),
-                                                          active->getTeam(), m_session.getUnitPtrs(),
+                                                          active->getTeam(),
+                                                          m_session.getUnitPtrs(),
                                                           active->getJump());
                 m_cursor.setPosition(active->getPosition());
             }
-
             m_humanTurnPhase = HumanTurnPhase::MoveTarget;
             m_hud.clear();
         }});
@@ -227,11 +227,14 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         .enabled = canAttack,
         .onSelect = [this]()
         {
-            m_currentAttackRange = 1;
-            m_selectedSkillId.clear();
-            computeAttackRangeTiles();
-            if (Unit *active = m_session.getCurrentUnit())
+            Unit *active = m_session.getCurrentUnit();
+            if (active)
+            {
+                m_currentAttackRange = 1;
+                m_selectedSkillId.clear();
+                computeAttackRangeTiles();
                 m_cursor.setPosition(active->getPosition());
+            }
             m_humanTurnPhase = HumanTurnPhase::AttackTarget;
             m_hud.clear();
         }});
@@ -253,9 +256,7 @@ void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
         {
             Unit *active = m_session.getCurrentUnit();
             if (active)
-            {
                 active->setMajorAction(MajorAction::Defend);
-            }
             m_hud.clear();
             advanceToNextUnit();
             m_turnState = TurnState::Idle;
@@ -307,7 +308,7 @@ void BattleState::showSkillMenu()
                 if (Unit *active = m_session.getCurrentUnit())
                     m_cursor.setPosition(active->getPosition());
                 m_humanTurnPhase = HumanTurnPhase::AttackTarget;
-                m_uiManager.popById("battle.skillmenu");
+                m_uiManager.popById(WindowId::BattleSkillMenu);
                 m_hud.clear();
             }});
     }
@@ -316,8 +317,8 @@ void BattleState::showSkillMenu()
     // battle.actionmenu, which stays untouched underneath. Back pops just
     // this window and battle.actionmenu is revealed exactly as it was, the
     // same way any other stacked window already behaves.
-    m_uiManager.popById("battle.skillmenu");
-    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.skillmenu");
+    m_uiManager.popById(WindowId::BattleSkillMenu);
+    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::BattleSkillMenu);
     menu->setFont(FontManager::instance().get(FontRole::Body));
     if (m_flowPhase == BattleFlowPhase::Combat)
     {
@@ -331,7 +332,6 @@ void BattleState::showSkillMenu()
     for (int i = 0; i < static_cast<int>(m_skillMenuItems.size()); ++i)
     {
         uiItems.push_back(ActionMenuWindow::Item{
-            .id = std::to_string(i),
             .label = m_skillMenuItems[i].label,
             .enabled = m_skillMenuItems[i].enabled,
         });
@@ -351,8 +351,8 @@ void BattleState::showSystemMenu()
             .enabled = m_deployment.canStartBattle(),
             .onSelect = [this]()
             {
-                m_uiManager.popById("battle.deployment.confirm");
-                auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
+                m_uiManager.popById(WindowId::BattleDeploymentConfirm);
+                auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::BattleDeploymentConfirm);
                 confirm->setFont(FontManager::instance().get(FontRole::Body));
                 confirm->setPrompt("Start Battle?");
             }};
@@ -387,10 +387,10 @@ void BattleState::showInspectWindow(Unit *unit)
     if (!unit)
         return;
 
-    m_uiManager.popById("battle.inspect");
-    auto *inspect = m_uiManager.push<InspectWindow>("battle.inspect");
+    m_uiManager.popById(WindowId::BattleInspect);
+    auto *inspect = m_uiManager.push<InspectWindow>(WindowId::BattleInspect);
     inspect->setFont(FontManager::instance().get(FontRole::Body));
-    inspect->setTitle("Unit Inspect");
+    inspect->setTitle("Inspect");
     inspect->setLines(InspectWindow::buildLines(unit->getData()));
     m_inspectWindow = inspect;
 }
@@ -401,12 +401,12 @@ void BattleState::openUnitInspectMenu(Unit *unit)
         return;
 
     m_inspectTargetUnit = unit;
-    m_uiManager.popById("battle.inspectmenu");
-    auto *menu = m_uiManager.push<ActionMenuWindow>("battle.inspectmenu");
+    m_uiManager.popById(WindowId::BattleInspectMenu);
+    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::BattleInspectMenu);
     menu->setFont(FontManager::instance().get(FontRole::Body));
     menu->setAnchorBottomRight();
     menu->setItems({
-        ActionMenuWindow::Item{.id = "inspect", .label = "Inspect", .enabled = true},
+        ActionMenuWindow::Item{.id = ActionId::Inspect, .label = "Inspect", .enabled = true},
     });
 }
 
@@ -422,8 +422,8 @@ void BattleState::showInspectWindowFromTemplate(const std::string &templatePath)
         const GenderData &genderData = getGenderData(templateData.gender);
         const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
 
-        m_uiManager.popById("battle.inspect");
-        auto *inspect = m_uiManager.push<InspectWindow>("battle.inspect");
+        m_uiManager.popById(WindowId::BattleInspect);
+        auto *inspect = m_uiManager.push<InspectWindow>(WindowId::BattleInspect);
         inspect->setFont(FontManager::instance().get(FontRole::Body));
         inspect->setTitle("Unit Inspect");
         inspect->setLines(InspectWindow::buildLines(previewUnit.getData()));
@@ -501,39 +501,40 @@ void BattleState::processUIEvents(Unit *active)
     auto events = m_uiManager.drainEvents();
     for (const UIEvent &event : events)
     {
-        if (event.windowId == "battle.dialog" && event.type == UIEventType::DialogFinished)
+        if (event.windowId == WindowId::BattleDialog && event.type == UIEventType::DialogFinished)
         {
-            m_uiManager.popById("battle.dialog");
+            m_uiManager.popById(WindowId::BattleDialog);
             continue;
         }
 
-        if (event.windowId == "battle.deployment" && event.type == UIEventType::ActionSelected)
+        if (event.windowId == WindowId::BattleDeployment && event.type == UIEventType::ActionSelected)
         {
-            if (event.actionId == "cycle_prev")
+            const bool wasGrabbed = m_deployment.hasGrabbedUnit();
+            if (event.actionId == ActionId::CyclePrev)
             {
-                if (!m_deployment.hasGrabbedUnit())
-                {
-                    m_deployment.cycleSelection(-1);
+                m_deployment.cycleSelection(-1);
+                if (!wasGrabbed)
                     syncCursorToSelection();
-                }
+                else
+                    syncDeploymentPreviewUnits();
                 refreshDeploymentWindow();
                 continue;
             }
-            if (event.actionId == "cycle_next")
+            if (event.actionId == ActionId::CycleNext)
             {
-                if (!m_deployment.hasGrabbedUnit())
-                {
-                    m_deployment.cycleSelection(1);
+                m_deployment.cycleSelection(1);
+                if (!wasGrabbed)
                     syncCursorToSelection();
-                }
+                else
+                    syncDeploymentPreviewUnits();
                 refreshDeploymentWindow();
                 continue;
             }
-            if (event.actionId == "accept")
+            if (event.actionId == ActionId::Accept)
             {
                 const Vec2i cursorPos = m_cursor.getPosition();
 
-                if (m_deployment.hasGrabbedUnit())
+                if (wasGrabbed)
                 {
                     if (!m_deployment.isSpawnTile(cursorPos))
                     {
@@ -566,7 +567,7 @@ void BattleState::processUIEvents(Unit *active)
                 }
 
                 // Not grabbing, hovering an enemy preview unit: open the
-                // "Inspect" submenu (kept as a submenu rather than instant,
+                // ActionId::Inspect submenu (kept as a submenu rather than instant,
                 // since Accept on an enemy could grow more options later).
                 if (m_hoveredUnit && m_hoveredUnit->getTeam() != 0)
                 {
@@ -622,7 +623,7 @@ void BattleState::processUIEvents(Unit *active)
                 }
                 continue;
             }
-            if (event.actionId == "details")
+            if (event.actionId == ActionId::Details)
             {
                 // Details (Tab): inspect, in priority order —
                 //   1. Whatever's grabbed in hand (if anything).
@@ -645,9 +646,9 @@ void BattleState::processUIEvents(Unit *active)
                     showInspectWindowFromTemplate(selected->templatePath);
                 continue;
             }
-            if (event.actionId == "back")
+            if (event.actionId == ActionId::Back)
             {
-                if (m_deployment.hasGrabbedUnit())
+                if (wasGrabbed)
                 {
                     m_deployment.releaseGrabbed();
                     refreshDeploymentWindow();
@@ -656,24 +657,24 @@ void BattleState::processUIEvents(Unit *active)
                 showSystemMenu();
                 continue;
             }
-            if (event.actionId == "start")
+            if (event.actionId == ActionId::StartCombat)
             {
                 if (!m_deployment.canStartBattle())
                     continue;
 
-                m_uiManager.popById("battle.deployment.confirm");
-                auto *confirm = m_uiManager.push<ConfirmWindow>("battle.deployment.confirm");
+                m_uiManager.popById(WindowId::BattleDeploymentConfirm);
+                auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::BattleDeploymentConfirm);
                 confirm->setFont(FontManager::instance().get(FontRole::Body));
                 confirm->setPrompt("Start Battle?");
                 continue;
             }
         }
 
-        if (event.windowId == "battle.inspectmenu")
+        if (event.windowId == WindowId::BattleInspectMenu)
         {
-            if (event.type == UIEventType::ActionSelected && event.actionId == "inspect")
+            if (event.type == UIEventType::ActionSelected && event.actionId == ActionId::Inspect)
             {
-                m_uiManager.popById("battle.inspectmenu");
+                m_uiManager.popById(WindowId::BattleInspectMenu);
                 if (m_inspectTargetUnit && !m_inspectTargetUnit->isDead())
                     showInspectWindow(m_inspectTargetUnit);
                 continue;
@@ -681,13 +682,13 @@ void BattleState::processUIEvents(Unit *active)
 
             if (event.type == UIEventType::ActionCanceled)
             {
-                m_uiManager.popById("battle.inspectmenu");
+                m_uiManager.popById(WindowId::BattleInspectMenu);
                 m_inspectTargetUnit = nullptr;
                 continue;
             }
         }
 
-        if (m_flowPhase == BattleFlowPhase::Deployment && event.windowId == "battle.actionmenu")
+        if (m_flowPhase == BattleFlowPhase::Deployment && event.windowId == WindowId::BattleActionMenu)
         {
             if (event.type == UIEventType::ActionSelected)
             {
@@ -699,7 +700,7 @@ void BattleState::processUIEvents(Unit *active)
                 // hideById, not popById: the action menu is a persistent
                 // window owned by BattleHud (see BattleHud::m_menu) — popById
                 // would destroy it out from under BattleHud's cached pointer.
-                m_uiManager.hideById("battle.actionmenu");
+                m_uiManager.hideById(WindowId::BattleActionMenu);
                 if (item.enabled && item.onSelect)
                     item.onSelect();
                 continue;
@@ -712,16 +713,16 @@ void BattleState::processUIEvents(Unit *active)
             }
         }
 
-        if (event.windowId == "battle.inspect" && event.type == UIEventType::ActionCanceled)
+        if (event.windowId == WindowId::BattleInspect && event.type == UIEventType::ActionCanceled)
         {
-            m_uiManager.popById("battle.inspect");
+            m_uiManager.popById(WindowId::BattleInspect);
             m_inspectWindow = nullptr;
             continue;
         }
 
-        if (event.windowId == "battle.deployment.confirm" && event.type == UIEventType::ConfirmResult)
+        if (event.windowId == WindowId::BattleDeploymentConfirm && event.type == UIEventType::ConfirmResult)
         {
-            m_uiManager.popById("battle.deployment.confirm");
+            m_uiManager.popById(WindowId::BattleDeploymentConfirm);
             if (event.confirmed)
                 startCombatPhase();
             continue;
@@ -730,7 +731,7 @@ void BattleState::processUIEvents(Unit *active)
         if (m_flowPhase != BattleFlowPhase::Combat)
             continue;
 
-        if (event.windowId == "battle.actionmenu" && event.type == UIEventType::ActionSelected)
+        if (event.windowId == WindowId::BattleActionMenu && event.type == UIEventType::ActionSelected)
         {
             const int index = event.index;
             if (index < 0 || index >= static_cast<int>(m_hud.items().size()))
@@ -738,7 +739,7 @@ void BattleState::processUIEvents(Unit *active)
 
             BattleMenuItem item = m_hud.items()[index];
             // Same reasoning as the Deployment branch above: hide, don't pop.
-            m_uiManager.hideById("battle.actionmenu");
+            m_uiManager.hideById(WindowId::BattleActionMenu);
             if (item.enabled && item.onSelect)
                 item.onSelect();
             // The Accept press that selected this menu item is still "live"
@@ -752,7 +753,7 @@ void BattleState::processUIEvents(Unit *active)
             continue;
         }
 
-        if (event.windowId == "battle.skillmenu" && event.type == UIEventType::ActionSelected)
+        if (event.windowId == WindowId::BattleSkillMenu && event.type == UIEventType::ActionSelected)
         {
             const int index = event.index;
             if (index < 0 || index >= static_cast<int>(m_skillMenuItems.size()))
@@ -765,16 +766,16 @@ void BattleState::processUIEvents(Unit *active)
             continue;
         }
 
-        if (event.windowId == "battle.skillmenu" && event.type == UIEventType::ActionCanceled)
+        if (event.windowId == WindowId::BattleSkillMenu && event.type == UIEventType::ActionCanceled)
         {
             // Pop just this level — battle.actionmenu underneath was never
             // touched, so it's revealed exactly as it was. No flag needed:
             // this IS the stack working correctly.
-            m_uiManager.popById("battle.skillmenu");
+            m_uiManager.popById(WindowId::BattleSkillMenu);
             continue;
         }
 
-        if (event.windowId == "battle.actionmenu" && event.type == UIEventType::ActionCanceled)
+        if (event.windowId == WindowId::BattleActionMenu && event.type == UIEventType::ActionCanceled)
         {
             if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
             {
@@ -811,7 +812,7 @@ void BattleState::processUIEvents(Unit *active)
             continue;
         }
 
-        if (event.windowId == "battle.confirm" && event.type == UIEventType::NavigatePrevious)
+        if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigatePrevious)
         {
             cyclePendingAttackTarget(-1);
             updatePendingAttackPreview(active);
@@ -820,7 +821,7 @@ void BattleState::processUIEvents(Unit *active)
             continue;
         }
 
-        if (event.windowId == "battle.confirm" && event.type == UIEventType::NavigateNext)
+        if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigateNext)
         {
             cyclePendingAttackTarget(1);
             updatePendingAttackPreview(active);
@@ -829,9 +830,9 @@ void BattleState::processUIEvents(Unit *active)
             continue;
         }
 
-        if (event.windowId == "battle.confirm" && event.type == UIEventType::ConfirmResult)
+        if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::ConfirmResult)
         {
-            m_uiManager.popById("battle.confirm");
+            m_uiManager.popById(WindowId::BattleActionConfirm);
 
             if (!event.confirmed)
             {
@@ -1065,11 +1066,13 @@ void BattleState::initializeDeploymentPhase()
             spawnTiles.insert(Vec2i{tile->col, tile->row});
     }
 
+    static const std::vector<ForcedUnitRule> kNoForcedUnits;
     m_deployment.initialize(
         m_battleDefinition ? m_battleDefinition->maxUnits : 1,
         std::move(spawnTiles),
         partyCtx.party().memberIds(),
-        partyCtx.roster());
+        partyCtx.roster(),
+        m_battleDefinition ? m_battleDefinition->forcedUnits : kNoForcedUnits);
 
     if (!m_battleMap.playerSpawns.empty() && m_battleMap.playerSpawns.front())
     {
@@ -1084,7 +1087,7 @@ void BattleState::syncDeploymentPreviewUnits()
 {
     m_hoveredUnit = nullptr;
     m_inspectTargetUnit = nullptr;
-    m_uiManager.popById("battle.inspectmenu");
+    m_uiManager.popById(WindowId::BattleInspectMenu);
 
     for (Unit *u : m_deploymentPreviewUnits)
         delete u;
@@ -1160,7 +1163,7 @@ void BattleState::startCombatPhase()
 
     m_hoveredUnit = nullptr;
     m_inspectTargetUnit = nullptr;
-    m_uiManager.popById("battle.inspectmenu");
+    m_uiManager.popById(WindowId::BattleInspectMenu);
 
     // Tear down the preview list, not m_units — m_units is combat-only and
     // is about to be filled for the first time, right below, from
@@ -1186,8 +1189,8 @@ void BattleState::startCombatPhase()
     if (Unit *first = m_session.getCurrentUnit(); first)
         m_cursor.setPosition(first->getPosition());
 
-    m_uiManager.popById("battle.deployment");
-    m_uiManager.popById("battle.deployment.confirm");
+    m_uiManager.popById(WindowId::BattleDeployment);
+    m_uiManager.popById(WindowId::BattleDeploymentConfirm);
     m_deploymentWindow = nullptr;
     if (m_unitPanelWindow)
         m_unitPanelWindow->clearPreview();
@@ -1206,8 +1209,8 @@ void BattleState::startCombatPhase()
 
 void BattleState::showDialogueFromEvent(const std::string &text)
 {
-    m_uiManager.popById("battle.dialog");
-    auto *dialog = m_uiManager.push<DialogWindow>("battle.dialog");
+    m_uiManager.popById(WindowId::BattleDialog);
+    auto *dialog = m_uiManager.push<DialogWindow>(WindowId::BattleDialog);
     dialog->setFont(FontManager::instance().get(FontRole::Body));
     dialog->start({DialogWindow::Line{.speaker = "System", .text = text}});
 }
@@ -1317,8 +1320,8 @@ void BattleState::handleInput()
             // The action menu specifically should not be cancellable via
             // Back once the active unit has committed to its action and
             // there's no move left to undo — there's nothing meaningful to
-            // go "back" to at that point.
-            if (m_uiManager.hasWindow("battle.actionmenu") &&
+            // go ActionId::Back to at that point.
+            if (m_uiManager.hasWindow(WindowId::BattleActionMenu) &&
                 active && active->hasActed() && !m_canUndoLastMove)
                 return;
 
@@ -1431,11 +1434,11 @@ void BattleState::update(float dt)
     if (m_flowPhase == BattleFlowPhase::Deployment)
     {
         const bool menuOpen =
-            m_uiManager.hasWindow("battle.actionmenu") ||
-            m_uiManager.hasWindow("battle.deployment.confirm") ||
-            m_uiManager.hasWindow("battle.inspect") ||
-            m_uiManager.hasWindow("battle.inspectmenu") ||
-            m_uiManager.hasWindow("battle.dialog");
+            m_uiManager.hasWindow(WindowId::BattleActionMenu) ||
+            m_uiManager.hasWindow(WindowId::BattleDeploymentConfirm) ||
+            m_uiManager.hasWindow(WindowId::BattleInspect) ||
+            m_uiManager.hasWindow(WindowId::BattleInspectMenu) ||
+            m_uiManager.hasWindow(WindowId::BattleDialog);
 
         // Cursor movement is locked while the roster selection is pinned to
         // an already-placed unit (see DeploymentSystem::isSelectionLocked) —
@@ -1654,8 +1657,8 @@ void BattleState::startBattleEnd(bool playerWon)
 
     m_playerWon = playerWon;
     m_hud.clear();
-    m_uiManager.popById("battle.confirm");
-    m_uiManager.popById("battle.dialog");
+    m_uiManager.popById(WindowId::BattleActionConfirm);
+    m_uiManager.popById(WindowId::BattleDialog);
 
     if (playerWon)
     {
@@ -1821,10 +1824,12 @@ void BattleState::render(float alpha)
     {
         BattleOverlayMode overlayMode = BattleOverlayMode::None;
         const std::unordered_set<Vec2i, Vec2iHash> *overlayTiles = nullptr;
+        std::unordered_set<Vec2i, Vec2iHash> visibleSpawnTiles;
         if (m_flowPhase == BattleFlowPhase::Deployment)
         {
+            visibleSpawnTiles = m_deployment.visibleSpawnTiles();
             overlayMode = BattleOverlayMode::MoveRange;
-            overlayTiles = &m_deployment.spawnTiles();
+            overlayTiles = &visibleSpawnTiles;
         }
         else if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
         {

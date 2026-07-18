@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/WindowId.h"
 #include "ui/UIWindow.h"
 
 #include <string>
@@ -16,7 +17,7 @@ public:
         std::string text;
     };
 
-    explicit DialogWindow(std::string id);
+    explicit DialogWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void start(std::vector<Line> lines);

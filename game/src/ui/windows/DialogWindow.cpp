@@ -8,14 +8,15 @@
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
+#include "ui/WindowId.h"
 
 namespace
 {
     constexpr float kCharInterval = 0.02f;
 }
 
-DialogWindow::DialogWindow(std::string id)
-    : UIWindow(std::move(id), true, false)
+DialogWindow::DialogWindow(WindowId id)
+    : UIWindow(id, true, false)
 {
 }
 

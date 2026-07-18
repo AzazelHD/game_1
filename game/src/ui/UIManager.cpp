@@ -2,6 +2,7 @@
 
 #include "engine/input/Input.h"
 #include "ui/UIWindow.h"
+#include "ui/WindowId.h"
 
 #include <algorithm>
 #include <utility>
@@ -16,9 +17,10 @@ void UIManager::popTop()
     }
 }
 
-void UIManager::popById(const std::string &id)
+void UIManager::popById(WindowId id)
 {
-    auto it = std::find_if(m_stack.rbegin(), m_stack.rend(), [&id](const std::unique_ptr<UIWindow> &w)
+    auto it = std::find_if(m_stack.rbegin(), m_stack.rend(),
+                           [&id](const std::unique_ptr<UIWindow> &w)
                            { return w && w->id() == id; });
 
     if (it == m_stack.rend())
@@ -30,7 +32,7 @@ void UIManager::popById(const std::string &id)
     m_stack.erase(eraseIt);
 }
 
-void UIManager::hideById(const std::string &id)
+void UIManager::hideById(WindowId id)
 {
     for (auto &window : m_stack)
     {
@@ -42,7 +44,7 @@ void UIManager::hideById(const std::string &id)
     }
 }
 
-bool UIManager::hasWindow(const std::string &id) const
+bool UIManager::hasWindow(WindowId id) const
 {
     // Visible-only by design: every prior call site (BattleState's ESC/
     // update-phase checks, BattleHud::isOpen) uses this to mean "is this

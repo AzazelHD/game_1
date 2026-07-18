@@ -14,6 +14,7 @@ std::vector<UnitSpawn> BattleParticipantsBuilder::build(const BattleDefinition &
             .unitFilePath = placed.templatePath,
             .startPos = placed.position,
             .team = 0,
+            .isCritical = placed.critical,
         });
     }
 

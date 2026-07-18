@@ -9,6 +9,7 @@
 #include "engine/renderer/Renderer.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
+#include "ui/WindowId.h"
 
 #include <algorithm>
 
@@ -33,8 +34,8 @@ namespace
     }
 }
 
-ActionMenuWindow::ActionMenuWindow(std::string id)
-    : UIWindow(std::move(id), true, false)
+ActionMenuWindow::ActionMenuWindow(WindowId id)
+    : UIWindow(id, true, false)
 {
 }
 

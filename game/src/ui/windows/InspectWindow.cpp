@@ -9,6 +9,7 @@
 #include "engine/renderer/Renderer.h"
 #include "battle/UnitData.h"
 #include "ui/UITheme.h"
+#include "ui/WindowId.h"
 
 #include <string>
 #include <algorithm>
@@ -21,8 +22,8 @@ namespace
     constexpr int kVisibleLines = 14;
 }
 
-InspectWindow::InspectWindow(std::string id)
-    : UIWindow(std::move(id), true, false)
+InspectWindow::InspectWindow(WindowId id)
+    : UIWindow(id, true, false)
 {
 }
 
@@ -49,7 +50,7 @@ void InspectWindow::handleInput(const Input &input)
 
     if (input.isKeyPressed(KeyCode::Back, false) || input.isKeyPressed(KeyCode::Accept, false))
     {
-        emit(UIEvent{.type = UIEventType::ActionCanceled, .windowId = id(), .actionId = "close"});
+        emit(UIEvent{.type = UIEventType::ActionCanceled, .windowId = id(), .actionId = ActionId::Close});
     }
 }
 

@@ -39,6 +39,9 @@ namespace
                 EnemyDefinition{.id = "soldier", .templatePath = "assets/units/soldier.json", .level = 1, .team = 2},
             },
             .playerUnits = {"roster_selection"},
+            .forcedUnits = {
+                ForcedUnitRule{.unitRef = "Aria", .position = Vec2i{2, 3}, .isCritical = true},
+            },
             .objectives = BattleObjective{.type = "defeat_all"},
             .rewards = BattleRewards{.xp = 250, .items = {}},
             .events = {

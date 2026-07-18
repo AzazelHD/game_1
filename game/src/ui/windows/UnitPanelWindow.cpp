@@ -8,6 +8,7 @@
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
+#include "ui/WindowId.h"
 #include "ui/UnitPortrait.h"
 
 #include <cstdio>
@@ -23,8 +24,8 @@ namespace
     }
 }
 
-UnitPanelWindow::UnitPanelWindow(std::string id)
-    : UIWindow(std::move(id), false, false)
+UnitPanelWindow::UnitPanelWindow(WindowId id)
+    : UIWindow(id, false, false)
 {
 }
 

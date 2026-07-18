@@ -1,0 +1,215 @@
+Sistema de progresión — RPG táctico por turnos
+Filosofía general
+
+El jugador controla un ejército de unidades reclutables, no un grupo de protagonistas fijos.
+
+Cada unidad pertenece a una única clase durante toda su vida y no puede cambiar libremente de clase. Su identidad se construye mediante sus aptitudes, naturaleza, especialización y la inversión permanente de puntos de habilidad.
+
+El objetivo del sistema es que merezca la pena entrenar varias unidades de una misma clase, ya que dos unidades idénticas sobre el papel pueden terminar desempeñando roles completamente distintos.
+Reclutamiento
+
+Cada unidad posee tres capas de identidad.
+
+Aptitudes
+
+Pequeñas variaciones aleatorias en los atributos base (similar al concepto de IV de Pokémon). Las diferencias son reducidas para que cualquier recluta sea perfectamente viable, pero suficientes para recompensar a quien quiera optimizar.
+
+Naturaleza
+
+Cada unidad nace con una naturaleza visible. La naturaleza modifica ligeramente el crecimiento de atributos mediante un pequeño bonus y un pequeño malus.
+
+Ejemplos:
+
+    Firme (+Fuerza, -Velocidad)
+
+    Sereno (+Resistencia mágica, -Fuerza)
+
+    Estoico (+Defensa, -PM)
+
+    Astuto (+Destreza, -Resistencia)
+
+La naturaleza orienta una posible build sin obligar al jugador a seguirla.
+
+Inversión de puntos
+
+La inversión de puntos es permanente. No existe ningún sistema para reasignarlos. Si el jugador desea otra variante de una misma clase, deberá entrenar otra unidad diferente.
+Clases
+
+Cada unidad pertenece a una única clase base. No puede cambiar libremente de clase.
+
+Cada clase dispone de:
+
+    Un conjunto propio de habilidades activas.
+
+    Varias habilidades pasivas.
+
+    Varias habilidades de reacción.
+
+Solo esa clase puede aprender dichas habilidades.
+Promoción
+
+En una fase avanzada del juego, una unidad puede promocionar a una de varias especializaciones. La promoción es permanente e irreversible.
+
+Promocionar:
+
+    Modifica el crecimiento de atributos.
+
+    Adapta parte de las habilidades de la clase base.
+
+    Añade una o varias habilidades exclusivas de la especialización.
+
+    Aumenta el número de habilidades activas equipables.
+
+    Eleva el nivel máximo de 40 a 50.
+
+Las habilidades exclusivas de la promoción:
+
+    Se obtienen automáticamente.
+
+    No consumen puntos de habilidad.
+
+    No poseen niveles.
+
+La promoción no cambia completamente el rol de la unidad, sino que lo especializa.
+Niveles
+
+Clase base
+
+Nivel máximo: 40.
+
+Clase promocionada
+
+Nivel máximo: 50.
+
+Cada nivel concede exactamente 1 punto de habilidad.
+
+Total máximo durante toda la partida: 50 puntos de habilidad.
+Sistema de habilidades
+
+Las habilidades se dividen en tres categorías.
+Habilidades activas
+
+Son las habilidades utilizadas durante el combate. Cada clase dispone de un conjunto propio de habilidades activas.
+
+Las habilidades poseen 5 niveles. Una habilidad no está disponible hasta aprender su Nivel 1. Cada nivel representa una mejora permanente de esa habilidad. No se trata simplemente de aumentar el daño, sino de perfeccionar progresivamente la habilidad mediante pequeñas mejoras cuidadosamente equilibradas.
+Nivel Coste
+Nivel 1 1 punto
+Nivel 2 1 punto
+Nivel 3 2 puntos
+Nivel 4 2 puntos
+Nivel 5 3 puntos
+
+Coste total para maximizar una habilidad activa: 9 puntos.
+
+Ejemplos de mejoras
+
+Cada habilidad posee mejoras propias. Pueden incluir:
+
+    Aumento de daño.
+
+    Aumento de precisión.
+
+    Mayor probabilidad de crítico.
+
+    Reducción del coste de PM.
+
+    Ignorar parte de la defensa.
+
+    Mayor probabilidad de aplicar un estado.
+
+    Mayor duración de un efecto.
+
+    Cualquier mejora específica diseñada para esa habilidad.
+
+Las mejoras deben perfeccionar la habilidad sin modificar radicalmente su funcionamiento. Se evita que los niveles alteren aspectos difíciles de equilibrar como grandes aumentos de alcance o cambios completos en el área de efecto.
+Habilidades pasivas
+
+Las pasivas permanecen activas durante todo el combate mientras estén equipadas. También poseen niveles y se mejoran mediante puntos de habilidad. Su progresión es más corta.
+Nivel Coste
+Nivel 1 1 punto
+Nivel 2 1 punto
+Nivel 3 2 puntos
+
+Coste total para maximizar una pasiva: 4 puntos.
+
+Al igual que las activas, una pasiva no está disponible hasta aprender su Nivel 1. Las mejoras de las pasivas están centradas en potenciar su efecto, sin modificar su naturaleza.
+Habilidades de reacción
+
+Las reacciones se activan automáticamente cuando ocurre una condición determinada.
+
+Ejemplos:
+
+    Contraatacar.
+
+    Esquivar.
+
+    Reflejar magia.
+
+Las reacciones no poseen niveles. Aprender una reacción cuesta 1 punto. Una vez aprendida, permanece disponible para siempre.
+Equipamiento de habilidades
+
+Las habilidades aprendidas permanecen disponibles para siempre. Fuera del combate pueden cambiarse libremente.
+
+Clase base
+
+Puede equipar:
+
+    5 habilidades activas.
+
+    1 habilidad pasiva.
+
+    1 habilidad de reacción.
+
+Clase promocionada
+
+Puede equipar:
+
+    6 habilidades activas.
+
+    1 habilidad pasiva.
+
+    1 habilidad de reacción.
+
+La identidad de una unidad no viene determinada únicamente por las habilidades aprendidas, sino por la combinación concreta que lleva equipada en cada misión.
+Combate
+
+Las habilidades consumen PM (Puntos de Maná). El movimiento funciona de forma independiente al consumo de PM. Durante un turno el jugador puede combinar libremente movimiento y acciones siempre que las reglas del combate lo permitan.
+Progresión del jugador
+
+La progresión del juego se construye sobre varias capas simultáneas:
+
+    Subir niveles (1-50).
+
+    Conseguir puntos de habilidad.
+
+    Mejorar habilidades de forma permanente.
+
+    Aprender nuevas habilidades.
+
+    Promocionar clases.
+
+    Conseguir y fabricar equipo mediante materiales obtenidos de enemigos.
+
+    Reclutar nuevas unidades con distintas aptitudes y naturalezas.
+
+Identidad de una unidad
+
+Dos unidades de la misma clase pueden terminar siendo muy distintas gracias a la combinación de:
+
+    Aptitudes.
+
+    Naturaleza.
+
+    Especialización elegida.
+
+    Habilidades aprendidas.
+
+    Nivel alcanzado en cada habilidad.
+
+    Pasiva equipada.
+
+    Reacción equipada.
+
+    Equipo utilizado.
+
+Como los puntos de habilidad son permanentes e irreversibles, cada unidad desarrolla una identidad propia a lo largo de la partida. Si el jugador desea una variante diferente de una misma clase, deberá entrenar una nueva unidad en lugar de reasignar los puntos de la anterior.

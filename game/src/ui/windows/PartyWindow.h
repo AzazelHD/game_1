@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/windowId.h"
 #include "ui/UIWindow.h"
 
 #include <string>
@@ -17,7 +18,7 @@ public:
         bool hasSprite = false;
     };
 
-    explicit PartyWindow(std::string id);
+    explicit PartyWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void setEntries(std::vector<Entry> entries);

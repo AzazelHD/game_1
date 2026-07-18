@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ui/UIWindow.h"
+#include "ui/ActionId.h"
+#include "ui/WindowId.h"
 #include "engine/math/Vec2.h"
 
 #include <string>
@@ -13,12 +15,12 @@ class ActionMenuWindow : public UIWindow
 public:
     struct Item
     {
-        std::string id;
+        ActionId id = ActionId::None;
         std::string label;
         bool enabled = true;
     };
 
-    explicit ActionMenuWindow(std::string id);
+    explicit ActionMenuWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void setItems(std::vector<Item> items);

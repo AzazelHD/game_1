@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UIEvent.h"
+#include "ui/WindowId.h"
 
 #include <memory>
 #include <string>
@@ -39,13 +40,13 @@ public:
     }
 
     void popTop();
-    void popById(const std::string &id);
+    void popById(WindowId id);
     // Hides a window in place instead of destroying it (see UIWindow::
     // setVisible). Use this instead of popById for persistent windows —
     // popById would erase the unique_ptr and dangle any raw pointer an
     // owner (e.g. BattleHud) cached for reuse.
-    void hideById(const std::string &id);
-    bool hasWindow(const std::string &id) const;
+    void hideById(WindowId id);
+    bool hasWindow(WindowId id) const;
     void clear();
 
     void handleInput(const Input &input);

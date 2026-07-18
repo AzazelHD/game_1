@@ -9,9 +9,10 @@
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
+#include "ui/WindowId.h"
 
-ConfirmWindow::ConfirmWindow(std::string id)
-    : UIWindow(std::move(id), true, false)
+ConfirmWindow::ConfirmWindow(WindowId id)
+    : UIWindow(id, true, false)
 {
 }
 
@@ -53,7 +54,7 @@ void ConfirmWindow::handleInput(const Input &input)
     {
         emit(UIEvent{.type = UIEventType::ConfirmResult,
                      .windowId = id(),
-                     .actionId = "cancel",
+                     .actionId = ActionId::Cancel,
                      .confirmed = false});
         return;
     }
@@ -62,7 +63,7 @@ void ConfirmWindow::handleInput(const Input &input)
     {
         emit(UIEvent{.type = UIEventType::ConfirmResult,
                      .windowId = id(),
-                     .actionId = m_confirmSelected ? "confirm" : "cancel",
+                     .actionId = m_confirmSelected ? ActionId::Confirm : ActionId::Cancel,
                      .confirmed = m_confirmSelected});
     }
 }

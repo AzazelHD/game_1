@@ -17,17 +17,16 @@ void RosterSystem::ensureDefaultUnits()
     if (!m_units.empty())
         return;
 
-    recruit("assets/units/aria.json", "Aria", true);
+    recruit("assets/units/aria.json", "Aria");
     recruit("assets/units/soldier.json", "Soldier");
 }
 
-RosterUnit *RosterSystem::recruit(std::string templatePath, std::string customName, bool isCritical)
+RosterUnit *RosterSystem::recruit(std::string templatePath, std::string customName)
 {
     m_units.push_back(RosterUnit{
         .instanceId = m_nextInstanceId++,
         .templatePath = std::move(templatePath),
         .customName = std::move(customName),
-        .isCritical = isCritical,
         .recruited = true,
     });
     return &m_units.back();
@@ -47,6 +46,21 @@ const RosterUnit *RosterSystem::findById(int instanceId) const
     for (const RosterUnit &u : m_units)
     {
         if (u.instanceId == instanceId)
+            return &u;
+    }
+    return nullptr;
+}
+
+const RosterUnit *RosterSystem::findByRef(const std::string &unitRef) const
+{
+    for (const RosterUnit &u : m_units)
+    {
+        if (!u.customName.empty() && u.customName == unitRef)
+            return &u;
+    }
+    for (const RosterUnit &u : m_units)
+    {
+        if (u.templatePath == unitRef)
             return &u;
     }
     return nullptr;

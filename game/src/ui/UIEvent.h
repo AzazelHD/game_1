@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ui/ActionId.h"
+#include "ui/WindowId.h"
+
 #include <string>
 
 enum class UIEventType
@@ -16,8 +19,8 @@ enum class UIEventType
 struct UIEvent
 {
     UIEventType type = UIEventType::ActionSelected;
-    std::string windowId;
-    std::string actionId;
+    WindowId windowId = WindowId::None;
+    ActionId actionId = ActionId::None;
     int index = -1;
     bool confirmed = false;
 };

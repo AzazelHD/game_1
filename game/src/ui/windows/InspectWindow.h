@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UIWindow.h"
+#include "ui/WindowId.h"
 
 #include <string>
 #include <vector>
@@ -11,7 +12,7 @@ struct UnitData;
 class InspectWindow : public UIWindow
 {
 public:
-    explicit InspectWindow(std::string id);
+    explicit InspectWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void setTitle(std::string title) { m_title = std::move(title); }

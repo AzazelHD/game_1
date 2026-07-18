@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ui/UIEvent.h"
+#include "ui/WindowId.h"
 
 #include <functional>
-#include <string>
 
 class Input;
 class Renderer;
@@ -11,8 +11,8 @@ class Renderer;
 class UIWindow
 {
 public:
-    explicit UIWindow(std::string id, bool blocksInputBelow, bool blocksRenderBelow = false)
-        : m_id(std::move(id)),
+    explicit UIWindow(WindowId id, bool blocksInputBelow, bool blocksRenderBelow = false)
+        : m_id(id),
           m_blocksInputBelow(blocksInputBelow),
           m_blocksRenderBelow(blocksRenderBelow)
     {
@@ -20,7 +20,7 @@ public:
 
     virtual ~UIWindow() = default;
 
-    const std::string &id() const { return m_id; }
+    WindowId id() const { return m_id; }
     bool blocksInputBelow() const { return m_blocksInputBelow; }
     bool blocksRenderBelow() const { return m_blocksRenderBelow; }
 
@@ -54,7 +54,7 @@ protected:
     }
 
 private:
-    std::string m_id;
+    WindowId m_id;
     bool m_blocksInputBelow = true;
     bool m_blocksRenderBelow = false;
     bool m_visible = true;

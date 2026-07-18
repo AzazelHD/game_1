@@ -5,12 +5,15 @@
 #include <vector>
 
 class RosterSystem;
+struct ForcedUnitRule;
 
 struct DeploymentEntry
 {
     int instanceId = -1;
     std::string templatePath;
     Vec2i position{0, 0};
+    bool locked = false;   // forced by BattleDefinition — cannot be grabbed/unplaced/swapped out
+    bool critical = false; // losing this unit is an instant defeat
 };
 
 class DeploymentSystem
@@ -19,7 +22,8 @@ public:
     void initialize(int maxUnits,
                     std::unordered_set<Vec2i, Vec2iHash> spawnTiles,
                     std::vector<int> partyInstanceIds,
-                    const RosterSystem &roster);
+                    const RosterSystem &roster,
+                    const std::vector<ForcedUnitRule> &forcedUnits);
 
     bool isInitialized() const { return m_initialized; }
     int maxUnits() const { return m_maxUnits; }
@@ -71,6 +75,7 @@ public:
 
     const std::vector<DeploymentEntry> &partyEntries() const { return m_partyEntries; }
     const std::unordered_set<Vec2i, Vec2iHash> &spawnTiles() const { return m_spawnTiles; }
+    std::unordered_set<Vec2i, Vec2iHash> visibleSpawnTiles() const;
     const std::vector<DeploymentEntry> &deployed() const { return m_deployed; }
 
 private:

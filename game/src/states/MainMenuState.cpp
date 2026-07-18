@@ -12,6 +12,9 @@
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/windows/ActionMenuWindow.h"
+#include "ui/ActionId.h"
+#include "ui/WindowId.h"
+
 #include <SDL3/SDL.h>
 
 MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool fadeInOnEnter)
@@ -26,7 +29,7 @@ void MainMenuState::onEnter()
     m_transitioning = false;
     m_uiManager.clear();
 
-    auto *menu = m_uiManager.push<ActionMenuWindow>("menu.main");
+    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::MainMenu);
     menu->setFont(FontManager::instance().get(FontRole::Heading));
 
     // Center horizontally (box width now follows the font); only fix the
@@ -34,9 +37,9 @@ void MainMenuState::onEnter()
     menu->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
     menu->centerHorizontally(true);
     menu->setItems({
-        ActionMenuWindow::Item{.id = "start", .label = "Start Game", .enabled = true},
-        ActionMenuWindow::Item{.id = "options", .label = "Options", .enabled = true},
-        ActionMenuWindow::Item{.id = "quit", .label = "Quit", .enabled = true},
+        ActionMenuWindow::Item{.id = ActionId::StartGame, .label = "Start Game", .enabled = true},
+        ActionMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
+        ActionMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
     });
 
     if (m_fadeInOnEnter)
@@ -103,29 +106,38 @@ void MainMenuState::processUIEvents()
     auto events = m_uiManager.drainEvents();
     for (const UIEvent &event : events)
     {
-        if (event.windowId != "menu.main" || event.type != UIEventType::ActionSelected)
+        if (event.windowId != WindowId::MainMenu || event.type != UIEventType::ActionSelected)
             continue;
 
         m_transitioning = true;
-        if (event.actionId == "start")
+
+        switch (event.actionId)
+        {
+        case ActionId::StartGame:
         {
             m_stateMachine.replace(std::make_unique<WorldMapState>(m_stateMachine, m_renderer));
+            break;
         }
-        else if (event.actionId == "options")
+        case ActionId::OpenSettings:
         {
             m_stateMachine.push(std::make_unique<SettingsState>(m_stateMachine, m_renderer));
             m_transitioning = false;
+            break;
         }
-        else if (event.actionId == "quit")
+        case ActionId::QuitGame:
         {
             SDL_Event quitEvent{};
             quitEvent.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quitEvent);
             m_transitioning = false;
+            break;
         }
-        else
+
+        default:
         {
             m_transitioning = false;
+            break;
+        }
         }
     }
 }

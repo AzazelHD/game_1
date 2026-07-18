@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/WindowId.h"
 #include "ui/UIWindow.h"
 
 #include <utility>
@@ -10,7 +11,7 @@ class Font;
 class UnitPanelWindow : public UIWindow
 {
 public:
-    explicit UnitPanelWindow(std::string id);
+    explicit UnitPanelWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void setTurnInfo(const Unit *activeUnit, int round);

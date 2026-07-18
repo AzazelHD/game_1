@@ -8,6 +8,7 @@
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
+#include "ui/WindowId.h"
 
 #include <algorithm>
 #include <cmath>
@@ -54,8 +55,8 @@ namespace
     }
 }
 
-PartyWindow::PartyWindow(std::string id)
-    : UIWindow(std::move(id), true, false)
+PartyWindow::PartyWindow(WindowId id)
+    : UIWindow(id, true, false)
 {
 }
 
@@ -84,7 +85,7 @@ void PartyWindow::handleInput(const Input &input)
 
     if (input.isKeyPressed(KeyCode::Back, false) || input.isKeyPressed(KeyCode::Accept, false))
     {
-        emit(UIEvent{.type = UIEventType::ActionCanceled, .windowId = id(), .actionId = "close"});
+        emit(UIEvent{.type = UIEventType::ActionCanceled, .windowId = id(), .actionId = ActionId::Close});
     }
 }
 

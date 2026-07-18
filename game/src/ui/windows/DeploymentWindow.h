@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UIWindow.h"
+#include "ui/WindowId.h"
 
 #include <string>
 
@@ -9,7 +10,7 @@ class Font;
 class DeploymentWindow : public UIWindow
 {
 public:
-    explicit DeploymentWindow(std::string id);
+    explicit DeploymentWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void setSelectedUnitLabel(std::string label) { m_selectedUnitLabel = std::move(label); }

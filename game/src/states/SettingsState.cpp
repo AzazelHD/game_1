@@ -14,13 +14,15 @@
 #include "engine/ui/HorizontalLayout.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
+#include "ui/ActionId.h"
+#include "ui/WindowId.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <nlohmann/json.hpp>
 #include <string>
+#include <nlohmann/json.hpp>
 
 SettingsState::SettingsState(StateMachine<Scene> &sm, Renderer *renderer)
     : m_sm(sm), m_renderer(renderer)
