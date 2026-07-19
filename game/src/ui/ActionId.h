@@ -4,61 +4,63 @@ enum class ActionId
 {
     None,
 
+    // Battle — flow
+    StartCombat,
+
+    // Battle — turn actions
+    Attack,
+    Defend,
+    Move,
+    OpenItemsMenu,
+    OpenSkillsMenu,
+    UseSkill,
+    Wait,
+
     // Generic UI actions
-    Confirm,
-    Cancel,
     Accept,
     Back,
+    Cancel,
     Close,
-    Details,
-    CyclePrev,
+    Confirm,
     CycleNext,
+    CyclePrev,
+    Details,
     Inspect,
 
     // Main menu
-    StartGame,
     OpenSettings,
     QuitGame,
+    StartGame,
 
-    // World map — node interaction
-    MoveToNode,
-    InteractWithNode,
-    ViewMissionDetails,
-    EnterBattle,
+    // Settings
+    AdjustLeft,
+    AdjustRight,
+    ApplyChanges,
+    DiscardChanges,
+    OpenAudioSettings,
+    OpenGraphicSettings,
 
-    // World map — node hub (city-type nodes)
-    OpenPartyMenu,
-    OpenTavern,
-    OpenShop,
-    OpenInn,
-    OpenPrison,
+    // Shop
+    BuyItem,
+    CraftItem,
+    SellItem,
+    TradeItem,
 
     // Tavern
     AcceptMission,
     Talk,
     Whispers,
 
-    // Shop
-    BuyItem,
-    SellItem,
-    TradeItem,
-    CraftItem,
+    // World map — node hub (city-type nodes)
+    OpenInn,
+    OpenPartyMenu,
+    OpenPrison,
+    OpenShop,
+    OpenTavern,
 
-    // Battle — flow
-    StartCombat,
-
-    // Battle — turn actions
-    Move,
-    Attack,
-    OpenSkillsMenu,
-    UseSkill,
-    OpenItemsMenu,
-    Defend,
-    Wait,
-
-    // Settings
-    ApplyChanges,
-    DiscardChanges,
-    OpenGraphicSettings,
-    OpenAudioSettings,
+    // World map — node interaction
+    EnterBattle,
+    InteractWithNode,
+    MoveToNode,
+    ViewMissionDetails,
 };

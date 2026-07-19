@@ -1,6 +1,8 @@
 #pragma once
 
 #include "engine/scene/Scene.h"
+#include "engine/ui/Slider.h"
+#include "data/SettingsManager.h"
 #include "ui/UIManager.h"
 
 class Renderer;
@@ -8,10 +10,10 @@ class Renderer;
 template <typename T>
 class StateMachine;
 
-class SettingsState : public Scene
+class AudioSettings : public Scene
 {
 public:
-    SettingsState(StateMachine<Scene> &sm, Renderer *renderer);
+    AudioSettings(StateMachine<Scene> &sm, Renderer *renderer);
 
     void onEnter() override;
     void onExit() override {}
@@ -21,8 +23,18 @@ public:
 
 private:
     void processUIEvents();
+    bool hasVolumeChanges() const;
+    void applyAndSaveVolumes();
+    void discardVolumeChanges();
+    void applyVolume();
+    void showExitConfirm();
 
     StateMachine<Scene> &m_sm;
     Renderer *m_renderer;
     UIManager m_uiManager;
+
+    Slider m_volumeSlider;
+    Slider m_musicSlider;
+
+    bool m_showExitConfirm = false;
 };

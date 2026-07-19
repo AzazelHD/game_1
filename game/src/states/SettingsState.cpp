@@ -1,488 +1,48 @@
-#include "config/GameConstants.h"
-#include "states/SettingsState.h"
-#include "engine/core/App.h"
-#include "engine/core/Window.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
-#include "engine/math/Rect.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
-#include "engine/ui/Insets.h"
-#include "engine/ui/VerticalLayout.h"
-#include "engine/ui/HorizontalLayout.h"
-#include "ui/UITheme.h"
-#include "ui/UIScale.h"
+#include "engine/statemachine/StateMachine.h"
+#include "config/GameConstants.h"
+#include "states/SettingsState.h"
+#include "states/GraphicsSettings.h"
+#include "states/AudioSettings.h"
 #include "ui/ActionId.h"
+#include "ui/UITheme.h"
 #include "ui/WindowId.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdio>
-#include <fstream>
-#include <string>
-#include <nlohmann/json.hpp>
+#include "ui/windows/ActionMenuWindow.h"
 
 SettingsState::SettingsState(StateMachine<Scene> &sm, Renderer *renderer)
-    : m_sm(sm), m_renderer(renderer)
-{
-}
-
-namespace
-{
-    constexpr float kPanelX = 330.0f;
-    constexpr float kPanelY = 230.0f;
-    constexpr float kPanelW = 620.0f;
-    constexpr float kRowH = 54.0f;
-    constexpr float kTrackW = 280.0f;
-    constexpr float kTrackH = 22.0f;
-    constexpr const char *kSettingsFile = "settings.json";
-
-    float g_sessionMasterVolume = 1.0f;
-    float g_sessionMusicVolume = 1.0f;
-
-    const char *windowModeLabel(bool borderless)
-    {
-        return borderless ? "Borderless" : "Windowed";
-    }
-
-    void drawRow(Renderer *renderer, Rectf rect, bool focused)
-    {
-        renderer->setBlendMode(Renderer::BlendMode::Blend);
-        if (focused)
-        {
-            renderer->setDrawColor(Color{166, 78, 48, 228});
-            renderer->fillRect(rect);
-            renderer->setDrawColor(Color{255, 196, 118, 255});
-            renderer->drawRect(rect);
-        }
-        else
-        {
-            renderer->setDrawColor(Color{20, 28, 44, 190});
-            renderer->fillRect(rect);
-            renderer->setDrawColor(Color{58, 74, 108, 255});
-            renderer->drawRect(rect);
-        }
-    }
-
-    constexpr float kRowBoxH = kRowH - 6.0f; // visual height of each row's highlight box
-    constexpr float kRowGap = 8.0f;          // default margin-bottom between stacked rows
-
-    // Single source of truth for the 3 uniformly-spaced rows shared by the
-    // Main and Audio pages (each row: fixed height, 6px margin-bottom gap
-    // to the next one — nothing special beyond that).
-    std::vector<Rectf> computeUniformRows(float ui)
-    {
-        const std::vector<VerticalLayout::Item> rows = {
-            {kPanelW * ui, kRowBoxH * ui, Insets{0.0f, 0.0f, kRowGap * ui, 0.0f}},
-            {kPanelW * ui, kRowBoxH * ui, Insets{0.0f, 0.0f, kRowGap * ui, 0.0f}},
-            {kPanelW * ui, kRowBoxH * ui, Insets{}},
-        };
-        return VerticalLayout::stack(rows, Vec2f{kPanelX * ui, kPanelY * ui});
-    }
-
-    // Two INDEPENDENT boxes on the row, not one box split into columns:
-    //   [ label box ]  <gap>  [ controls box: slider  <margin>  %  ]
-    // Each box is sized purely from its own contents via
-    // HorizontalLayout::computeBounds/layoutRow — nothing here is a
-    // hand-picked constant that has to be kept in sync with the text
-    // inside it. rowBox is the union of both, used for the selection
-    // highlight background (drawRow).
-    struct AudioRowLayout
-    {
-        Rectf rowBox;
-        Rectf labelRect;
-        Rectf sliderRect;
-        Rectf pctRect;
-    };
-    AudioRowLayout computeAudioRowLayout(Renderer *renderer,
-                                         const Font *font,
-                                         const std::string &labelText,
-                                         float rowY, float rowH, float ui)
-    {
-        constexpr float kGapLabelControls = 24.0f; // gap between label box and controls box
-        constexpr float kSliderMarginTop = 16.0f;  // slider sits below the label baseline
-        constexpr float kPctMarginLeft = 28.0f;    // gap between slider and its "%" text
-        constexpr float kRowInnerPad = 16.0f;      // outer (pad) on both row edges
-
-        // Label width: shared across every audio row so the sliders stay
-        // vertically aligned. Measure the widest label instead of hardcoding.
-        float labelTextW = 0.0f;
-        if (renderer && font)
-        {
-            labelTextW = std::max({renderer->measureText(font, "Master Volume").x,
-                                   renderer->measureText(font, "Music Volume").x});
-        }
-
-        // "%" box: sized to the widest value it will ever show ("100%").
-        const float pctTextW = (renderer && font)
-                                   ? renderer->measureText(font, "100%").x
-                                   : 0.0f;
-
-        const HorizontalLayout::Container labelContainer{
-            .items = {{labelTextW, rowH, Insets{}}},
-            // outer-left (pad)
-            .padding = Insets{0.0f, 0.0f, 0.0f, kRowInnerPad * ui},
-        };
-
-        const HorizontalLayout::Container controlsContainer{
-            .items = {
-                {kTrackW * ui, kTrackH * ui, Insets{kSliderMarginTop * ui, 0.0f, 0.0f, 0.0f}},
-                {pctTextW, rowH, Insets{0.0f, 0.0f, 0.0f, kPctMarginLeft * ui}},
-            },
-            // outer-right (pad) — same value as the label's left pad
-            .padding = Insets{0.0f, kRowInnerPad * ui, 0.0f, 0.0f},
-        };
-
-        const float labelWidth = HorizontalLayout::computeBounds(
-                                     labelContainer.items, Vec2f{}, labelContainer.padding)
-                                     .w;
-
-        const float controlsWidth = HorizontalLayout::computeBounds(
-                                        controlsContainer.items, Vec2f{}, controlsContainer.padding)
-                                        .w;
-
-        const float totalWidth = labelWidth + (kGapLabelControls * ui) + controlsWidth;
-
-        const float centeredX =
-            (kPanelX * ui) + ((kPanelW * ui) - totalWidth) * 0.5f;
-
-        const auto results = HorizontalLayout::layoutRow(
-            {labelContainer, controlsContainer},
-            Vec2f{centeredX, rowY},
-            kGapLabelControls * ui);
-
-        const Rectf &labelBox = results[0].box;
-        const Rectf &controlsBox = results[1].box;
-
-        const Rectf rowBox{
-            labelBox.x,
-            rowY,
-            (controlsBox.x + controlsBox.w) - labelBox.x,
-            rowH};
-
-        return AudioRowLayout{
-            rowBox,
-            results[0].itemRects[0],
-            results[1].itemRects[0],
-            results[1].itemRects[1],
-        };
-    }
-}
+    : m_sm(sm), m_renderer(renderer) {}
 
 void SettingsState::onEnter()
 {
-    m_page = Page::Main;
-    m_focusIndex = 0;
-    m_editingSlider = false;
-    m_showExitConfirm = false;
-    m_confirmApplySelected = true;
+    m_uiManager.clear();
 
-    m_resolutions = {
-        Resolution{1280, 720},
-        Resolution{1366, 768},
-        Resolution{1600, 900},
-        Resolution{1920, 1080},
-    };
+    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::SettingsMenu);
+    menu->setFont(FontManager::instance().get(FontRole::Heading));
 
-    loadPersistedSettings();
+    menu->centerHorizontally(true);
+    menu->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
 
-    Slider::RenderStyle style;
-    style.trackHeight = 8.0f;
-    style.handleWidth = 12.0f;
-    style.handleHeight = 18.0f;
-    style.offsetY = 0.0f;
-
-    const Font *font = FontManager::instance().get(FontRole::Heading);
-    if (m_renderer && font)
-    {
-        const std::vector<Rectf> audioRows = computeUniformRows(1.0f);
-        const AudioRowLayout volumeLayout = computeAudioRowLayout(m_renderer, font, "Master Volume", audioRows[0].y, audioRows[0].h, 1.0f);
-        const AudioRowLayout musicLayout = computeAudioRowLayout(m_renderer, font, "Music Volume", audioRows[1].y, audioRows[1].h, 1.0f);
-
-        m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
-        m_musicSlider.setTrackRect(musicLayout.sliderRect);
-    }
-
-    m_volumeSlider.setRange(0.0f, 1.0f);
-    m_volumeSlider.setValue(g_sessionMasterVolume);
-    m_volumeSlider.setRenderStyle(style);
-
-    m_musicSlider.setRange(0.0f, 1.0f);
-    m_musicSlider.setValue(g_sessionMusicVolume);
-    m_musicSlider.setRenderStyle(style);
-}
-
-void SettingsState::onExit()
-{
-    applySettings();
-}
-
-void SettingsState::loadPersistedSettings()
-{
-    using json = nlohmann::json;
-
-    m_resolutionIndex = 0;
-    m_windowMode = WindowMode::Windowed;
-    g_sessionMasterVolume = 1.0f;
-    g_sessionMusicVolume = 1.0f;
-
-    std::ifstream file(kSettingsFile);
-    if (file.is_open())
-    {
-        try
-        {
-            const json j = json::parse(file);
-            const int savedRes = j.value("resolutionIndex", 0);
-            m_resolutionIndex = std::clamp(savedRes, 0, static_cast<int>(m_resolutions.size()) - 1);
-            m_windowMode = j.value("borderless", false) ? WindowMode::Borderless : WindowMode::Windowed;
-            g_sessionMasterVolume = std::clamp(j.value("masterVolume", 1.0f), 0.0f, 1.0f);
-            g_sessionMusicVolume = std::clamp(j.value("musicVolume", 1.0f), 0.0f, 1.0f);
-        }
-        catch (...)
-        {
-        }
-    }
-
-    m_appliedResolutionIndex = m_resolutionIndex;
-    m_appliedWindowMode = m_windowMode;
-    m_appliedMasterVolume = g_sessionMasterVolume;
-    m_appliedMusicVolume = g_sessionMusicVolume;
-}
-
-void SettingsState::savePersistedSettings() const
-{
-    using json = nlohmann::json;
-    json j;
-    j["resolutionIndex"] = m_appliedResolutionIndex;
-    j["borderless"] = (m_appliedWindowMode == WindowMode::Borderless);
-    j["masterVolume"] = m_appliedMasterVolume;
-    j["musicVolume"] = m_appliedMusicVolume;
-
-    std::ofstream file(kSettingsFile, std::ios::trunc);
-    if (!file.is_open())
-        return;
-    file << j.dump(2);
-}
-
-bool SettingsState::hasPendingChanges() const
-{
-    return m_resolutionIndex != m_appliedResolutionIndex ||
-           m_windowMode != m_appliedWindowMode ||
-           std::abs(m_volumeSlider.getValue() - m_appliedMasterVolume) > 0.0001f ||
-           std::abs(m_musicSlider.getValue() - m_appliedMusicVolume) > 0.0001f;
-}
-
-void SettingsState::handleMainInput(const Input &input)
-{
-    if (input.isKeyPressed(KeyCode::Up, true) || input.isKeyPressed(KeyCode::W, true))
-        m_focusIndex = std::max(0, m_focusIndex - 1);
-    if (input.isKeyPressed(KeyCode::Down, true) || input.isKeyPressed(KeyCode::S, true))
-        m_focusIndex = std::min(2, m_focusIndex + 1);
-
-    if (input.isKeyPressed(KeyCode::Accept, false))
-    {
-        if (m_focusIndex == 0)
-        {
-            m_page = Page::Graphics;
-            m_focusIndex = 0;
-            return;
-        }
-        if (m_focusIndex == 1)
-        {
-            m_page = Page::Audio;
-            m_focusIndex = 0;
-            m_editingSlider = false;
-            return;
-        }
-        m_sm.pop();
-        return;
-    }
-
-    if (input.isKeyPressed(KeyCode::Back, false))
-        m_sm.pop();
-}
-
-void SettingsState::handleGraphicsInput(const Input &input)
-{
-    if (input.isKeyPressed(KeyCode::Up, true) || input.isKeyPressed(KeyCode::W, true))
-        m_focusIndex = std::max(0, m_focusIndex - 1);
-    if (input.isKeyPressed(KeyCode::Down, true) || input.isKeyPressed(KeyCode::S, true))
-        m_focusIndex = std::min(2, m_focusIndex + 1);
-
-    if (m_focusIndex == 0)
-    {
-        if (input.isKeyPressed(KeyCode::Left, true) || input.isKeyPressed(KeyCode::A, true))
-            m_resolutionIndex = (m_resolutionIndex - 1 + static_cast<int>(m_resolutions.size())) % static_cast<int>(m_resolutions.size());
-        if (input.isKeyPressed(KeyCode::Right, true) || input.isKeyPressed(KeyCode::D, true))
-            m_resolutionIndex = (m_resolutionIndex + 1) % static_cast<int>(m_resolutions.size());
-    }
-    else if (m_focusIndex == 1)
-    {
-        if (input.isKeyPressed(KeyCode::Left, true) ||
-            input.isKeyPressed(KeyCode::A, true) ||
-            input.isKeyPressed(KeyCode::Right, true) ||
-            input.isKeyPressed(KeyCode::D, true))
-        {
-            m_windowMode = (m_windowMode == WindowMode::Windowed) ? WindowMode::Borderless : WindowMode::Windowed;
-        }
-    }
-
-    if (input.isKeyPressed(KeyCode::Accept, false))
-    {
-        if (m_focusIndex == 2)
-        {
-            if (hasPendingChanges())
-            {
-                applyGraphicsSettings();
-                applySettings();
-                m_appliedResolutionIndex = m_resolutionIndex;
-                m_appliedWindowMode = m_windowMode;
-                m_appliedMasterVolume = m_volumeSlider.getValue();
-                m_appliedMusicVolume = m_musicSlider.getValue();
-                savePersistedSettings();
-            }
-
-            m_page = Page::Main;
-            m_focusIndex = 0;
-            return;
-        }
-    }
-
-    if (input.isKeyPressed(KeyCode::Back, false))
-    {
-        if (hasPendingChanges())
-        {
-            m_showExitConfirm = true;
-            m_confirmApplySelected = true;
-        }
-        else
-        {
-            m_page = Page::Main;
-            m_focusIndex = 0;
-        }
-    }
-}
-
-void SettingsState::handleAudioInput(const Input &input)
-{
-    if (input.isKeyPressed(KeyCode::Up, true) || input.isKeyPressed(KeyCode::W, true))
-        m_focusIndex = std::max(0, m_focusIndex - 1);
-    if (input.isKeyPressed(KeyCode::Down, true) || input.isKeyPressed(KeyCode::S, true))
-        m_focusIndex = std::min(2, m_focusIndex + 1);
-
-    if (m_focusIndex <= 1)
-    {
-        Slider *activeSlider = (m_focusIndex == 0) ? &m_volumeSlider : &m_musicSlider;
-        if (input.isKeyPressed(KeyCode::Left, true) || input.isKeyPressed(KeyCode::A, true))
-        {
-            activeSlider->step(-0.03f);
-            applySettings();
-        }
-        if (input.isKeyPressed(KeyCode::Right, true) || input.isKeyPressed(KeyCode::D, true))
-        {
-            activeSlider->step(0.03f);
-            applySettings();
-        }
-    }
-
-    if (input.isKeyPressed(KeyCode::Accept, false) && m_focusIndex == 2)
-    {
-        m_page = Page::Main;
-        m_focusIndex = 1;
-        return;
-    }
-
-    if (input.isKeyPressed(KeyCode::Back, false))
-    {
-        m_page = Page::Main;
-        m_focusIndex = 1;
-    }
-}
-
-void SettingsState::handlePendingExitConfirmInput(const Input &input)
-{
-    if (input.isKeyPressed(KeyCode::Left, false) || input.isKeyPressed(KeyCode::A, false) ||
-        input.isKeyPressed(KeyCode::Right, false) || input.isKeyPressed(KeyCode::D, false))
-    {
-        m_confirmApplySelected = !m_confirmApplySelected;
-    }
-
-    if (input.isKeyPressed(KeyCode::Back, false))
-    {
-        m_showExitConfirm = false;
-        return;
-    }
-
-    if (!input.isKeyPressed(KeyCode::Accept, false))
-        return;
-
-    if (m_confirmApplySelected)
-    {
-        applyGraphicsSettings();
-        applySettings();
-        m_appliedResolutionIndex = m_resolutionIndex;
-        m_appliedWindowMode = m_windowMode;
-        m_appliedMasterVolume = m_volumeSlider.getValue();
-        m_appliedMusicVolume = m_musicSlider.getValue();
-        savePersistedSettings();
-    }
-    else
-    {
-        m_resolutionIndex = m_appliedResolutionIndex;
-        m_windowMode = m_appliedWindowMode;
-        m_volumeSlider.setValue(m_appliedMasterVolume);
-        m_musicSlider.setValue(m_appliedMusicVolume);
-    }
-
-    m_showExitConfirm = false;
-    m_page = Page::Main;
-    m_focusIndex = 0;
+    menu->setItems({
+        ActionMenuWindow::Item{.id = ActionId::OpenGraphicSettings, .label = "Graphics", .enabled = true},
+        ActionMenuWindow::Item{.id = ActionId::OpenAudioSettings, .label = "Audio", .enabled = true},
+        ActionMenuWindow::Item{.id = ActionId::Back, .label = "Back", .enabled = true},
+    });
 }
 
 void SettingsState::handleInput()
 {
-    const Input &input = Input::instance();
-
-    if (m_showExitConfirm)
-    {
-        handlePendingExitConfirmInput(input);
-        return;
-    }
-
-    switch (m_page)
-    {
-    case Page::Main:
-        handleMainInput(input);
-        break;
-    case Page::Graphics:
-        handleGraphicsInput(input);
-        break;
-    case Page::Audio:
-        handleAudioInput(input);
-        break;
-    }
+    m_uiManager.handleInput(Input::instance());
+    processUIEvents();
 }
 
-void SettingsState::update(float /*dt*/)
+void SettingsState::update(float dt)
 {
-    if (!m_renderer)
-        return;
-
-    UIScale::refresh();
-    const float ui = UIScale::factor();
-
-    const Font *font = FontManager::instance().get(FontRole::Heading);
-    if (!font)
-        return;
-
-    const std::vector<Rectf> audioRows = computeUniformRows(ui);
-    const AudioRowLayout volumeLayout = computeAudioRowLayout(m_renderer, font, "Master Volume", audioRows[0].y, audioRows[0].h, ui);
-    const AudioRowLayout musicLayout = computeAudioRowLayout(m_renderer, font, "Music Volume", audioRows[1].y, audioRows[1].h, ui);
-
-    m_volumeSlider.setTrackRect(volumeLayout.sliderRect);
-    m_musicSlider.setTrackRect(musicLayout.sliderRect);
+    m_uiManager.update(dt);
 }
 
 void SettingsState::render(float /*alpha*/)
@@ -490,269 +50,50 @@ void SettingsState::render(float /*alpha*/)
     if (!m_renderer)
         return;
 
-    UIScale::refresh();
-    const float ui = UIScale::factor();
+    m_renderer->clear(Color{12, 14, 20, 255});
 
-    m_renderer->setBlendMode(Renderer::BlendMode::Blend);
-    m_renderer->setDrawColor(Color{12, 14, 20, 255});
-    m_renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});
-
-    const Font *font = FontManager::instance().get(FontRole::Heading);
-    if (!font)
-        return;
-
-    const Color titleColor = Color{240, 245, 255, 255};
-    const Color baseColor = Color{214, 220, 238, 255};
-    const Color selectedColor = Color{255, 244, 182, 255};
-
-    const char *pageTitle = "Settings";
-    if (m_page == Page::Graphics)
-        pageTitle = "Settings / Graphics";
-    else if (m_page == Page::Audio)
-        pageTitle = "Settings / Audio";
-
-    m_renderer->renderTextInRect(font,
-                                 pageTitle,
-                                 Rectf{0.0f, 180.0f * ui, GameConstants::VIEW_W, 28.0f * ui},
-                                 titleColor,
+    const std::string title = "Settings";
+    m_renderer->renderTextInRect(FontManager::instance().get(FontRole::Title),
+                                 title,
+                                 Rectf{0.0f, 130.0f, GameConstants::VIEW_W, 64.0f},
+                                 Color{240, 245, 255, 255},
                                  Renderer::HorizontalAlign::Center,
                                  Renderer::VerticalAlign::Middle,
-                                 false,
-                                 false,
-                                 false);
+                                 false, false, false);
 
-    if (m_page == Page::Main)
+    m_uiManager.render(m_renderer);
+}
+
+void SettingsState::processUIEvents()
+{
+    auto events = m_uiManager.drainEvents();
+    for (const auto &event : events)
     {
-        const char *labels[3] = {"Graphics", "Audio", "Back"};
-        for (int i = 0; i < 3; ++i)
+        if (event.windowId != WindowId::SettingsMenu)
+            continue;
+
+        if (event.type == UIEventType::ActionCanceled)
         {
-            const Rectf row{kPanelX * ui, (kPanelY + static_cast<float>(i) * kRowH) * ui, kPanelW * ui, (kRowH - 6.0f) * ui};
-            drawRow(m_renderer, row, m_focusIndex == i);
-            std::string line = (m_focusIndex == i) ? std::string("> ") + labels[i] + " <" : labels[i];
-            m_renderer->renderTextInRect(font,
-                                         line,
-                                         row,
-                                         m_focusIndex == i ? selectedColor : baseColor,
-                                         Renderer::HorizontalAlign::Center,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
-        }
-    }
-    else if (m_page == Page::Graphics)
-    {
-        const Resolution current = m_resolutions[static_cast<std::size_t>(m_resolutionIndex)];
-        char resBuf[64];
-        std::snprintf(resBuf, sizeof(resBuf), "%d x %d", current.width, current.height);
-
-        const std::string actionLabel = hasPendingChanges() ? "Apply Changes and Save" : "Back / Return to main menu";
-
-        constexpr float kActionRowGap = 24.0f; // extra breathing room above the standalone action button
-
-        const char *labels[2] = {"Resolution", "Window Mode"};
-        std::string values[2] = {
-            std::string("< ") + resBuf + " >",
-            std::string("< ") + windowModeLabel(m_windowMode == WindowMode::Borderless) + " >",
-        };
-
-        for (int i = 0; i < 2; ++i)
-        {
-            const Rectf row{kPanelX * ui, (kPanelY + static_cast<float>(i) * kRowH) * ui, kPanelW * ui, (kRowH - 6.0f) * ui};
-            drawRow(m_renderer, row, m_focusIndex == i);
-
-            m_renderer->renderTextInRect(font,
-                                         labels[i],
-                                         Rectf{row.x + 16.0f * ui, row.y, row.w * 0.40f, row.h},
-                                         m_focusIndex == i ? selectedColor : baseColor,
-                                         Renderer::HorizontalAlign::Left,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
-
-            m_renderer->renderTextInRect(font,
-                                         values[i],
-                                         Rectf{row.x + row.w * 0.40f, row.y, row.w * 0.60f - 16.0f * ui, row.h},
-                                         m_focusIndex == i ? selectedColor : baseColor,
-                                         Renderer::HorizontalAlign::Right,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
+            m_sm.pop();
+            return;
         }
 
-        // Standalone action button: extra gap above it, full-width centered label.
-        const Rectf actionRow{kPanelX * ui,
-                              (kPanelY + 2.0f * kRowH + kActionRowGap) * ui,
-                              kPanelW * ui,
-                              (kRowH - 6.0f) * ui};
-        drawRow(m_renderer, actionRow, m_focusIndex == 2);
-        m_renderer->renderTextInRect(font,
-                                     actionLabel,
-                                     actionRow,
-                                     m_focusIndex == 2 ? selectedColor : baseColor,
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
+        if (event.type == UIEventType::ActionSelected)
+        {
+            switch (event.actionId)
+            {
+            case ActionId::OpenGraphicSettings:
+                m_sm.push(std::make_unique<GraphicsSettings>(m_sm, m_renderer));
+                break;
+            case ActionId::OpenAudioSettings:
+                m_sm.push(std::make_unique<AudioSettings>(m_sm, m_renderer));
+                break;
+            case ActionId::Back:
+                m_sm.pop();
+                break;
+            default:
+                break;
+            }
+        }
     }
-    else
-    {
-        const std::vector<Rectf> audioRows = computeUniformRows(ui);
-        const Rectf volumeRow = audioRows[0];
-        const Rectf musicRow = audioRows[1];
-        const Rectf backRow = audioRows[2];
-
-        const AudioRowLayout volumeLayoutR = computeAudioRowLayout(m_renderer, font, "Master Volume", volumeRow.y, volumeRow.h, ui);
-        const AudioRowLayout musicLayoutR = computeAudioRowLayout(m_renderer, font, "Music Volume", musicRow.y, musicRow.h, ui);
-        const AudioRowLayout backLayoutR = computeAudioRowLayout(m_renderer, font, "Back", backRow.y, backRow.h, ui);
-
-        drawRow(m_renderer, volumeLayoutR.rowBox, m_focusIndex == 0);
-        drawRow(m_renderer, musicLayoutR.rowBox, m_focusIndex == 1);
-        drawRow(m_renderer, backLayoutR.rowBox, m_focusIndex == 2);
-
-        m_renderer->renderTextInRect(font,
-                                     "Master Volume",
-                                     volumeLayoutR.labelRect,
-                                     m_focusIndex == 0 ? selectedColor : baseColor,
-                                     Renderer::HorizontalAlign::Left,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-
-        m_renderer->renderTextInRect(font,
-                                     "Music Volume",
-                                     musicLayoutR.labelRect,
-                                     m_focusIndex == 1 ? selectedColor : baseColor,
-                                     Renderer::HorizontalAlign::Left,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-
-        m_volumeSlider.render(m_renderer);
-        m_musicSlider.render(m_renderer);
-
-        char volumePct[16];
-        char musicPct[16];
-        std::snprintf(volumePct, sizeof(volumePct), "%d%%", static_cast<int>(m_volumeSlider.getValue() * 100.0f + 0.5f));
-        std::snprintf(musicPct, sizeof(musicPct), "%d%%", static_cast<int>(m_musicSlider.getValue() * 100.0f + 0.5f));
-
-        m_renderer->renderTextInRect(font,
-                                     volumePct,
-                                     volumeLayoutR.pctRect,
-                                     m_focusIndex == 0 ? selectedColor : baseColor,
-                                     Renderer::HorizontalAlign::Left,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-
-        m_renderer->renderTextInRect(font,
-                                     musicPct,
-                                     musicLayoutR.pctRect,
-                                     m_focusIndex == 1 ? selectedColor : baseColor,
-                                     Renderer::HorizontalAlign::Left,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-
-        std::string backLine = m_focusIndex == 2 ? "> Back <" : "Back";
-
-        m_renderer->renderTextInRect(font,
-                                     backLine,
-                                     backLayoutR.rowBox,
-                                     m_focusIndex == 2 ? selectedColor : baseColor,
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-    }
-
-    if (m_showExitConfirm)
-    {
-        const float w = 420.0f * ui;
-        const float h = 140.0f * ui;
-        const float x = (GameConstants::VIEW_W - w) * 0.5f;
-        const float y = (GameConstants::VIEW_H - h) * 0.5f;
-
-        m_renderer->setDrawColor(UITheme::PopupBG);
-        m_renderer->fillRect(Rectf{x, y, w, h});
-        m_renderer->setDrawColor(UITheme::PopupBorder);
-        m_renderer->drawRect(Rectf{x, y, w, h});
-
-        m_renderer->renderTextInRect(font,
-                                     "You have unapplied graphics changes",
-                                     Rectf{x, y + 16.0f * ui, w, 24.0f * ui},
-                                     UITheme::Text,
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-
-        m_renderer->renderTextInRect(font,
-                                     m_confirmApplySelected ? "> Apply and Save <" : "Apply and Save",
-                                     Rectf{x + 18.0f * ui, y + 70.0f * ui, w * 0.5f - 24.0f * ui, 24.0f * ui},
-                                     m_confirmApplySelected ? UITheme::SelectedText : UITheme::Text,
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-        m_renderer->renderTextInRect(font,
-                                     m_confirmApplySelected ? "Discard Changes" : "> Discard Changes <",
-                                     Rectf{x + w * 0.5f + 6.0f * ui, y + 70.0f * ui, w * 0.5f - 24.0f * ui, 24.0f * ui},
-                                     m_confirmApplySelected ? UITheme::Text : UITheme::SelectedText,
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-    }
-}
-
-void SettingsState::applyGraphicsSettings()
-{
-    Window *window = App::getWindow();
-    if (!window)
-        return;
-
-    if (m_windowMode == WindowMode::Borderless)
-    {
-        window->setBorderlessWindowed(true);
-    }
-    else
-    {
-        window->setBorderlessWindowed(false);
-        const Resolution &res = m_resolutions[static_cast<std::size_t>(m_resolutionIndex)];
-        window->setSize(res.width, res.height);
-    }
-
-    UIScale::refresh();
-}
-
-void SettingsState::applySettings()
-{
-    g_sessionMasterVolume = m_volumeSlider.getValue();
-    g_sessionMusicVolume = m_musicSlider.getValue();
-
-    // TODO: push values to an AudioManager or similar
-    // AudioManager::instance().setMasterVolume(m_volumeSlider.getValue());
-    // AudioManager::instance().setMusicVolume(m_musicSlider.getValue());
-}
-
-void SettingsState::resetDefaults()
-{
-    m_resolutionIndex = 0;
-    m_windowMode = WindowMode::Windowed;
-    m_volumeSlider.setValue(1.0f);
-    m_musicSlider.setValue(1.0f);
-    m_page = Page::Main;
-    m_focusIndex = 0;
 }

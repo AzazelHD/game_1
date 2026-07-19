@@ -10,9 +10,11 @@ set(GAME_SOURCES
     src/states/WorldMapState.cpp
     src/states/BattleState.cpp
     src/states/ResultState.cpp
-    src/states/SettingsState.cpp
     src/states/BattleLoader.cpp   
     src/states/HumanTurnController.cpp
+    src/states/SettingsState.cpp
+    src/states/AudioSettings.cpp
+    src/states/GraphicsSettings.cpp
 
     src/battle/Grid.cpp
     src/battle/Unit.cpp
@@ -32,6 +34,7 @@ set(GAME_SOURCES
 
     src/data/UnitLoader.cpp
     src/data/SkillLoader.cpp
+    src/data/SettingsManager.cpp
 
     src/config/BattleCatalog.cpp
 
@@ -54,11 +57,11 @@ set(GAME_SOURCES
     src/ui/windows/ActionMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
-    src/ui/windows/UnitPanelWindow.cpp
     src/ui/windows/DeploymentWindow.cpp
     src/ui/windows/InspectWindow.cpp
     src/ui/windows/PartyWindow.cpp
-
+    src/ui/windows/SettingsRowWindow.cpp
+    src/ui/windows/UnitPanelWindow.cpp
 )
 
 set(GAME_HEADERS
@@ -67,8 +70,10 @@ set(GAME_HEADERS
     src/states/WorldMapState.h
     src/states/BattleState.h
     src/states/ResultState.h
-    src/states/SettingsState.h
     src/states/HumanTurnController.h
+    src/states/SettingsState.h
+    src/states/AudioSettings.h
+    src/states/GraphicsSettings.h
 
     src/battle/Grid.h
     src/battle/Unit.h
@@ -91,6 +96,7 @@ set(GAME_HEADERS
 
     src/data/UnitLoader.h
     src/data/SkillLoader.h
+    src/data/SettingsManager.h
 
     src/config/BattleCatalog.h
     
@@ -113,14 +119,16 @@ set(GAME_HEADERS
     src/ui/BattleHud.h  
     src/ui/BattleMenuItem.h
     src/ui/FloatingTextSystem.h
+    src/ui/UIUtils.h
     
     src/ui/windows/ActionMenuWindow.h
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
-    src/ui/windows/UnitPanelWindow.h
     src/ui/windows/DeploymentWindow.h
     src/ui/windows/InspectWindow.h
     src/ui/windows/PartyWindow.h
+    src/ui/windows/SettingsRowWindow.h
+    src/ui/windows/UnitPanelWindow.h
 
     src/world/WorldGraph.h
     src/world/WorldPathfinding.h

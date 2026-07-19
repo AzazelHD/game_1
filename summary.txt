@@ -1,39 +1,65 @@
 TRPG Battle System — Consolidated Summary (Updated)
-Fully resolved this/previous sessions (files touched, no further detail)
-Everything from the prior summary stands (ESC stack nav, persistent action menu, SelectableList, HumanTurnController API, deployment cursor/selection fixes, Inspect submenu positioning, red X marker, Settings layout/color, m_units split, BattleSession connected, CombatSystem dedup+RNG, turn-cost rebalance, team-based portrait colors, AoE targeting fixes, attack resolution scaffold, Victory/Defeat unification) — not repeated here for brevity.
-New this session:
 
-Deployment use-after-free fixed — processUIEvents()'s tile-based re-grab branch was reading placedHere->unitId a second time after unplaceUnit() had already invalidated placedHere (vector erase). Fixed by copying the id to a local before either call.
-Inspect menu generalized + positioning fixed — new BattleState::openUnitInspectMenu(Unit*) replaces the old enemy-only openEnemyInspectMenu; works for any team (ally/neutral/enemy), used both in Deployment and Combat (HumanTurnController.cpp now routes non-self hovers through it instead of enemy-only). Window renamed battle.deploy.inspectmenu → battle.inspectmenu. ActionMenuWindow gained setAnchorBottomRight(margin) (was referenced but missing from the user's actual file — added properly, plus fixed a duplicate clearPanelPosition() definition and reconciled with the user's real render() which already had m_centerX/auto-sizing logic not previously seen).
-Skill submenu is now a real stack push — showSkillMenu() rewritten to push<ActionMenuWindow>(WindowId::BattleSkillMenu) as a genuine second stack level above battle.actionmenu, instead of overwriting the persistent action-menu window in place. Fixes ESC in the skill submenu falling through to FreeCursor instead of popping back one level — no flag needed, this is the stack behaving correctly. New processUIEvents block handles battle.skillmenu ActionSelected/ActionCanceled, mirroring the battle.actionmenu pattern.
-Cursor repositioning fixes — ESC after targeting (Move/Attack) now resets cursor to the active unit's own position (handleInput()); choosing Move/Attack/a skill from the action menu now also snaps cursor to self before entering targeting phase (showBattleMenu(), showSkillMenu()'s onSelect).
-Victory now fires immediately on last-kill — finishAttackResolution() now calls checkDefeat()/checkVictory() right after m_session.checkResult(), instead of only checking at advanceToNextUnit() (which only runs on explicit Wait/Defend).
-Victory overlay added — new m_showVictoryOverlay flag, mirrors the existing defeat overlay exactly (green rect vs. red); startBattleEnd() unified to set one or the other instead of defeat-only having an overlay.
-Deployment auto-advance-selection bug fixed — root cause: placeGrabbed() blindly advanced m_selectedIndex by +1 regardless of whether that landed on an already-placed entry, causing an intermittent "cursor locks every other re-place" bug (confirmed by user's A/B parity test). Fixed to search forward for the next unplaced entry instead of a blind +1.
-Selection now follows what's in hand — DeploymentSystem::grabUnit() updates m_selectedIndex to match whatever was just grabbed (fresh from roster or re-picked from a placed tile) — fixes Tab/Details showing stale roster selection instead of the actually-held unit. processUIEvents's ActionId::Details handler reordered to prioritize grabbedEntry() first, then hover, then roster selection.
-Cycling with a unit in hand now swaps hand contents — DeploymentSystem::cycleSelection() no longer blocks while a unit is grabbed; instead, Q/E now drops whatever's held (returns to roster unplaced, regardless of whether it was placed before being grabbed — explicit user decision, equivalent to ESC→cycle→Enter as one step) and grabs the newly-selected entry instead.
-Swap-in-place implemented — new DeploymentSystem::swapGrabbedWithPlacedAt(pos): Enter with a unit in hand, over a tile occupied by another of the player's own placed units, now swaps them (occupant unplaced and becomes the new held unit; held unit placed into that tile) instead of blocking as "occupied." Confirmed scoped to the player's own roster only — deployedEntryAt structurally cannot return enemy/ally/neutral preview units (those live in a separate list DeploymentSystem never touches).
-Roster identity redesigned (major) — RosterUnit/DeploymentEntry moved off std::string unitId (was literally "soldier"/"aria" — the class/job template name, not a unique identity; would collide if recruiting multiple Soldiers) onto int instanceId, a monotonically-increasing counter assigned once at recruitment, never reused even after dismissal (rejected linked-list/FIFO alternative — overflow isn't a real concern at int range, and reusing ids risks silent identity confusion with any stale reference, e.g. saved events/logs). RosterUnit also gained customName (for future unique named units — Marche, Montblanc) and isCritical (wires into BattleSession::m_criticalUnits/DefeatConditionType::CriticalUnitDied, built earlier but never actually populated until now — Aria is recruited with isCritical=true). Full migration completed across RosterSystem.h/.cpp, PartySystem.h/.cpp (memberIds() now returns std::vector<int>), DeploymentSystem.h/.cpp (every unitId comparison → instanceId), and BattleState.cpp (deployment window labels and unit-panel preview fallback now load the real display name from the unit's template via UnitLoader::load instead of ever showing a raw id).
-Placeholder unit visuals (circle + letter) added, replacing debug-only circles — new UnitPortrait::drawPlaceholderSprite(renderer, font, center, diameter, team, letter, alpha): draws a team-colored filled circle with a centered initial-letter glyph, used as a stand-in until real unit sprites exist. Replaces DebugRenderer::addScreenCircle calls in BattleRenderer::drawUnitAt (map) and BattleState::render()'s grabbed-unit indicator (Deployment); also wired into UnitPortrait::renderFromStats's image slot as a fallback when no real sprite file is found (was previously silently blank — the placeholder branch was originally nested inside if(hasImage) and never reached when no path resolved at all; fixed to always reserve the image slot and draw something, totalW also fixed to always include image width). Letter is always derived from the unit's real display name (getName()[0] / loaded from template) — never from instanceId or the old unitId, avoiding the lowercase/uppercase mismatch bug found when the map used getName() but the hand used the (now-removed) string id.
-Alpha param uses uint8_t (0-255), not float (0-1) — matches the existing Color struct's own channel convention, per user's explicit preference; also confirms why team stays int (not uint8_t): team is a category/identity value including a meaningful negative (-1 = neutral in teamFrameColor), not a 0-255 intensity — uint8_t would silently wrap -1 to 255 and break the neutral case.
-FontManager introduced (major, engine-level) — new engine/renderer/FontManager.h/.cpp, a singleton owning every Font* keyed by FontRole (Body, Heading, Title, Placeholder), loaded once via loadAll(Renderer*) from a single table (path+size per role) instead of scattered per-state loadFont calls. Replaces App's old s_defaultFont/getDefaultFont()/setDefaultFont() entirely (removed from App.h/.cpp; App::~App() now calls FontManager::instance().clear()). BootState::onEnter() now just calls FontManager::instance().loadAll(m_renderer) instead of manually loading one font. All prior App::getDefaultFont() call sites need migrating to FontManager::instance().get(FontRole::Body) (or ::Heading/::Title/::Placeholder for the few special cases — main menu title, placeholder sprites) — user is doing this migration manually across the codebase; not yet confirmed complete.
-Cleaned up dead/legacy code — confirmed via grep and deleted: ui/ActionMenu.h/.cpp, ui/UnitPanel.h/.cpp, ui/DialogBox.h/.cpp, ui/DialogSystem.h/.cpp (all superseded by ui/windows/ActionMenuWindow, ui/windows/UnitPanelWindow, ui/windows/DialogWindow respectively — none referenced anywhere in the active codebase). Confirmed engine's own _local/trpg-engine/.../DialogBox.h is unrelated/out of scope (separate module, not included by this game) — left untouched. Confirmed engine's Font/Font.cpp (TTF_Font wrapper, Renderer-only friend construction) is NOT legacy — it's the real, actively-used font class underpinning everything above.
+Everything from prior summaries stands (ESC stack nav, persistent action menu, SelectableList, HumanTurnController API, deployment cursor/selection fixes, Inspect submenu positioning, red X marker, Settings layout/color, m_units split, BattleSession connected, CombatSystem dedup+RNG, turn-cost rebalance, team-based portrait colors, AoE targeting fixes, attack resolution scaffold, Victory/Defeat unification, FontManager migration, dead code cleanup, forced/critical units, job/class/skill progression design (deferred), WindowId/ActionId magic-string removal, post-conversion runtime bugfixes, etc.) — not repeated here for brevity.
+New this session — Settings refactor & menu inconsistency
 
+Settings split into three states + data‑driven architecture
+The monolithic SettingsState has been fully decomposed into:
+
+    SettingsState (hub) — three‑item menu (Graphics / Audio / Back), data‑driven using a RowItem vector with lambdas for actions.
+
+    GraphicsSettings — resolution & window mode, with its own confirmation popup for unsaved changes.
+
+    AudioSettings — master & music volume sliders, with a confirmation popup for unsaved volume changes (new feature; previously audio changes were discarded silently).
+
+All three use a shared SettingsManager singleton (consistent with the rest of the engine’s FontManager, Input, etc.) to load/save/apply settings from disk, and a UIUtils helper namespace containing drawRow and formatButtonLabel that were previously duplicated across the old code.
+
+New/updated files:
+
+    data/SettingsManager.h/.cpp — singleton replacing the old SettingsData struct, holds the single copy of settings.
+
+    ui/UIUtils.h — centralized drawRow and formatButtonLabel (with optional prefix/suffix parameters).
+
+    states/SettingsState.h/.cpp — refactored hub.
+
+    states/GraphicsSettings.h/.cpp — refactored graphics page.
+
+    states/AudioSettings.h/.cpp — refactored audio page.
+
+No changes to MainMenuState or WorldMapState — they still push SettingsState with the same two‑argument constructor, because the settings manager is a global singleton.
+
+Old audio slider fix superseded — the previous patch that removed m_editingSlider is no longer relevant; the refactor naturally makes sliders directly adjustable with Left/Right/A/D and applies changes immediately.
+
+Menu inconsistency identified & marked as priority
+The new settings screens use custom manual row rendering (drawing rectangles, positioning text) while MainMenuState uses the UIManager + ActionMenuWindow widget system. This is inconsistent — the project now has two different ways of building menus. The desired state is:
+
+    All menus should work the same way: a single UIManager‑driven window system, with reusable window types for settings rows (including sliders and buttons).
+
+Priority: High — this should be resolved before the settings code grows further. The plan would be to create a SettingsWindow widget (or extend ActionMenuWindow) so that all three settings states become thin wrappers that just push a window, just like MainMenuState does. This would also make it trivial to add new settings pages or repurpose the same window elsewhere.
 Still open — nothing implemented
 
-BattleState SRP / god-class breakup — unchanged in scope from before, still the largest pending item; processUIEvents()'s ~400-line god-function (documented in detail previously) remains the clearest concrete symptom. Not started.
-Turn queue UI widget — still parked per user request (no layout decided).
-Real animations — still blocked on non-existent assets; scaffold (CombatAnimationSystem, FloatingTextSystem) remains stub-with-TODOs.
-Multi-target AoE display (show all targets at once) — still explicitly declined as unneeded; single-focused-target display stands.
-Multi-cast skills ("Double Cast") — design closed previously, unchanged, still not implemented.
-FontManager migration — user is manually replacing App::getDefaultFont() call sites across the codebase with FontManager::instance().get(FontRole::X); completion not confirmed. Worth double-checking early next session (a leftover App::getDefaultFont() call would now fail to compile, so this is self-verifying at build time — just confirm the build is clean).
-BattleSession/BattleParticipantsBuilder/UnitSpawn still don't pass real isCritical — Aria's roster-level isCritical=true flag exists now, but nothing in BattleParticipantsBuilder::build() reads RosterUnit::isCritical when constructing UnitSpawn for the deployed units — it's not wired through yet, so Aria dying doesn't actually trigger DefeatConditionType::CriticalUnitDied in practice. Flagged but not fixed this session.
-RosterSystem::recruit()/dismiss() have no UI — the API exists (monotonic id assignment, safe removal) but there's no in-game way to recruit or dismiss units yet; only the two hardcoded default units exist via ensureDefaultUnits().
+    BattleState SRP / god‑class breakup — still the largest pending item. Target design: four controller classes, starting with DeploymentPhaseController. Blocked on receiving the user’s current post‑refactor BattleState.h/.cpp.
+
+    Settings “Graphics” page splitting into “Video” vs “Graphics” — raised, not designed.
+
+    Turn queue UI widget — still parked.
+
+    Real animations — blocked on assets.
+
+    Multi‑cast skills (“Double Cast”) — not implemented.
+
+    RosterSystem recruitment/dismissal UI — API exists, no UI.
+
+    Full class/nature/skill‑point progression system — deferred to end of project.
+
+    World‑map cities/nodes/NPC collisions — only naming groundwork in WindowId/ActionId enums; no design or structs.
 
 Notes for next session
 
-User is tracking token budget carefully; prefer small self-contained fixes over large multi-file refactors unless explicitly told there's budget for it.
-Files reviewed in full this session (in addition to the prior list): ActionMenuWindow.h/.cpp (twice — user's real version has m_centerX/auto-sizing not previously seen, plus a duplicate clearPanelPosition() bug found and fixed), DebugRenderer.h/.cpp (confirmed: queues primitives, draws deferred in flush(), strips to no-op in Release, does NOT support text — this is why placeholder letters had to go through Renderer::renderText directly instead), Renderer.h/.cpp (confirmed renderText/measureText/drawTexture API), Font.h/.cpp (confirmed legitimate, not legacy), App.h/.cpp (before and after FontManager migration), BootState.h/.cpp, RosterSystem.h/.cpp (before and after instanceId migration), PartyContext.h/.cpp, PartySystem.h/.cpp (before and after migration), DeploymentSystem.h/.cpp (multiple revisions this session).
-Not yet reviewed: BattleHud.h/.cpp (reviewed previously — confirmed clean, no changes needed), Cursor.h/.cpp, UIManager.h/.cpp, UIWindow.h, PartyWindow.h/.cpp, InspectWindow.h/.cpp, DialogWindow.h/.cpp — still not seen.
-User is designing a real, unique-instance-based roster (not template-name-based) in preparation for named unique units (Marche, Montblanc) and a critical-unit defeat condition (Aria) — this is now structurally in place at the data layer (RosterUnit.instanceId/customName/isCritical), but not yet surfaced anywhere in gameplay (no recruit/dismiss UI, no unique-unit content, isCritical not wired to BattleParticipantsBuilder).
-Debug placeholder art (circle+letter) is explicitly temporary — user plans to draw/import real unit sprites eventually; UnitPortrait::drawPlaceholderSprite is the single shared implementation to delete/bypass once real sprites exist for a given unit (already falls back gracefully per-unit via resolvePortraitPath's existing file-exists check).
+    The menu inconsistency should be addressed before any further UI additions to settings or other menus, to avoid proliferating the custom rendering pattern.
+
+    All settings files are stable and clean; a good git commit point now exists.
+
+    The user should still provide the current BattleState.h/.cpp (post‑this‑session) so the SRP breakup can begin with accurate files.
+
+    Reminder: PartyWindow.h/.cpp still not reviewed; may still contain old string‑based ActionId remnants.
