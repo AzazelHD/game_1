@@ -11,10 +11,10 @@ This file tracks only game-side work in `game_1/`.
 - [x] Phase 1 UI Window System core landed:
   - `UIWindow` base + `UIManager` stack and top-input routing
   - `UITheme` palette constants
-  - `ActionMenuWindow`, `DialogWindow`, `UnitPanelWindow`, `ConfirmWindow`
+  - `ButtonMenuWindow`, `DialogWindow`, `UnitPanelWindow`, `ConfirmWindow`
   - `BattleState` UI interaction migrated to window events
   - `WorldMapState` battle prompt migrated to `ConfirmWindow`
-  - `MainMenuState` selection migrated to `ActionMenuWindow`
+  - `MainMenuState` selection migrated to `ButtonMenuWindow`
 - [x] Phase 2 Party + Deployment system landed:
   - `RosterSystem`, `PartySystem`, `PartyContext`
   - `DeploymentSystem`, `BattleParticipantsBuilder`

@@ -10,7 +10,7 @@
 
 class Font;
 
-class ActionMenuWindow : public UIWindow
+class ButtonMenuWindow : public UIWindow
 {
 public:
     struct Item
@@ -20,7 +20,7 @@ public:
         bool enabled = true;
     };
 
-    explicit ActionMenuWindow(WindowId id);
+    explicit ButtonMenuWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
     void setItems(std::vector<Item> items);

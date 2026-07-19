@@ -1,5 +1,3 @@
-#include "ui/windows/ActionMenuWindow.h"
-
 #include "config/GameConstants.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
@@ -10,6 +8,7 @@
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
 #include "ui/WindowId.h"
+#include "ui/windows/ButtonMenuWindow.h"
 
 #include <algorithm>
 
@@ -34,12 +33,12 @@ namespace
     }
 }
 
-ActionMenuWindow::ActionMenuWindow(WindowId id)
+ButtonMenuWindow::ButtonMenuWindow(WindowId id)
     : UIWindow(id, true, false)
 {
 }
 
-void ActionMenuWindow::setItems(std::vector<Item> items)
+void ButtonMenuWindow::setItems(std::vector<Item> items)
 {
     m_items = std::move(items);
     m_selected = 0;
@@ -55,7 +54,7 @@ void ActionMenuWindow::setItems(std::vector<Item> items)
     }
 }
 
-void ActionMenuWindow::handleInput(const Input &input)
+void ButtonMenuWindow::handleInput(const Input &input)
 {
     if (m_items.empty())
         return;
@@ -94,11 +93,11 @@ void ActionMenuWindow::handleInput(const Input &input)
     }
 }
 
-void ActionMenuWindow::update(float /*dt*/)
+void ButtonMenuWindow::update(float /*dt*/)
 {
 }
 
-void ActionMenuWindow::render(Renderer *renderer) const
+void ButtonMenuWindow::render(Renderer *renderer) const
 {
     if (!renderer || !m_font || m_items.empty())
         return;
@@ -198,7 +197,7 @@ void ActionMenuWindow::render(Renderer *renderer) const
     }
 }
 
-void ActionMenuWindow::moveSelection(int delta)
+void ButtonMenuWindow::moveSelection(int delta)
 {
     if (m_items.empty())
         return;

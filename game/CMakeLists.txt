@@ -54,7 +54,7 @@ set(GAME_SOURCES
     src/ui/BattleHud.cpp  
     src/ui/FloatingTextSystem.cpp
 
-    src/ui/windows/ActionMenuWindow.cpp
+    src/ui/windows/ButtonMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
     src/ui/windows/DeploymentWindow.cpp
@@ -62,6 +62,7 @@ set(GAME_SOURCES
     src/ui/windows/PartyWindow.cpp
     src/ui/windows/SettingsRowWindow.cpp
     src/ui/windows/UnitPanelWindow.cpp
+    src/ui/windows/ButtonMenuWindow.cpp
 )
 
 set(GAME_HEADERS
@@ -121,7 +122,7 @@ set(GAME_HEADERS
     src/ui/FloatingTextSystem.h
     src/ui/UIUtils.h
     
-    src/ui/windows/ActionMenuWindow.h
+    src/ui/windows/ButtonMenuWindow.h
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
     src/ui/windows/DeploymentWindow.h
@@ -129,6 +130,7 @@ set(GAME_HEADERS
     src/ui/windows/PartyWindow.h
     src/ui/windows/SettingsRowWindow.h
     src/ui/windows/UnitPanelWindow.h
+    src/ui/windows/ButtonMenuWindow.h
 
     src/world/WorldGraph.h
     src/world/WorldPathfinding.h

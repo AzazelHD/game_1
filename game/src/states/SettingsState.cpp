@@ -12,7 +12,7 @@
 #include "ui/ActionId.h"
 #include "ui/UITheme.h"
 #include "ui/WindowId.h"
-#include "ui/windows/ActionMenuWindow.h"
+#include "ui/windows/ButtonMenuWindow.h"
 
 SettingsState::SettingsState(StateMachine<Scene> &sm, Renderer *renderer)
     : m_sm(sm), m_renderer(renderer) {}
@@ -21,16 +21,16 @@ void SettingsState::onEnter()
 {
     m_uiManager.clear();
 
-    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::SettingsMenu);
+    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::SettingsMenu);
     menu->setFont(FontManager::instance().get(FontRole::Heading));
 
     menu->centerHorizontally(true);
     menu->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
 
     menu->setItems({
-        ActionMenuWindow::Item{.id = ActionId::OpenGraphicSettings, .label = "Graphics", .enabled = true},
-        ActionMenuWindow::Item{.id = ActionId::OpenAudioSettings, .label = "Audio", .enabled = true},
-        ActionMenuWindow::Item{.id = ActionId::Back, .label = "Back", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::OpenGraphicSettings, .label = "Graphics", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::OpenAudioSettings, .label = "Audio", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::Back, .label = "Back", .enabled = true},
     });
 }
 

@@ -2,7 +2,7 @@
 #include "ui/BattleHud.h"
 #include "ui/UIManager.h"
 #include "ui/UIScale.h"
-#include "ui/windows/ActionMenuWindow.h"
+#include "ui/windows/ButtonMenuWindow.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/math/Vec2.h"
 
@@ -28,7 +28,7 @@ void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
     // same instance instead of destroying/reconstructing it.
     if (!m_menu)
     {
-        m_menu = m_uiManager.push<ActionMenuWindow>(WindowId::BattleActionMenu);
+        m_menu = m_uiManager.push<ButtonMenuWindow>(WindowId::BattleActionMenu);
         m_menu->setFont(FontManager::instance().get(FontRole::Body));
     }
     else
@@ -43,12 +43,12 @@ void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
         m_menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
     }
 
-    std::vector<ActionMenuWindow::Item> uiItems;
+    std::vector<ButtonMenuWindow::Item> uiItems;
     uiItems.reserve(m_items.size());
     for (int i = 0; i < static_cast<int>(m_items.size()); ++i)
     {
         const BattleMenuItem &item = m_items[i];
-        uiItems.push_back(ActionMenuWindow::Item{
+        uiItems.push_back(ButtonMenuWindow::Item{
             .label = trimLabel(item.label),
             .enabled = item.enabled,
         });

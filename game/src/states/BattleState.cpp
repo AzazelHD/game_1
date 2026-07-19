@@ -30,7 +30,7 @@
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
 #include "ui/UnitPortrait.h"
-#include "ui/windows/ActionMenuWindow.h"
+#include "ui/windows/ButtonMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/DialogWindow.h"
 #include "ui/windows/DeploymentWindow.h"
@@ -318,7 +318,7 @@ void BattleState::showSkillMenu()
     // this window and battle.actionmenu is revealed exactly as it was, the
     // same way any other stacked window already behaves.
     m_uiManager.popById(WindowId::BattleSkillMenu);
-    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::BattleSkillMenu);
+    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::BattleSkillMenu);
     menu->setFont(FontManager::instance().get(FontRole::Body));
     if (m_flowPhase == BattleFlowPhase::Combat)
     {
@@ -327,11 +327,11 @@ void BattleState::showSkillMenu()
         menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
     }
 
-    std::vector<ActionMenuWindow::Item> uiItems;
+    std::vector<ButtonMenuWindow::Item> uiItems;
     uiItems.reserve(m_skillMenuItems.size());
     for (int i = 0; i < static_cast<int>(m_skillMenuItems.size()); ++i)
     {
-        uiItems.push_back(ActionMenuWindow::Item{
+        uiItems.push_back(ButtonMenuWindow::Item{
             .label = m_skillMenuItems[i].label,
             .enabled = m_skillMenuItems[i].enabled,
         });
@@ -402,11 +402,11 @@ void BattleState::openUnitInspectMenu(Unit *unit)
 
     m_inspectTargetUnit = unit;
     m_uiManager.popById(WindowId::BattleInspectMenu);
-    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::BattleInspectMenu);
+    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::BattleInspectMenu);
     menu->setFont(FontManager::instance().get(FontRole::Body));
     menu->setAnchorBottomRight();
     menu->setItems({
-        ActionMenuWindow::Item{.id = ActionId::Inspect, .label = "Inspect", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::Inspect, .label = "Inspect", .enabled = true},
     });
 }
 

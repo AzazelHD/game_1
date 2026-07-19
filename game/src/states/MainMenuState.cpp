@@ -11,7 +11,7 @@
 #include "states/MainMenuState.h"
 #include "states/WorldMapState.h"
 #include "states/SettingsState.h"
-#include "ui/windows/ActionMenuWindow.h"
+#include "ui/windows/ButtonMenuWindow.h"
 #include "ui/ActionId.h"
 #include "ui/WindowId.h"
 
@@ -29,7 +29,7 @@ void MainMenuState::onEnter()
     m_transitioning = false;
     m_uiManager.clear();
 
-    auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::MainMenu);
+    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::MainMenu);
     menu->setFont(FontManager::instance().get(FontRole::Heading));
 
     // Center horizontally (box width now follows the font); only fix the
@@ -37,9 +37,9 @@ void MainMenuState::onEnter()
     menu->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
     menu->centerHorizontally(true);
     menu->setItems({
-        ActionMenuWindow::Item{.id = ActionId::StartGame, .label = "Start Game", .enabled = true},
-        ActionMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
-        ActionMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::StartGame, .label = "Start Game", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
     });
 
     if (m_fadeInOnEnter)

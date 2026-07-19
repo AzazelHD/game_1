@@ -6,6 +6,8 @@
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/statemachine/StateMachine.h"
+#include "engine/ui/SliderControl.h"
+#include "engine/ui/ButtonControl.h"
 #include "config/GameConstants.h"
 #include "data/SettingsManager.h"
 #include "states/AudioSettings.h"
@@ -13,6 +15,7 @@
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
 #include "ui/WindowId.h"
+#include "ui/UIUtils.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/SettingsRowWindow.h"
 
@@ -49,24 +52,30 @@ void AudioSettings::onEnter()
 
     std::vector<SettingsRowWindow::RowItem> rows;
 
-    // Master Volume slider row
-    rows.push_back({.label = "Master Volume",
-                    .type = SettingsRowWindow::RowType::Slider,
-                    .slider = &m_volumeSlider});
+    SettingsRowWindow::RowItem masterRow;
+    masterRow.label = "Master Volume";
+    masterRow.control = std::make_unique<SliderControl>(&m_volumeSlider);
+    rows.push_back(std::move(masterRow));
 
-    // Music Volume slider row
-    rows.push_back({.label = "Music Volume",
-                    .type = SettingsRowWindow::RowType::Slider,
-                    .slider = &m_musicSlider});
+    SettingsRowWindow::RowItem musicRow;
+    musicRow.label = "Music Volume";
+    musicRow.control = std::make_unique<SliderControl>(&m_musicSlider);
+    rows.push_back(std::move(musicRow));
 
-    // Action button row (dynamic label)
-    rows.push_back({.label = "Back",
-                    .type = SettingsRowWindow::RowType::Button,
-                    .actionId = ActionId::Confirm,
-                    .getDisplayValue = [this]() -> std::string
-                    {
-                        return hasVolumeChanges() ? "Apply Changes" : "Back";
-                    }});
+    SettingsRowWindow::RowItem backRow;
+    {
+        auto btn = std::make_unique<ButtonControl>(
+            [this]() -> std::string
+            { return hasVolumeChanges() ? "Apply Changes" : "Back"; },
+            []() {}); // Accept handled via the emitted event below, not this callback
+
+        // Use the game's label formatter (defaults to "> label <" when selected)
+        btn->setLabelFormatter([](const std::string &label, bool selected)
+                               { return UIUtils::formatButtonLabel(label, selected); });
+
+        backRow.control = std::move(btn);
+    }
+    rows.push_back(std::move(backRow));
 
     window->setRows(std::move(rows));
 }

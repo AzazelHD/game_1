@@ -5,14 +5,16 @@
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/statemachine/StateMachine.h"
+#include "engine/ui/ValueControl.h"
+#include "engine/ui/ButtonControl.h"
 #include "config/GameConstants.h"
 #include "data/SettingsManager.h"
 #include "states/GraphicsSettings.h"
 #include "ui/ActionId.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
-#include "ui/UIUtils.h"
 #include "ui/WindowId.h"
+#include "ui/UIUtils.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/SettingsRowWindow.h"
 
@@ -34,62 +36,69 @@ void GraphicsSettings::onEnter()
 
     std::vector<SettingsRowWindow::RowItem> rows;
 
-    // Resolution row
-    rows.push_back({.label = "Resolution",
-                    .type = SettingsRowWindow::RowType::Setting,
-                    .getDisplayValue = [&s]() -> std::string
-                    {
-                        const Resolution &res = s.resolutions[s.resolutionIndex];
-                        char buf[64];
-                        std::snprintf(buf, sizeof(buf), "%d x %d", res.width, res.height);
-                        return std::string("< ") + buf + " >";
-                    },
-                    .onAdjust = [&s](bool right)
-                    {
+    SettingsRowWindow::RowItem resolutionRow;
+    resolutionRow.label = "Resolution";
+    resolutionRow.control = std::make_unique<ValueControl>(
+        [&s]() -> std::string
+        {
+            const Resolution &res = s.resolutions[s.resolutionIndex];
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%d x %d", res.width, res.height);
+            return std::string("< ") + buf + " >";
+        },
+        [&s](bool right)
+        {
             const int count = static_cast<int>(s.resolutions.size());
             if (right)
                 s.resolutionIndex = (s.resolutionIndex + 1) % count;
             else
-                s.resolutionIndex = (s.resolutionIndex - 1 + count) % count; }});
+                s.resolutionIndex = (s.resolutionIndex - 1 + count) % count;
+        });
+    rows.push_back(std::move(resolutionRow));
 
-    // Window Mode row
-    rows.push_back({.label = "Window Mode",
-                    .type = SettingsRowWindow::RowType::Setting,
-                    .getDisplayValue = [&s]() -> std::string
-                    {
-                        return std::string("< ") +
-                               (s.windowMode == WindowMode::Borderless ? "Borderless" : "Windowed") +
-                               " >";
-                    },
-                    .onAdjust = [&s](bool)
-                    { s.windowMode = (s.windowMode == WindowMode::Windowed)
-                                         ? WindowMode::Borderless
-                                         : WindowMode::Windowed; }});
+    SettingsRowWindow::RowItem windowModeRow;
+    windowModeRow.label = "Window Mode";
+    windowModeRow.control = std::make_unique<ValueControl>(
+        [&s]() -> std::string
+        {
+            return std::string("< ") +
+                   (s.windowMode == WindowMode::Borderless ? "Borderless" : "Windowed") + " >";
+        },
+        [&s](bool)
+        {
+            s.windowMode = (s.windowMode == WindowMode::Windowed)
+                               ? WindowMode::Borderless
+                               : WindowMode::Windowed;
+        });
+    rows.push_back(std::move(windowModeRow));
 
-    // Action button row (dynamic label)
-    rows.push_back({.label = "Back",
-                    .type = SettingsRowWindow::RowType::Button,
-                    .actionId = ActionId::Confirm, // reused; state decides meaning
-                    .getDisplayValue = [this]() -> std::string
-                    {
-                        return hasGraphicsChanges() ? "Apply Changes" : "Back";
-                    }});
+    SettingsRowWindow::RowItem backRow;
+    {
+        auto btn = std::make_unique<ButtonControl>(
+            [this]() -> std::string
+            { return hasGraphicsChanges() ? "Apply Changes" : "Back"; },
+            []() {});
+
+        // Use the game's label formatter (defaults to "> label <" when selected)
+        btn->setLabelFormatter([](const std::string &label, bool selected)
+                               { return UIUtils::formatButtonLabel(label, selected); });
+
+        backRow.control = std::move(btn);
+    }
+    rows.push_back(std::move(backRow));
 
     window->setRows(std::move(rows));
 }
 
 void GraphicsSettings::handleInput()
 {
-    if (m_showExitConfirm)
-        return; // confirm window blocks input
-
     m_uiManager.handleInput(Input::instance());
     processUIEvents();
 }
 
-void GraphicsSettings::update(float /*dt*/)
+void GraphicsSettings::update(float dt)
 {
-    m_uiManager.update(0.0f);
+    m_uiManager.update(dt);
 }
 
 void GraphicsSettings::render(float /*alpha*/)

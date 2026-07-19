@@ -12,7 +12,7 @@
 #include "world/WorldPathfinding.h"
 #include "states/BattleState.h"
 #include "states/SettingsState.h"
-#include "ui/windows/ActionMenuWindow.h"
+#include "ui/windows/ButtonMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/PartyWindow.h"
 
@@ -145,12 +145,12 @@ void WorldMapState::handleInput()
             m_uiManager.popTop();
         else
         {
-            auto *menu = m_uiManager.push<ActionMenuWindow>(WindowId::WorldMap);
+            auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::WorldMap);
             menu->setFont(FontManager::instance().get(FontRole::Heading));
             menu->setItems({
-                ActionMenuWindow::Item{.id = ActionId::OpenPartyMenu, .label = "Party", .enabled = true},
-                ActionMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
-                ActionMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
+                ButtonMenuWindow::Item{.id = ActionId::OpenPartyMenu, .label = "Party", .enabled = true},
+                ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
+                ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
             });
         }
         return;

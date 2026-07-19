@@ -1,65 +1,47 @@
 TRPG Battle System — Consolidated Summary (Updated)
+Everything from prior summaries stands (ESC stack nav, persistent action menu, SelectableList, HumanTurnController API, deployment cursor/selection fixes, Inspect submenu positioning, red X marker, m_units split, BattleSession connected, CombatSystem dedup+RNG, turn-cost rebalance, team-based portrait colors, AoE targeting fixes, attack resolution scaffold, Victory/Defeat unification, FontManager migration, dead code cleanup, forced/critical units, job/class/skill progression design (deferred), WindowId/ActionId magic-string removal, post-conversion runtime bugfixes, Settings split into three states + SettingsManager singleton + UIUtils, etc.) — not repeated here for brevity.
+Correction to prior summary: The previous summary described the menu inconsistency (custom manual row rendering in Settings vs. UIManager/ButtonMenuWindow elsewhere) as "identified and marked as priority, not yet implemented." That's now out of date — the unification work has actually started and is partially complete this session.
+New this session — SettingsRowWindow (unification, in progress)
 
-Everything from prior summaries stands (ESC stack nav, persistent action menu, SelectableList, HumanTurnController API, deployment cursor/selection fixes, Inspect submenu positioning, red X marker, Settings layout/color, m_units split, BattleSession connected, CombatSystem dedup+RNG, turn-cost rebalance, team-based portrait colors, AoE targeting fixes, attack resolution scaffold, Victory/Defeat unification, FontManager migration, dead code cleanup, forced/critical units, job/class/skill progression design (deferred), WindowId/ActionId magic-string removal, post-conversion runtime bugfixes, etc.) — not repeated here for brevity.
-New this session — Settings refactor & menu inconsistency
+New reusable UIWindow subclass: ui/windows/SettingsRowWindow.h/.cpp. Supports three row types — Button, Setting (label + left/right-adjustable value, e.g. resolution/window mode), Slider (label + embedded Slider* + live left/right step). Up/Down navigates focus internally; Left/Right adjusts the focused row's value; Accept activates a Button row. Emits real UIEvents (ActionSelected/ActionCanceled) via the standard emit() pattern — no direct callbacks into the owning Scene, consistent with the established ActionId boundary rule (independent UIWindow ↔ owning class communication only via events; per-row local logic like onAdjust/getDisplayValue stays as lambdas since that's not crossing the boundary).
+New ActionId::AdjustLeft/AdjustRight added — confirmed correct usage per the established rule (emitted by an independent window, not a BattleMenuItem-style internal construct).
+New WindowId::SettingsGraphics, SettingsAudio, SettingsExitConfirm added (SettingsMenu already existed, reused for the hub page).
+AudioSettings fully converted to push a SettingsRowWindow via its own UIManager member, react to events in processUIEvents(), and reuse ConfirmWindow for the unsaved-changes exit popup (replacing the old hand-drawn popup). Confirmed and fixed a real bug found during conversion: AudioSettings::handleInput() had a guard (if (m_showExitConfirm) return;) that would have silently blocked all input to the pushed ConfirmWindow, soft-locking the exit dialog — removed; UIManager already correctly routes input only to the topmost visible window on its own.
+GraphicsSettings not yet converted — still on the old hand-rolled row rendering. Next concrete step for this thread.
+Layout math ported and fixed, not simplified: SettingsRowWindow's row layout (label box + controls box, each self-sized via HorizontalLayout::computeBounds/layoutRow from real measureText() widths, not fixed percentages) is a faithful port of the old monolithic SettingsState::computeAudioRowLayout(), generalized to also support non-slider Setting rows. Three real bugs found and fixed against a first draft that used fixed 40/60% splits:
 
-Settings split into three states + data‑driven architecture
-The monolithic SettingsState has been fully decomposed into:
+Label/slider overlap and "%" text landing outside the row box — root cause was abandoning measured-text sizing for hardcoded percentages; fixed by porting the original HorizontalLayout::Container-based approach.
+Master Volume and Music Volume rows having mismatched label-column widths — root cause was measuring each row's label individually instead of once across all rows and sharing the max width (which the original code did on purpose, for column alignment). Fixed via a new measureMaxLabelWidth() helper, computed once per render() call and passed into computeRowLayout() for every row.
+Slider vertically off-center in its row — root cause was a leftover fixed kSliderMarginTop (16px) copied from the old code without re-deriving it; replaced with a computed centering offset (rowH - kTrackH * ui) * 0.5f. kSliderMarginTop constant now unused, safe to delete.
 
-    SettingsState (hub) — three‑item menu (Graphics / Audio / Back), data‑driven using a RowItem vector with lambdas for actions.
 
-    GraphicsSettings — resolution & window mode, with its own confirmation popup for unsaved changes.
+Row outer padding done properly, not hand-hacked: user explicitly rejected a first-pass manual x - gap/width + gap*2 fix for row-edge spacing in favor of using the existing Insets/HorizontalLayout::computeBounds system consistently — final version wraps the row's content in a HorizontalLayout::Container with Insets{0, kRowSideGap*ui, 0, kRowSideGap*ui} padding, matching how every other box in the file is already computed, rather than a one-off arithmetic adjustment.
 
-    AudioSettings — master & music volume sliders, with a confirmation popup for unsaved volume changes (new feature; previously audio changes were discarded silently).
+New this session — Git workflow established
 
-All three use a shared SettingsManager singleton (consistent with the rest of the engine’s FontManager, Input, etc.) to load/save/apply settings from disk, and a UIUtils helper namespace containing drawRow and formatButtonLabel that were previously duplicated across the old code.
+User had no branch discipline going into this session (direct commits to master/no commits at all for large in-progress work) — a real risk given the earlier DeepSeek incident this project already suffered from once.
+New branch refactor/settings-split created carrying the in-progress Settings work directly (chosen over committing to master first, since the work was still mid-bugfix and not yet fully verified) via git checkout -b, committed, and pushed to remote (git push -u origin refactor/settings-split).
+Confirmed master remains untouched/clean at its prior state throughout this work.
+Stale local branch move-worldgraph-into-game (already merged into master) identified via git branch --merged master and deleted locally (git branch -d); confirmed it never existed on the remote, so no remote cleanup was needed.
+User should continue using feature branches going forward for any nontrivial multi-file work, given how effective this was as a safety net this session.
 
-New/updated files:
-
-    data/SettingsManager.h/.cpp — singleton replacing the old SettingsData struct, holds the single copy of settings.
-
-    ui/UIUtils.h — centralized drawRow and formatButtonLabel (with optional prefix/suffix parameters).
-
-    states/SettingsState.h/.cpp — refactored hub.
-
-    states/GraphicsSettings.h/.cpp — refactored graphics page.
-
-    states/AudioSettings.h/.cpp — refactored audio page.
-
-No changes to MainMenuState or WorldMapState — they still push SettingsState with the same two‑argument constructor, because the settings manager is a global singleton.
-
-Old audio slider fix superseded — the previous patch that removed m_editingSlider is no longer relevant; the refactor naturally makes sliders directly adjustable with Left/Right/A/D and applies changes immediately.
-
-Menu inconsistency identified & marked as priority
-The new settings screens use custom manual row rendering (drawing rectangles, positioning text) while MainMenuState uses the UIManager + ActionMenuWindow widget system. This is inconsistent — the project now has two different ways of building menus. The desired state is:
-
-    All menus should work the same way: a single UIManager‑driven window system, with reusable window types for settings rows (including sliders and buttons).
-
-Priority: High — this should be resolved before the settings code grows further. The plan would be to create a SettingsWindow widget (or extend ActionMenuWindow) so that all three settings states become thin wrappers that just push a window, just like MainMenuState does. This would also make it trivial to add new settings pages or repurpose the same window elsewhere.
 Still open — nothing implemented
 
-    BattleState SRP / god‑class breakup — still the largest pending item. Target design: four controller classes, starting with DeploymentPhaseController. Blocked on receiving the user’s current post‑refactor BattleState.h/.cpp.
-
-    Settings “Graphics” page splitting into “Video” vs “Graphics” — raised, not designed.
-
-    Turn queue UI widget — still parked.
-
-    Real animations — blocked on assets.
-
-    Multi‑cast skills (“Double Cast”) — not implemented.
-
-    RosterSystem recruitment/dismissal UI — API exists, no UI.
-
-    Full class/nature/skill‑point progression system — deferred to end of project.
-
-    World‑map cities/nodes/NPC collisions — only naming groundwork in WindowId/ActionId enums; no design or structs.
+GraphicsSettings conversion to SettingsRowWindow — the immediate next step to finish the menu-unification thread; AudioSettings is done and serves as the reference pattern.
+SettingsState (hub) — not yet confirmed whether it was ever converted to ButtonMenuWindow per the original plan (it was proposed early in this session's design discussion, but no diff was produced or confirmed applied). Needs verification/follow-up.
+BattleState SRP / god-class breakup — still the largest pending item overall, unchanged in scope, still blocked on the user providing current, post-all-this-session BattleState.h/.cpp.
+Settings "Graphics" page splitting further into "Video" vs "Graphics" — raised, not designed.
+Turn queue UI widget — still parked.
+Real animations — blocked on assets.
+Multi-cast skills ("Double Cast") — not implemented.
+RosterSystem recruitment/dismissal UI — API exists, no UI.
+Full class/nature/skill-point progression system — deferred to end of project.
+World-map cities/nodes/NPC collisions — only naming groundwork in WindowId/ActionId enums; no design or structs.
+PartyWindow.h/.cpp — still never reviewed; may still contain old string-based actionId remnants from before the WindowId/ActionId conversion.
 
 Notes for next session
 
-    The menu inconsistency should be addressed before any further UI additions to settings or other menus, to avoid proliferating the custom rendering pattern.
-
-    All settings files are stable and clean; a good git commit point now exists.
-
-    The user should still provide the current BattleState.h/.cpp (post‑this‑session) so the SRP breakup can begin with accurate files.
-
-    Reminder: PartyWindow.h/.cpp still not reviewed; may still contain old string‑based ActionId remnants.
+Menu-unification work is mid-flight, not finished — do not treat Settings as "done" until GraphicsSettings is converted and both pages are tested in-game (focus nav, value adjustment, exit-confirm popup, apply/discard/save round-trip).
+All current Settings work lives on refactor/settings-split, not master — check which branch is active before making further edits or assuming file state.
+BattleState.h/.cpp current copies are still the single biggest blocker for next session's other major thread (the SRP breakup) — get these before starting that work, same note as prior summaries.
+User has shown a strong, consistent preference this session for correctly-generalized fixes over quick/local patches (e.g. rejecting the manual row-padding hack, insisting on Insets-based padding instead) — keep offering the properly-integrated solution first rather than the fastest one.
