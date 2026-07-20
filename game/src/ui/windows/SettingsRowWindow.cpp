@@ -27,7 +27,10 @@ namespace
     constexpr float kRowBoxH = kRowH - 6.0f;
     constexpr float kGapLabelControls = 24.0f;
     constexpr float kRowInnerPad = 16.0f;
-    constexpr float kRowSideGap = 16.0f;
+    constexpr Insets kDefaultRowPadding{0.0f, 16.0f, 0.0f, 16.0f};
+
+    using RowItem = SettingsRowWindow::RowItem;
+    using RowList = std::vector<RowItem>;
 
     struct RowLayout
     {
@@ -36,8 +39,7 @@ namespace
         Rectf controlRect;
     };
 
-    float measureMaxLabelWidth(Renderer *renderer, const Font *font,
-                               const std::vector<SettingsRowWindow::RowItem> &rows)
+    float measureMaxLabelWidth(Renderer *renderer, const Font *font, const RowList &rows)
     {
         float maxW = 0.0f;
         if (!renderer || !font)
@@ -52,7 +54,7 @@ namespace
     }
 
     float measureMaxControlsWidth(Renderer *renderer, const Font *font,
-                                  const std::vector<SettingsRowWindow::RowItem> &rows, float ui)
+                                  const RowList &rows, float ui)
     {
         float maxW = 0.0f;
         for (const auto &row : rows)
@@ -64,58 +66,86 @@ namespace
         return maxW;
     }
 
-    RowLayout computeRowLayout(float sharedLabelWidth, float sharedControlsWidth,
-                               float rowY, float rowH, float ui)
+    // The shared label column every non-full-width row uses. Built once per
+    // render() call from the widest label in the window — not per-row.
+    HorizontalLayout::Container makeLabelColumn(float sharedLabelWidth, float rowH, float ui)
     {
-        const HorizontalLayout::Container labelContainer{
+        return HorizontalLayout::Container{
             .items = {{sharedLabelWidth, rowH, Insets{}}},
             .padding = Insets{0.0f, 0.0f, 0.0f, kRowInnerPad * ui},
         };
-        const HorizontalLayout::Container controlsContainer{
+    }
+
+    // The shared controls column every non-full-width row uses. Built once
+    // per render() call from the widest control in the window.
+    HorizontalLayout::Container makeControlsColumn(float sharedControlsWidth, float rowH, float ui)
+    {
+        return HorizontalLayout::Container{
             .items = {{sharedControlsWidth, rowH, Insets{}}},
             .padding = Insets{0.0f, kRowInnerPad * ui, 0.0f, 0.0f},
         };
+    }
 
-        const float labelWidth = HorizontalLayout::computeBounds(
-                                     labelContainer.items, Vec2f{}, labelContainer.padding)
-                                     .w;
-        const float controlsWidth = HorizontalLayout::computeBounds(
-                                        controlsContainer.items, Vec2f{}, controlsContainer.padding)
-                                        .w;
-        const float totalWidth = labelWidth + (kGapLabelControls * ui) + controlsWidth;
-        const float centeredX = (kPanelX * ui) + ((kPanelW * ui) - totalWidth) * 0.5f;
+    // Total width of label + gap + controls, derived from the two columns'
+    // own bounds — not re-measured from text a second time.
+    float computeContentWidth(const HorizontalLayout::Container &labelColumn,
+                              const HorizontalLayout::Container &controlsColumn,
+                              float ui)
+    {
+        const float labelWidth =
+            HorizontalLayout::computeBounds(labelColumn.items, Vec2f{}, labelColumn.padding).w;
+        const float controlsWidth =
+            HorizontalLayout::computeBounds(controlsColumn.items, Vec2f{}, controlsColumn.padding).w;
+        return labelWidth + (kGapLabelControls * ui) + controlsWidth;
+    }
+
+    // Arranges one row using the already-built shared columns. Knows
+    // nothing about slider/setting/button — only whether this particular
+    // row is full-width (button-style) or a label+control row.
+    RowLayout computeRowLayout(const HorizontalLayout::Container &labelColumn,
+                               const HorizontalLayout::Container &controlsColumn,
+                               float contentWidth,
+                               const Insets &rowPadding,
+                               bool fullWidth,
+                               float rowY,
+                               float rowH,
+                               float ui)
+    {
+        RowLayout out;
+        const float centeredX = (kPanelX * ui) + ((kPanelW * ui) - contentWidth) * 0.5f;
+        const Insets scaledPadding{
+            rowPadding.top * ui,
+            rowPadding.right * ui,
+            rowPadding.bottom * ui,
+            rowPadding.left * ui,
+        };
+
+        if (fullWidth)
+        {
+            const HorizontalLayout::Container wrapper{
+                .items = {{contentWidth, rowH, Insets{}}},
+                .padding = scaledPadding,
+            };
+            out.rowBox = HorizontalLayout::computeBounds(wrapper.items, Vec2f{centeredX, rowY}, wrapper.padding);
+            out.controlRect = out.rowBox;
+            return out;
+        }
 
         const auto results = HorizontalLayout::layoutContainers(
-            {labelContainer, controlsContainer}, Vec2f{centeredX, rowY}, kGapLabelControls * ui);
+            {labelColumn, controlsColumn},
+            Vec2f{centeredX, rowY},
+            kGapLabelControls * ui);
 
         const Rectf &labelBox = results[0].box;
-        const Rectf &controlsBox = results[1].box;
-        const float contentWidth = (controlsBox.x + controlsBox.w) - labelBox.x;
 
         const HorizontalLayout::Container rowWrapper{
             .items = {{contentWidth, rowH, Insets{}}},
-            .padding = Insets{0.0f, kRowSideGap * ui, 0.0f, kRowSideGap * ui},
+            .padding = scaledPadding,
         };
-        const Rectf rowBox = HorizontalLayout::computeBounds(
-            rowWrapper.items, Vec2f{labelBox.x, rowY}, rowWrapper.padding);
-
-        RowLayout out;
-        out.rowBox = rowBox;
+        out.rowBox = HorizontalLayout::computeBounds(rowWrapper.items, Vec2f{labelBox.x, rowY}, rowWrapper.padding);
         out.labelRect = results[0].itemRects[0];
         out.controlRect = results[1].itemRects[0];
         return out;
-    }
-
-    Rectf computeButtonRowBox(float sharedLabelWidth, float sharedControlsWidth,
-                              float rowY, float rowH, float ui)
-    {
-        const float totalContentWidth = sharedLabelWidth + (kGapLabelControls * ui) + sharedControlsWidth;
-        const float centeredX = (kPanelX * ui) + ((kPanelW * ui) - totalContentWidth) * 0.5f;
-        const HorizontalLayout::Container wrapper{
-            .items = {{totalContentWidth, rowH, Insets{}}},
-            .padding = Insets{0.0f, kRowSideGap * ui, 0.0f, kRowSideGap * ui},
-        };
-        return HorizontalLayout::computeBounds(wrapper.items, Vec2f{centeredX, rowY}, wrapper.padding);
     }
 } // anonymous namespace
 
@@ -124,8 +154,13 @@ SettingsRowWindow::SettingsRowWindow(WindowId id)
 {
 }
 
-void SettingsRowWindow::setRows(std::vector<RowItem> rows)
+void SettingsRowWindow::setRows(RowList rows)
 {
+    for (auto &row : rows)
+    {
+        if (!row.padding.has_value())
+            row.padding = kDefaultRowPadding;
+    }
     m_rows = std::move(rows);
 
     std::vector<IFocusable *> focusables;
@@ -189,9 +224,17 @@ void SettingsRowWindow::render(Renderer *renderer) const
 
     UIScale::refresh();
     const float ui = UIScale::factor();
+    const float rowH = kRowBoxH * ui;
 
     const float sharedLabelWidth = measureMaxLabelWidth(renderer, m_font, m_rows);
     const float sharedControlsWidth = measureMaxControlsWidth(renderer, m_font, m_rows, ui);
+
+    // Columns built ONCE per render call, not per row and not twice —
+    // every row (including full-width button rows, via contentWidth)
+    // reuses these same measurements.
+    const HorizontalLayout::Container labelColumn = makeLabelColumn(sharedLabelWidth, rowH, ui);
+    const HorizontalLayout::Container controlsColumn = makeControlsColumn(sharedControlsWidth, rowH, ui);
+    const float sharedContentWidth = computeContentWidth(labelColumn, controlsColumn, ui);
 
     const int selectedIndex = m_focus.getSelectedIndex();
     float currentY = kPanelY * ui;
@@ -200,34 +243,44 @@ void SettingsRowWindow::render(Renderer *renderer) const
     {
         const auto &row = m_rows[i];
         const bool focused = (i == selectedIndex);
+
         if (!row.control)
         {
             currentY += kRowH * ui;
             continue;
         }
 
-        if (row.control->isFullWidth())
-        {
-            const Rectf rowBox = computeButtonRowBox(sharedLabelWidth, sharedControlsWidth,
-                                                     currentY, kRowBoxH * ui, ui);
-            UIUtils::drawRow(renderer, rowBox, focused);
-            row.control->render(renderer, m_font, rowBox, ui, UITheme::Text, UITheme::SelectedText);
-        }
-        else
-        {
-            const RowLayout layout = computeRowLayout(sharedLabelWidth, sharedControlsWidth,
-                                                      currentY, kRowBoxH * ui, ui);
-            UIUtils::drawRow(renderer, layout.rowBox, focused);
+        const RowLayout layout = computeRowLayout(
+            labelColumn,
+            controlsColumn,
+            sharedContentWidth,
+            *row.padding,
+            row.control->isFullWidth(),
+            currentY,
+            rowH,
+            ui);
 
-            renderer->renderTextInRect(m_font, row.label, layout.labelRect,
-                                       focused ? UITheme::SelectedText : UITheme::Text,
-                                       Renderer::HorizontalAlign::Left,
-                                       Renderer::VerticalAlign::Middle,
-                                       false, false, false);
+        UIUtils::drawRow(renderer, layout.rowBox, focused);
 
-            row.control->render(renderer, m_font, layout.controlRect, ui,
-                                UITheme::Text, UITheme::SelectedText);
+        if (!row.control->isFullWidth())
+        {
+            renderer->renderTextInRect(
+                m_font,
+                row.label,
+                layout.labelRect,
+                focused ? UITheme::SelectedText : UITheme::Text,
+                Renderer::HorizontalAlign::Left,
+                Renderer::VerticalAlign::Middle,
+                false, false, false);
         }
+
+        row.control->render(
+            renderer,
+            m_font,
+            layout.controlRect,
+            ui,
+            UITheme::Text,
+            UITheme::SelectedText);
 
         currentY += kRowH * ui;
     }

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "engine/ui/ButtonControl.h"
+#include "engine/ui/FocusGroup.h"
 #include "ui/WindowId.h"
 #include "ui/UIWindow.h"
 
+#include <memory>
 #include <string>
 
 class Font;
@@ -21,6 +24,9 @@ public:
 
 private:
     const Font *m_font = nullptr;
-    std::string m_prompt = "Confirm?";
-    bool m_confirmSelected = true;
+    std::string m_prompt = "???";
+
+    std::unique_ptr<ButtonControl> m_cancelButton;
+    std::unique_ptr<ButtonControl> m_confirmButton;
+    FocusGroup m_focus;
 };

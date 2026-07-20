@@ -67,9 +67,8 @@ void AudioSettings::onEnter()
         auto btn = std::make_unique<ButtonControl>(
             [this]() -> std::string
             { return hasVolumeChanges() ? "Apply Changes" : "Back"; },
-            []() {}); // Accept handled via the emitted event below, not this callback
+            []() {});
 
-        // Use the game's label formatter (defaults to "> label <" when selected)
         btn->setLabelFormatter([](const std::string &label, bool selected)
                                { return UIUtils::formatButtonLabel(label, selected); });
 
@@ -82,9 +81,6 @@ void AudioSettings::onEnter()
 
 void AudioSettings::handleInput()
 {
-    if (m_showExitConfirm)
-        return; // confirm window blocks input
-
     m_uiManager.handleInput(Input::instance());
     processUIEvents();
 }

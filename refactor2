@@ -10,9 +10,9 @@ Phase 2 — Build columns at the call site
 ☐ Change render() to construct columns before calling computeRowLayout().
 ☐ Remove all slider-specific logic from computeRowLayout().
 Phase 3 — Remove duplicated button layout
-☐ Delete computeButtonRowBox().
-☐ Build a button row using the same generic layout engine.
-☐ Verify Back button width matches every other row exactly.
+x Delete computeButtonRowBox().
+x Build a button row using the same generic layout engine.
+x Verify Back button width matches every other row exactly.
 Phase 4 — Clean up layout API
 ☐ Remove obsolete parameters (sharedControlsWidth, valueText, etc.) from computeRowLayout() if no longer needed.
 ☐ Rename anything that no longer reflects its purpose.

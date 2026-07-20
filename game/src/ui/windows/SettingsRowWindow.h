@@ -1,11 +1,13 @@
 #pragma once
 
+#include "engine/ui/Insets.h"
 #include "engine/ui/FocusGroup.h"
 #include "ui/UIWindow.h"
 
 #include <memory>
 #include <string>
 #include <vector>
+#include <optional>
 
 class Font;
 class Input;
@@ -19,6 +21,7 @@ public:
     {
         std::string label; // empty for full-width controls (e.g. buttons)
         std::unique_ptr<IRowControl> control;
+        std::optional<Insets> padding;
     };
 
     explicit SettingsRowWindow(WindowId id);
