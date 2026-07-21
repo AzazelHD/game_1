@@ -28,17 +28,15 @@ enum class ActionId
     Inspect,
 
     // Main menu
+    StartGame,
     OpenSettings,
     QuitGame,
-    StartGame,
 
     // Settings
+    OpenGraphicSettings,
+    OpenAudioSettings,
     AdjustLeft,
     AdjustRight,
-    ApplyChanges,
-    DiscardChanges,
-    OpenAudioSettings,
-    OpenGraphicSettings,
 
     // Shop
     BuyItem,

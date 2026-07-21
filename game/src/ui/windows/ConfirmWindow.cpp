@@ -37,24 +37,35 @@ namespace
         if (!renderer || !font || text.empty())
             return lines;
 
-        std::istringstream stream(text);
-        std::string word;
-        std::string currentLine;
+        // Split on manual line breaks first, then word-wrap each paragraph
+        // independently — so an explicit \n always starts a new line, and
+        // long paragraphs still wrap automatically within maxWidth.
+        std::istringstream paragraphStream(text);
+        std::string paragraph;
 
-        while (stream >> word)
+        while (std::getline(paragraphStream, paragraph, '\n'))
         {
-            const std::string candidate = currentLine.empty() ? word : currentLine + " " + word;
-            const float candidateWidth = renderer->measureText(font, candidate).x;
-            if (candidateWidth <= maxWidth || currentLine.empty())
-                currentLine = candidate;
-            else
+            std::istringstream wordStream(paragraph);
+            std::string word;
+            std::string currentLine;
+
+            while (wordStream >> word)
             {
-                lines.push_back(currentLine);
-                currentLine = word;
+                const std::string candidate = currentLine.empty() ? word : currentLine + " " + word;
+                const float candidateWidth = renderer->measureText(font, candidate).x;
+                if (candidateWidth <= maxWidth || currentLine.empty())
+                    currentLine = candidate;
+                else
+                {
+                    lines.push_back(currentLine);
+                    currentLine = word;
+                }
             }
-        }
-        if (!currentLine.empty())
+
+            // Push whatever's left, even if the paragraph was empty (keeps a
+            // blank line for consecutive \n\n, instead of silently dropping it).
             lines.push_back(currentLine);
+        }
 
         return lines;
     }
@@ -65,23 +76,23 @@ ConfirmWindow::ConfirmWindow(WindowId id)
     : UIWindow(id, true, false)
 {
     m_cancelButton = std::make_unique<ButtonControl>(
-        []() -> std::string
-        { return "Cancel"; },
+        [this]() -> std::string
+        { return m_cancelLabelText; },
         [this]()
         { emit(UIEvent{.type = UIEventType::ConfirmResult, .windowId = this->id(), .actionId = ActionId::Cancel, .confirmed = false}); });
     m_cancelButton->setLabelFormatter([](const std::string &label, bool selected)
                                       { return UIUtils::formatButtonLabel(label, selected); });
 
     m_confirmButton = std::make_unique<ButtonControl>(
-        []() -> std::string
-        { return "Confirm"; },
+        [this]() -> std::string
+        { return m_confirmLabelText; },
         [this]()
         { emit(UIEvent{.type = UIEventType::ConfirmResult, .windowId = this->id(), .actionId = ActionId::Confirm, .confirmed = true}); });
     m_confirmButton->setLabelFormatter([](const std::string &label, bool selected)
                                        { return UIUtils::formatButtonLabel(label, selected); });
 
     m_focus.resetFromPointers({m_cancelButton.get(), m_confirmButton.get()});
-    m_focus.focusNext(); // default to Confirm selected, matching prior behavior
+    // m_focus.focusNext(); // default to Confirm selected, matching prior behavior
 }
 
 void ConfirmWindow::handleInput(const Input &input)
@@ -114,7 +125,7 @@ void ConfirmWindow::handleInput(const Input &input)
 
     if (input.isKeyPressed(KeyCode::Accept, false))
     {
-        m_focus.activateSelected(); // the selected button's own callback emits ConfirmResult
+        (void)m_focus.activateSelected(); // the selected button's own callback emits ConfirmResult
     }
 }
 
@@ -139,7 +150,14 @@ void ConfirmWindow::render(Renderer *renderer) const
     for (const std::string &line : lines)
         widestLineW = std::max(widestLineW, renderer->measureText(m_font, line).x);
 
-    const float w = std::clamp(widestLineW + kHorizontalPad * ui, kMinW * ui, maxBoxW);
+    // Worst-case (bracketed) button widths — computed here too, so the box
+    // is guaranteed wide enough for them, not just for the message text.
+    const float cancelW = renderer->measureText(m_font, "> " + m_cancelLabelText + " <").x;
+    const float confirmW = renderer->measureText(m_font, "> " + m_confirmLabelText + " <").x;
+    const float buttonsRowW = cancelW + kButtonSpacing * ui + confirmW;
+
+    const float widestContentW = std::max(widestLineW, buttonsRowW);
+    const float w = std::clamp(widestContentW + kHorizontalPad * ui, kMinW * ui, maxBoxW);
 
     const float lineH = renderer->measureText(m_font, "Ag").y;
     const float linesBlockH = static_cast<float>(lines.size()) * (lineH + kLineSpacing * ui);
@@ -166,12 +184,6 @@ void ConfirmWindow::render(Renderer *renderer) const
                                    false, false, false);
         lineY += lineH + kLineSpacing * ui;
     }
-
-    // Worst-case (bracketed) width per label, so the layout doesn't shift
-    // width when selection toggles — same trick used elsewhere for text
-    // that changes decoration but should occupy stable space.
-    const float cancelW = renderer->measureText(m_font, "> Cancel <").x;
-    const float confirmW = renderer->measureText(m_font, "> Confirm <").x;
 
     const HorizontalLayout::Container cancelContainer{
         .items = {{cancelW, lineH, Insets{}}},

@@ -7,6 +7,7 @@
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
+#include "engine/ui/ButtonControl.h"
 #include "engine/ui/HorizontalLayout.h"
 #include "engine/ui/IRowControl.h"
 #include "engine/ui/Insets.h"
@@ -201,9 +202,7 @@ void SettingsRowWindow::handleInput(const Input &input)
     }
     if (input.isKeyPressed(KeyCode::Accept, false))
     {
-        const int selectedIndex = m_focus.getSelectedIndex();
-        if (m_focus.activateSelected())
-            emit(UIEvent{.type = UIEventType::ActionSelected, .windowId = id(), .actionId = ActionId::Confirm, .index = selectedIndex});
+        (void)m_focus.activateSelected();
         return;
     }
     if (input.isKeyPressed(KeyCode::Back, false))

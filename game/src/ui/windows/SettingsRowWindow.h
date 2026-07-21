@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/ui/Insets.h"
 #include "engine/ui/FocusGroup.h"
+#include "engine/ui/Insets.h"
 #include "ui/UIWindow.h"
 
 #include <memory>

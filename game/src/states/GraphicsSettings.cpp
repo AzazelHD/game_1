@@ -13,8 +13,8 @@
 #include "ui/ActionId.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
-#include "ui/WindowId.h"
 #include "ui/UIUtils.h"
+#include "ui/WindowId.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/SettingsRowWindow.h"
 
@@ -77,12 +77,14 @@ void GraphicsSettings::onEnter()
         auto btn = std::make_unique<ButtonControl>(
             [this]() -> std::string
             { return hasGraphicsChanges() ? "Apply Changes" : "Back"; },
-            []() {});
-
-        // Use the game's label formatter (defaults to "> label <" when selected)
+            [this]()
+            {
+                if (hasGraphicsChanges())
+                    applyAndSaveGraphics();
+                m_sm.pop();
+            });
         btn->setLabelFormatter([](const std::string &label, bool selected)
                                { return UIUtils::formatButtonLabel(label, selected); });
-
         backRow.control = std::move(btn);
     }
     rows.push_back(std::move(backRow));
@@ -116,25 +118,8 @@ void GraphicsSettings::processUIEvents()
     {
         if (event.windowId == WindowId::SettingsGraphics)
         {
-            if (event.type == UIEventType::ActionSelected)
+            if (event.type == UIEventType::ActionCanceled)
             {
-                if (event.actionId == ActionId::Confirm)
-                {
-                    // User pressed Enter on the button row
-                    if (hasGraphicsChanges())
-                    {
-                        applyAndSaveGraphics();
-                    }
-                    m_sm.pop();
-                    return;
-                }
-                // AdjustLeft/AdjustRight are handled automatically by the window;
-                // no extra action needed here because the state owns the data and
-                // the callbacks already update SettingsManager.
-            }
-            else if (event.type == UIEventType::ActionCanceled)
-            {
-                // Back pressed
                 if (hasGraphicsChanges())
                     showExitConfirm();
                 else
@@ -194,5 +179,6 @@ void GraphicsSettings::showExitConfirm()
     m_showExitConfirm = true;
     auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SettingsExitConfirm);
     confirm->setFont(FontManager::instance().get(FontRole::Heading));
-    confirm->setPrompt("You have unapplied graphics changes");
+    confirm->setPrompt("You have unapplied graphics changes.\nApply them before leaving?");
+    confirm->setButtonLabels("Discard", "Apply");
 }

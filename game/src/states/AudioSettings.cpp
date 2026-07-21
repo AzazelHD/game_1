@@ -1,4 +1,3 @@
-
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/renderer/Color.h"
@@ -29,7 +28,6 @@ void AudioSettings::onEnter()
     m_showExitConfirm = false;
     m_uiManager.clear();
 
-    // Initialise sliders from persisted settings
     Slider::RenderStyle style;
     style.trackHeight = 8.0f;
     style.handleWidth = 12.0f;
@@ -46,7 +44,6 @@ void AudioSettings::onEnter()
     m_musicSlider.setValue(s.musicVolume);
     m_musicSlider.setRenderStyle(style);
 
-    // Build the settings window rows
     auto *window = m_uiManager.push<SettingsRowWindow>(WindowId::SettingsAudio);
     window->setFont(FontManager::instance().get(FontRole::Heading));
 
@@ -67,11 +64,14 @@ void AudioSettings::onEnter()
         auto btn = std::make_unique<ButtonControl>(
             [this]() -> std::string
             { return hasVolumeChanges() ? "Apply Changes" : "Back"; },
-            []() {});
-
+            [this]()
+            {
+                if (hasVolumeChanges())
+                    applyAndSaveVolumes();
+                m_sm.pop();
+            });
         btn->setLabelFormatter([](const std::string &label, bool selected)
                                { return UIUtils::formatButtonLabel(label, selected); });
-
         backRow.control = std::move(btn);
     }
     rows.push_back(std::move(backRow));
@@ -110,24 +110,14 @@ void AudioSettings::processUIEvents()
                 if (event.actionId == ActionId::AdjustLeft ||
                     event.actionId == ActionId::AdjustRight)
                 {
-                    // Slider value changed: sync SettingsManager and apply to audio system
                     auto &s = SettingsManager::instance().data();
                     s.masterVolume = m_volumeSlider.getValue();
                     s.musicVolume = m_musicSlider.getValue();
                     applyVolume();
                 }
-                else if (event.actionId == ActionId::Confirm)
-                {
-                    // User pressed Enter on the button row
-                    if (hasVolumeChanges())
-                        applyAndSaveVolumes();
-                    m_sm.pop();
-                    return;
-                }
             }
             else if (event.type == UIEventType::ActionCanceled)
             {
-                // Back pressed
                 if (hasVolumeChanges())
                     showExitConfirm();
                 else
@@ -199,5 +189,6 @@ void AudioSettings::showExitConfirm()
     m_showExitConfirm = true;
     auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SettingsExitConfirm);
     confirm->setFont(FontManager::instance().get(FontRole::Heading));
-    confirm->setPrompt("You have unapplied volume changes");
+    confirm->setPrompt("You have unapplied volume changes.\nApply them before leaving?");
+    confirm->setButtonLabels("Discard", "Apply");
 }

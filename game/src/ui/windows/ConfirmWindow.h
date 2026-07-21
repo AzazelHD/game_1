@@ -22,6 +22,12 @@ public:
     void update(float dt) override;
     void render(Renderer *renderer) const override;
 
+    void setButtonLabels(std::string cancelLabel, std::string confirmLabel)
+    {
+        m_cancelLabelText = std::move(cancelLabel);
+        m_confirmLabelText = std::move(confirmLabel);
+    }
+
 private:
     const Font *m_font = nullptr;
     std::string m_prompt = "???";
@@ -29,4 +35,7 @@ private:
     std::unique_ptr<ButtonControl> m_cancelButton;
     std::unique_ptr<ButtonControl> m_confirmButton;
     FocusGroup m_focus;
+
+    std::string m_cancelLabelText = "Cancel";
+    std::string m_confirmLabelText = "Confirm";
 };

@@ -1,0 +1,35 @@
+Remaining Work — Handoff Plan
+
+Read unitsummary first for full context on what's already done. This plan only covers what's left, in suggested order.
+
+0. Prerequisites before touching anything
+Confirm which git branch is active (refactor/settings-split likely still has uncommitted/unmerged work — check git status and git branch before assuming file state matches any prior summary).
+Ask the user for current BattleState.h/BattleState.cpp and PartyWindow.h/.cpp before referencing either — every prior session hit stale-file bugs by assuming old copies were still accurate. Do not guess at their contents.
+1. Finish immediate loose ends (small, fast)
+[]Apply the ConfirmWindow default-focus fix: remove m_focus.focusNext(); from the constructor so focus defaults to the first button (Cancel/Discard) instead of Confirm/Apply. Decided, not yet confirmed applied.
+[]Get the user to confirm in-game: ConfirmWindow's Discard/Apply buttons across all three call sites (Graphics exit-confirm, Audio exit-confirm, Battle's attack-confirm), box-width fix, \n word-wrap, default-focus change.
+[]Get the user to confirm SettingsRowWindow's Phase 2/4 layout rewrite still renders identically in-game (math was preserved but never re-verified after the last edit pass).
+[]ActionMenuWindow → ButtonMenuWindow rename: sweep the whole project for leftover references (BattleState.cpp, BattleHud.cpp, MainMenuState.cpp, any #include "ui/windows/ActionMenuWindow.h"). Prefer an IDE-wide rename over manual diffs — low risk, high tedium.
+[]Once the above are confirmed working, merge refactor/settings-split into master. Nothing has been merged yet — don't lose this branch.
+2. Get BattleState.h/.cpp, review PartyWindow.h/.cpp
+[]Request both from the user before doing anything else on Battle-side work — every past attempt without current files led to wasted diffs against stale code.
+[]PartyWindow has never been reviewed at all this project — may still contain pre-WindowId/ActionIdstring-based remnants from before that conversion. Check it the same way ConfirmWindowDeploymentWindow were checked earlier.
+3. BattleState SRP / god-class breakup (largest remaining item)
+This has been discussed extensively in past sessions but never started in code. BattleState.cpp is large and handles deployment, combat turns, UI event routing, and rendering all in one class.
+Suggested approach once files are in hand: identify natural seams (deployment phase vs. combat phase vs. UI/menu handling vs. rendering) and propose extracting into smaller owned objects/controllers before writing any extraction code — get user sign-off on the seams before touching the file, given its size and centrality.
+Do this incrementally, one extraction at a time, with compile/test checkpoints — do not attempt one giant rewrite.
+4. Smaller open items (any order, lower priority)
+[]Blurry text after resolution change: root cause already diagnosed (SDL3 logical-presentation letterbox scaling likely defaults to linear filtering; Renderer::setTextureScaleMode is per-texture only and doesn't cover this). Needs actual SDL3 documentation research to find the correct API (likely something in SDL_SetRenderLogicalPresentation's scale-mode-related properties) — Renderer.h currently exposes no such control. Don't guess at SDL3 APIs; verify against real docs before writing a fix.
+[]Settings "Graphics" → "Video"/"Graphics" page split — raised by user, never designed. Ask for their intent before proposing structure.
+[]Turn queue UI widget — parked, no layout decided.
+[]Real animations — blocked on assets, not actionable yet.
+[]Multi-cast skills ("Double Cast") — not implemented.
+[]RosterSystem recruitment/dismissal UI — backend API exists, no UI built.
+[]World-map cities/nodes/NPC collisions — only enum naming groundwork exists (WindowId/ActionId values were added preemptively); no structs, no design doc beyond naming intent.
+5. Explicitly deferred — do not start unprompted
+Unit progression/class system (aptitudes, nature, permanent class + skill points, promotion). Full Spanish-language design doc exists and was discussed at length — do not copy it into summaries, just reference that it exists. User explicitly said: revisit only once other refactors (BattleState breakup, Settings unification) are fully settled. Do not write any code for this without the user explicitly re-opening it.
+Working-style notes for whoever picks this up
+User tracks token/effort budget carefully. Prefers real, correctly-generalized fixes over quick patches — has explicitly rejected hacky one-off solutions multiple times in favor of using existing systems (Insets, HorizontalLayout, IFocusable) properly.
+Always ask for current file contents before proposing edits to anything that may have changed since a prior session — do not assume old summaries reflect current code.
+Prefers direct, code-first answers with minimal explanation once a design is agreed — save deep explanations for when the user asks a genuine "why" question, not by default.
+Watch for genuine architecture boundaries already established this project (e.g. engine/ must never depend on game-specific types like ActionId; IRowControl/ButtonControl must stay engine-agnostic) — a prior mistake (adding ActionId directly to ButtonControl) was caught and reverted specifically for violating this.
