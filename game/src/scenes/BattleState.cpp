@@ -14,12 +14,13 @@
 #include "engine/renderer/FontManager.h"
 #include "engine/effects/ScreenTransition.h"
 #include "config/BattleCatalog.h"
-#include "states/BattleState.h"
-#include "states/BattleLoader.h"
-#include "states/MainMenuState.h"
+#include "scenes/BattleState.h"
+#include "scenes/BattleLoader.h"
+#include "scenes/MainMenuState.h"
 #include "battle/Unit.h"
 #include "battle/UnitFactory.h"
 #include "battle/UnitProgression.h"
+#include "battle/AttackResolutionController.h"
 #include "battle/MovementRange.h"
 #include "battle/CombatSystem.h"
 #include "systems/PartyContext.h"
@@ -482,9 +483,32 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
         .skillDB = m_skillDB,
         .damagePreview = m_damagePreview,
         .topBattleText = m_topBattleText,
-        .pendingAttack = m_pendingAttack,
-        .pendingSkillId = m_pendingSkillId,
+        .pendingAttack = m_attackResolution.pendingAttack(),
+        .pendingSkillId = m_attackResolution.pendingSkillId(),
         .uiManager = m_uiManager,
+    };
+}
+
+BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
+{
+    return AttackResolutionContext{
+        .session = m_session,
+        .eventSystem = m_eventSystem,
+        .hud = m_hud,
+        .damagePreview = m_damagePreview,
+        .floatingText = m_floatingText,
+        .skillDB = m_skillDB,
+        .selectedSkillId = m_selectedSkillId,
+        .topBattleText = m_topBattleText,
+        .hoveredUnit = m_hoveredUnit,
+        .humanTurnPhase = m_humanTurnPhase,
+        .turnState = m_turnState,
+        .pendingResolution = m_pendingResolution,
+        .turnTimer = m_turnTimer,
+        .canUndoLastMove = m_canUndoLastMove,
+        .pendingActor = m_pendingActor,
+        .pendingTarget = m_pendingTarget,
+        .pendingActionLabel = m_pendingActionLabel,
     };
 }
 
@@ -779,7 +803,7 @@ void BattleState::processUIEvents(Unit *active)
         {
             if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
             {
-                cancelPendingAttack();
+                m_attackResolution.cancel();
                 continue;
             }
 
@@ -814,18 +838,18 @@ void BattleState::processUIEvents(Unit *active)
 
         if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigatePrevious)
         {
-            cyclePendingAttackTarget(-1);
-            updatePendingAttackPreview(active);
-            if (Unit *focus = m_pendingAttack.focusedTarget())
+            m_attackResolution.cycleFocus(-1);
+            m_attackResolution.updatePreview(active);
+            if (Unit *focus = m_attackResolution.pendingAttack().focusedTarget())
                 m_cursor.setPosition(focus->getPosition());
             continue;
         }
 
         if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigateNext)
         {
-            cyclePendingAttackTarget(1);
-            updatePendingAttackPreview(active);
-            if (Unit *focus = m_pendingAttack.focusedTarget())
+            m_attackResolution.cycleFocus(1);
+            m_attackResolution.updatePreview(active);
+            if (Unit *focus = m_attackResolution.pendingAttack().focusedTarget())
                 m_cursor.setPosition(focus->getPosition());
             continue;
         }
@@ -836,14 +860,14 @@ void BattleState::processUIEvents(Unit *active)
 
             if (!event.confirmed)
             {
-                cancelPendingAttack();
+                m_attackResolution.cancel();
                 continue;
             }
 
             const SkillData *skill = nullptr;
-            if (!m_pendingSkillId.empty())
+            if (!m_attackResolution.pendingSkillId().empty())
             {
-                auto it = m_skillDB.find(m_pendingSkillId);
+                auto it = m_skillDB.find(m_attackResolution.pendingSkillId());
                 if (it != m_skillDB.end())
                     skill = &it->second;
             }
@@ -852,7 +876,7 @@ void BattleState::processUIEvents(Unit *active)
             m_pendingActionLabel = skill ? skill->name : "Attack";
             m_topBattleText = m_pendingActionLabel;
             m_pendingActor = active;
-            m_pendingTarget = m_pendingAttack.focusedTarget();
+            m_pendingTarget = m_attackResolution.pendingAttack().focusedTarget();
             m_pendingResolution = PendingResolution::PlayerConfirmedAttack;
             m_turnTimer = 0.5f;
             m_turnState = TurnState::WaitingForAnimation;
@@ -863,195 +887,7 @@ void BattleState::processUIEvents(Unit *active)
 
 void BattleState::preparePendingAttack(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill)
 {
-    m_pendingAttack.begin(active, targetPos, directTarget, skill, m_session.getUnitPtrs());
-    updatePendingAttackPreview(active);
-}
-
-void BattleState::cyclePendingAttackTarget(int delta)
-{
-    m_pendingAttack.cycleFocus(delta);
-}
-
-void BattleState::updatePendingAttackPreview(Unit *active)
-{
-    Unit *focus = m_pendingAttack.focusedTarget();
-    if (!active || !focus)
-    {
-        m_damagePreview.hide();
-        m_topBattleText.clear();
-        return;
-    }
-
-    m_hoveredUnit = focus;
-
-    const SkillData *previewSkill = nullptr;
-    if (!m_selectedSkillId.empty())
-    {
-        auto it = m_skillDB.find(m_selectedSkillId);
-        if (it != m_skillDB.end())
-            previewSkill = &it->second;
-    }
-    m_damagePreview.show(*active, *focus, previewSkill);
-
-    HitContext ctx = makeHitContext(active, focus, previewSkill);
-
-    const CombatResult preview = CombatSystem::preview(ctx);
-    char textBuf[96];
-    std::snprintf(textBuf, sizeof(textBuf), "DMG %d   ACC %d%%", preview.damage, static_cast<int>(preview.hitChance + 0.5f));
-    m_topBattleText = textBuf;
-}
-
-void BattleState::beginAttackResolution(Unit *active, const SkillData *skill)
-{
-    if (!active)
-    {
-        finishAttackResolution();
-        return;
-    }
-
-    // Roll every target's hit/damage NOW, up front — deterministic for the
-    // rest of the sequence, rather than re-rolling mid-animation later.
-    m_pendingHitResults.clear();
-    m_pendingHitIndex = 0;
-    m_pendingAnyDied = false;
-
-    for (Unit *u : m_pendingAttack.targets())
-    {
-        if (!u || u->isDead())
-            continue;
-        HitContext ctx = makeHitContext(active, u, skill);
-        m_pendingHitResults.push_back(PendingHitResult{.target = u, .result = CombatSystem::resolve(ctx)});
-    }
-
-    if (skill && skill->castOncePerArea)
-    {
-        // TODO: play the skill's single cast animation once here (e.g. a
-        // dragon's breath), covering the whole area — before any individual
-        // hit/miss is shown. Something like:
-        //   m_combatAnimations.enqueue(skill->id + "_cast_once", castDuration);
-    }
-
-    m_pendingResolution = PendingResolution::ResolvingHits;
-    m_turnTimer = 0.4f; // TODO: tune per-hit pacing, maybe per-skill
-}
-
-void BattleState::processNextPendingResult()
-{
-    if (m_pendingHitIndex >= m_pendingHitResults.size())
-    {
-        finishAttackResolution();
-        return;
-    }
-
-    PendingHitResult &entry = m_pendingHitResults[m_pendingHitIndex];
-    m_session.applyDamage(*entry.target, entry.result);
-
-    const SkillData *skill = nullptr;
-    if (!m_pendingSkillId.empty())
-    {
-        auto it = m_skillDB.find(m_pendingSkillId);
-        if (it != m_skillDB.end())
-            skill = &it->second;
-    }
-    const bool castOnce = skill && skill->castOncePerArea;
-
-    if (entry.result.hit)
-    {
-        if (entry.target->isDead())
-            m_pendingAnyDied = true;
-
-        m_floatingText.enqueue(std::to_string(entry.result.damage), entry.target->getPosition(),
-                               Color{255, 90, 90, 255});
-
-        // TODO: play per-target cast animation here if !castOnce (e.g. a
-        // mage's fire bolt jumping target to target), plus a hit-impact
-        // animation on entry.target regardless of castOnce:
-        //   if (!castOnce) m_combatAnimations.enqueue(skill->id + "_cast", ...);
-        //   m_combatAnimations.enqueue("hit_impact", ...);
-
-        LOG_INFO("Battle", "Attack hits %s for %d damage!",
-                 entry.target->getName().c_str(), entry.result.damage);
-    }
-    else
-    {
-        m_floatingText.enqueue("MISS", entry.target->getPosition(), Color{200, 200, 200, 255});
-
-        // TODO: play a dodge/evade animation on entry.target:
-        //   m_combatAnimations.enqueue("dodge", ...);
-
-        LOG_INFO("Battle", "Attack misses %s", entry.target->getName().c_str());
-    }
-
-    ++m_pendingHitIndex;
-    m_turnTimer = 0.4f; // TODO: tune per-hit pacing; stays in WaitingForAnimation
-}
-
-void BattleState::finishAttackResolution()
-{
-    Unit *active = m_pendingActor ? m_pendingActor : m_session.getCurrentUnit();
-
-    const SkillData *skill = nullptr;
-    if (!m_pendingSkillId.empty())
-    {
-        auto it = m_skillDB.find(m_pendingSkillId);
-        if (it != m_skillDB.end())
-            skill = &it->second;
-    }
-
-    if (active)
-    {
-        if (skill)
-            active->setCurrentMp(active->getCurrentMp() - skill->mpCost);
-        active->setMajorAction(skill ? MajorAction::Skill : MajorAction::Attack);
-    }
-
-    m_canUndoLastMove = false;
-    m_selectedSkillId.clear();
-    m_pendingSkillId.clear();
-
-    m_damagePreview.hide();
-    m_pendingAttack.clear();
-    m_topBattleText.clear();
-    m_pendingHitResults.clear();
-    m_pendingHitIndex = 0;
-
-    m_session.checkResult();
-
-    if (m_pendingAnyDied)
-        m_eventSystem.emit(BattleTriggerType::OnUnitDeath);
-    m_pendingAnyDied = false;
-
-    m_pendingResolution = PendingResolution::None;
-    m_pendingActor = nullptr;
-    m_pendingTarget = nullptr;
-    m_pendingActionLabel.clear();
-    m_turnState = TurnState::ProcessingTurn;
-
-    if (checkDefeat())
-    {
-        startBattleEnd(false);
-        return;
-    }
-    if (checkVictory())
-    {
-        startBattleEnd(true);
-        return;
-    }
-
-    m_hud.clear();
-    m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-    if (active)
-        openBattleMenu(canActiveUnitMove(), false, true, KeyCode::Accept);
-}
-
-void BattleState::cancelPendingAttack()
-{
-    m_pendingAttack.clear();
-    m_pendingSkillId.clear();
-    m_damagePreview.hide();
-    m_topBattleText.clear();
-    m_hud.clear();
-    m_humanTurnPhase = HumanTurnPhase::AttackTarget;
+    m_attackResolution.prepare(active, targetPos, directTarget, skill);
 }
 
 void BattleState::initializeDeploymentPhase()
@@ -1348,7 +1184,7 @@ void BattleState::handleInput()
         if (m_humanTurnPhase == HumanTurnPhase::MoveTarget ||
             m_humanTurnPhase == HumanTurnPhase::AttackTarget)
         {
-            cancelPendingAttack();
+            m_attackResolution.cancel();
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
 
             const Unit *active = m_session.getCurrentUnit();
@@ -1569,24 +1405,21 @@ void BattleState::update(float dt)
             if (m_pendingResolution == PendingResolution::PlayerConfirmedAttack)
             {
                 const SkillData *skill = nullptr;
-                if (!m_pendingSkillId.empty())
+                if (!m_attackResolution.pendingSkillId().empty())
                 {
-                    auto it = m_skillDB.find(m_pendingSkillId);
+                    auto it = m_skillDB.find(m_attackResolution.pendingSkillId());
                     if (it != m_skillDB.end())
                         skill = &it->second;
                 }
 
                 Unit *active = m_pendingActor ? m_pendingActor : m_session.getCurrentUnit();
-                beginAttackResolution(active, skill);
-                // beginAttackResolution sets m_pendingResolution = ResolvingHits
-                // and its own m_turnTimer — stay in WaitingForAnimation, do
-                // NOT fall through to ProcessingTurn yet.
+                m_attackResolution.beginResolution(active, skill);
                 break;
             }
 
             if (m_pendingResolution == PendingResolution::ResolvingHits)
             {
-                processNextPendingResult();
+                m_attackResolution.processNextResult();
                 break;
             }
 
@@ -1844,7 +1677,7 @@ void BattleState::render(float alpha)
         else if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
         {
             overlayMode = BattleOverlayMode::ConfirmTargets;
-            overlayTiles = &m_pendingAttack.tiles();
+            overlayTiles = &m_attackResolution.pendingAttack().tiles();
         }
 
         BattleRendererContext renderCtx{
@@ -1920,8 +1753,8 @@ void BattleState::render(float alpha)
                       m_humanTurnPhase == HumanTurnPhase::AttackConfirm))
             {
                 Unit *target = nullptr;
-                if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm && !m_pendingAttack.targets().empty())
-                    target = m_pendingAttack.focusedTarget();
+                if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm && !m_attackResolution.pendingAttack().targets().empty())
+                    target = m_attackResolution.pendingAttack().focusedTarget();
                 else
                     target = m_hoveredUnit;
 

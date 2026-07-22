@@ -2,7 +2,6 @@
 #include "engine/data/TileClass.h"
 #include "engine/core/Log.h"
 
-#include <SDL3/SDL.h>
 #include <cassert>
 #include <cctype>
 #include <cmath>

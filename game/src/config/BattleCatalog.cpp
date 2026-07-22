@@ -49,6 +49,7 @@ namespace
                                                                         BattleEventAction{.type = BattleActionType::ShowDialogue, .text = "Retreat and regroup."},
                                                                     }},
             },
+            .defeatRule = BattleDefeatRule{.type = DefeatConditionType::CriticalUnitDied},
         },
     };
 

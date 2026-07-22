@@ -7,7 +7,8 @@
 #include "engine/renderer/Camera.h"
 #include "engine/statemachine/StateMachine.h"
 #include "engine/input/KeyCode.h"
-#include "states/HumanTurnController.h"
+#include "battle/HumanTurnController.h"
+#include "battle/AttackResolutionController.h"
 #include "battle/Grid.h"
 #include "battle/BattleMap.h"
 #include "battle/BattleSession.h"
@@ -88,6 +89,26 @@ public:
         TurnEnded
     };
 
+    // Public so AttackResolutionController (and any future controller) can
+    // drive it via AttackResolutionContext — same reasoning as HumanTurnPhase
+    // above. EnemyAction resolution (in update()) also drives this directly.
+    enum class TurnState
+    {
+        Idle,
+        ProcessingTurn,
+        WaitingForAnimation
+    };
+
+    // Public for the same reason as TurnState — AttackResolutionController
+    // reads/writes this via AttackResolutionContext.
+    enum class PendingResolution
+    {
+        None,
+        PlayerConfirmedAttack,
+        ResolvingHits,
+        EnemyAction,
+    };
+
     // ── Human turn controller interface ───────────────────────────────────
     //
     // TODO: Move this into HumanTurnController once BattleState no longer
@@ -117,7 +138,36 @@ public:
 
     HumanTurnContext makeHumanTurnContext();
 
-    // Behaviors invoked by HumanTurnController.
+    // ── Attack resolution controller interface ─────────────────────────────
+    // Bundles the shared turn-flow state AttackResolutionController needs to
+    // read/write. Mirrors HumanTurnContext above exactly — same pattern, one
+    // more controller. Extend this (not AttackResolutionController's own
+    // members) when a future feature needs another piece of BattleState's
+    // shared state during attack resolution.
+    struct AttackResolutionContext
+    {
+        BattleSession &session;
+        BattleEventSystem &eventSystem;
+        BattleHud &hud;
+        DamagePreview &damagePreview;
+        FloatingTextSystem &floatingText;
+        const std::unordered_map<std::string, SkillData> &skillDB;
+        std::string &selectedSkillId;
+        std::string &topBattleText;
+        Unit *&hoveredUnit;
+        HumanTurnPhase &humanTurnPhase;
+        TurnState &turnState;
+        PendingResolution &pendingResolution;
+        float &turnTimer;
+        bool &canUndoLastMove;
+        Unit *&pendingActor;
+        Unit *&pendingTarget;
+        std::string &pendingActionLabel;
+    };
+
+    AttackResolutionContext makeAttackResolutionContext();
+
+    // Behaviors invoked by HumanTurnController / AttackResolutionController.
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
     bool canActiveUnitMove() const;
     void showInspectWindow(Unit *unit);
@@ -128,15 +178,14 @@ public:
                               Unit *directTarget,
                               const SkillData *skill);
 
-private:
-    // ── Private types ──────────────────────────────────────────────────────
-    enum class TurnState
-    {
-        Idle,
-        ProcessingTurn,
-        WaitingForAnimation
-    };
+    // Battle-end queries/trigger — public so AttackResolutionController (and
+    // the EnemyAction path already in this file) can call them. Same
+    // reasoning as openBattleMenu/canActiveUnitMove above.
+    void startBattleEnd(bool playerWon);
+    bool checkVictory() const;
+    bool checkDefeat() const;
 
+private:
 #ifdef _DEBUG
     // Autoplay state machine for player-team units (debug only).
     enum class AutoPlayPhase
@@ -152,14 +201,6 @@ private:
     {
         Deployment,
         Combat,
-    };
-
-    enum class PendingResolution
-    {
-        None,
-        PlayerConfirmedAttack,
-        ResolvingHits,
-        EnemyAction,
     };
 
     // ── Core engine references ─────────────────────────────────────────────
@@ -246,6 +287,7 @@ private:
     UIManager m_uiManager;
     BattleHud m_hud{m_uiManager};
     HumanTurnController m_humanTurn{*this};
+    AttackResolutionController m_attackResolution{*this};
 
     UnitPanelWindow *m_unitPanelWindow = nullptr;
     DeploymentWindow *m_deploymentWindow = nullptr;
@@ -260,25 +302,9 @@ private:
 
     CombatAnimationSystem m_combatAnimations;
 
-    PendingAttackController m_pendingAttack;
-    std::string m_pendingSkillId;
-
-    struct PendingHitResult
-    {
-        Unit *target = nullptr;
-        CombatResult result;
-    };
-
-    std::vector<PendingHitResult> m_pendingHitResults;
-    std::size_t m_pendingHitIndex = 0;
-    bool m_pendingAnyDied = false;
     FloatingTextSystem m_floatingText;
 
     // ── Battle flow helpers ────────────────────────────────────────────────
-    void startBattleEnd(bool playerWon);
-    bool checkVictory() const;
-    bool checkDefeat() const;
-
     void computeAttackRangeTiles();
 
     void showSkillMenu();
@@ -301,12 +327,4 @@ private:
 
     void showDialogueFromEvent(const std::string &text);
     void spawnEnemyFromEvent(const std::string &templatePath);
-
-    void cyclePendingAttackTarget(int delta);
-    void updatePendingAttackPreview(Unit *active);
-
-    void beginAttackResolution(Unit *active, const SkillData *skill);
-    void processNextPendingResult();
-    void finishAttackResolution();
-    void cancelPendingAttack();
 };

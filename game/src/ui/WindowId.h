@@ -20,6 +20,7 @@ enum class WindowId
 
     // Party
     PartyMenu,
+    PartyInspect,
 
     // Settings
     SettingsAudio,
@@ -30,5 +31,6 @@ enum class WindowId
     // World map
     WorldMap,
     WorldMapEncounterConfirm,
+    WorldMapNodeInfo,
     WorldMapNodeMenu,
 };

@@ -1,6 +1,6 @@
 #include "config/GameConstants.h"
-#include "states/ResultState.h"
-#include "states/MainMenuState.h"
+#include "scenes/ResultState.h"
+#include "scenes/MainMenuState.h"
 #include "engine/core/App.h"
 #include "engine/math/Rect.h"
 #include "engine/input/Input.h"

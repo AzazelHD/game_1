@@ -5,8 +5,8 @@
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
-#include "states/BootState.h"
-#include "states/MainMenuState.h"
+#include "scenes/BootState.h"
+#include "scenes/MainMenuState.h"
 
 #include <memory>
 

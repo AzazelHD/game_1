@@ -9,7 +9,7 @@
 #include "engine/ui/ButtonControl.h"
 #include "config/GameConstants.h"
 #include "data/SettingsManager.h"
-#include "states/AudioSettings.h"
+#include "scenes/AudioSettings.h"
 #include "ui/ActionId.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
@@ -63,7 +63,7 @@ void AudioSettings::onEnter()
     {
         auto btn = std::make_unique<ButtonControl>(
             [this]() -> std::string
-            { return hasVolumeChanges() ? "Apply Changes" : "Back"; },
+            { return hasVolumeChanges() ? "Save & Back" : "Back"; },
             [this]()
             {
                 if (hasVolumeChanges())
@@ -189,6 +189,6 @@ void AudioSettings::showExitConfirm()
     m_showExitConfirm = true;
     auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SettingsExitConfirm);
     confirm->setFont(FontManager::instance().get(FontRole::Heading));
-    confirm->setPrompt("You have unapplied volume changes.\nApply them before leaving?");
-    confirm->setButtonLabels("Discard", "Apply");
+    confirm->setPrompt("You have unsaved volume changes.\nSave them before leaving?");
+    confirm->setButtonLabels("Discard", "Save");
 }

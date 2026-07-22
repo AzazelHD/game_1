@@ -5,18 +5,20 @@
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
-#include "states/WorldMapState.h"
 #include "config/GameConstants.h"
+#include "battle/Unit.h"
 #include "battle/UnitData.h"
+#include "battle/UnitProgression.h"
 #include "data/UnitLoader.h"
-#include "world/WorldPathfinding.h"
-#include "states/BattleState.h"
-#include "states/SettingsState.h"
+#include "scenes/BattleState.h"
+#include "scenes/SettingsState.h"
 #include "ui/windows/ButtonMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
+#include "ui/windows/DialogWindow.h"
 #include "ui/windows/PartyWindow.h"
-
-#include <SDL3/SDL.h>
+#include "ui/windows/UnitInspectWindow.h"
+#include "scenes/WorldMapState.h"
+#include "world/WorldPathfinding.h"
 
 #include <algorithm>
 #include <cmath>
@@ -138,6 +140,13 @@ void WorldMapState::handleInput()
         {
             m_uiManager.handleInput(input);
             processUIEvents();
+            return;
+        }
+
+        if (m_uiManager.empty() && !m_isMoving && input.isKeyPressed(KeyCode::Details, false))
+        {
+            const int nodeId = (m_hoveredNodeId >= 0) ? m_hoveredNodeId : m_playerNodeId;
+            showNodeInfo(nodeId);
             return;
         }
 
@@ -456,6 +465,17 @@ void WorldMapState::onArriveAtNode(int nodeId)
     confirm->setPrompt("Start Battle?");
 }
 
+void WorldMapState::showNodeInfo(int nodeId)
+{
+    auto it = m_nodeMeta.find(nodeId);
+    const std::string description = (it != m_nodeMeta.end()) ? it->second.description : std::string("Empty Node");
+
+    m_uiManager.popById(WindowId::WorldMapNodeInfo);
+    auto *dialog = m_uiManager.push<DialogWindow>(WindowId::WorldMapNodeInfo);
+    dialog->setFont(FontManager::instance().get(FontRole::Body));
+    dialog->start({DialogWindow::Line{.speaker = "Node", .text = description}});
+}
+
 void WorldMapState::startBattle(PendingBattle battle)
 {
     if (battle.nodeId < 0 || battle.mapPath.empty())
@@ -492,6 +512,12 @@ void WorldMapState::processUIEvents()
             continue;
         }
 
+        if (event.windowId == WindowId::WorldMapNodeInfo && event.type == UIEventType::DialogFinished)
+        {
+            m_uiManager.popById(WindowId::WorldMapNodeInfo);
+            continue;
+        }
+
         if (event.windowId == WindowId::WorldMap && event.type == UIEventType::ActionSelected)
         {
             if (event.actionId == ActionId::OpenPartyMenu)
@@ -501,22 +527,34 @@ void WorldMapState::processUIEvents()
 
                 std::vector<PartyWindow::Entry> entries;
                 entries.reserve(2);
+                m_partyEntryTemplatePaths.clear();
+                m_partyEntryTemplatePaths.reserve(2);
 
-                bool ariaHasSprite = false;
-                bool soldierHasSprite = false;
-                try
+                // NOTE: hardcoded to Aria/Soldier, same as before this change —
+                // not yet wired to PartyContext/RosterSystem, which is where
+                // real party membership actually lives. Flagging, not fixing,
+                // since that's a separate task from this one.
+                static const std::vector<std::pair<std::string, std::string>> kHardcodedParty = {
+                    {"assets/units/aria.json", "Aria"},
+                    {"assets/units/soldier.json", "Soldier"},
+                };
+
+                for (const auto &[templatePath, displayName] : kHardcodedParty)
                 {
-                    const UnitData aria = UnitLoader::load("assets/units/aria.json");
-                    const UnitData soldier = UnitLoader::load("assets/units/soldier.json");
-                    ariaHasSprite = !aria.spriteSetId.empty();
-                    soldierHasSprite = !soldier.spriteSetId.empty();
-                }
-                catch (...)
-                {
+                    bool hasSprite = false;
+                    try
+                    {
+                        const UnitData data = UnitLoader::load(templatePath);
+                        hasSprite = !data.spriteSetId.empty();
+                    }
+                    catch (...)
+                    {
+                    }
+
+                    entries.push_back(PartyWindow::Entry{.name = displayName, .templatePath = templatePath, .hasSprite = hasSprite});
+                    m_partyEntryTemplatePaths.push_back(templatePath);
                 }
 
-                entries.push_back(PartyWindow::Entry{.name = "Aria", .hasSprite = ariaHasSprite});
-                entries.push_back(PartyWindow::Entry{.name = "Soldier", .hasSprite = soldierHasSprite});
                 party->setEntries(std::move(entries));
             }
             else if (event.actionId == ActionId::OpenSettings)
@@ -525,10 +563,39 @@ void WorldMapState::processUIEvents()
             }
             else if (event.actionId == ActionId::QuitGame)
             {
-                SDL_Event quitEvent{};
-                quitEvent.type = SDL_EVENT_QUIT;
-                SDL_PushEvent(&quitEvent);
+                App::requestQuit();
             }
+            continue;
+        }
+
+        if (event.windowId == WindowId::PartyMenu && event.type == UIEventType::ActionSelected && event.actionId == ActionId::Inspect)
+        {
+            if (event.index >= 0 && event.index < static_cast<int>(m_partyEntryTemplatePaths.size()))
+            {
+                try
+                {
+                    const UnitData templateData = UnitLoader::load(m_partyEntryTemplatePaths[static_cast<std::size_t>(event.index)]);
+                    const RaceData &raceData = getRaceData(templateData.race);
+                    const GenderData &genderData = getGenderData(templateData.gender);
+                    const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
+
+                    m_uiManager.popById(WindowId::PartyInspect);
+                    auto *details = m_uiManager.push<UnitInspectWindow>(WindowId::PartyInspect);
+                    details->setFont(FontManager::instance().get(FontRole::Body));
+                    details->setRelation(UnitInspectWindow::Relation::Player); // party entries are always the player's own units
+                    details->setHeader(previewUnit.getData().name, previewUnit.getData().className);
+                    details->setSections({UnitInspectWindow::buildStatsSection(previewUnit.getData())});
+                }
+                catch (...)
+                {
+                }
+            }
+            continue;
+        }
+
+        if (event.windowId == WindowId::PartyInspect && event.type == UIEventType::ActionCanceled)
+        {
+            m_uiManager.popById(WindowId::PartyInspect);
             continue;
         }
 

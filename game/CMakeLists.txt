@@ -5,17 +5,16 @@
 set(GAME_SOURCES
     src/main.cpp
 
-    src/states/BootState.cpp
-    src/states/MainMenuState.cpp
-    src/states/WorldMapState.cpp
-    src/states/BattleState.cpp
-    src/states/ResultState.cpp
-    src/states/BattleLoader.cpp   
-    src/states/HumanTurnController.cpp
-    src/states/SettingsState.cpp
-    src/states/AudioSettings.cpp
-    src/states/GraphicsSettings.cpp
-
+    src/scenes/BootState.cpp
+    src/scenes/MainMenuState.cpp
+    src/scenes/BattleState.cpp
+    src/scenes/ResultState.cpp
+    src/scenes/BattleLoader.cpp   
+    src/scenes/SettingsState.cpp
+    src/scenes/AudioSettings.cpp
+    src/scenes/GraphicsSettings.cpp
+    src/scenes/WorldMapState.cpp
+    
     src/battle/Grid.cpp
     src/battle/Unit.cpp
     src/battle/UnitProgression.cpp
@@ -25,19 +24,21 @@ set(GAME_SOURCES
     src/battle/MovementRange.cpp
     src/battle/BattleMap.cpp
     src/battle/UnitFactory.cpp
+    src/battle/AttackResolutionController.cpp
     src/battle/PendingAttackController.cpp
+    src/battle/HumanTurnController.cpp
     src/battle/BattleSession.cpp
-
+    
     src/ai/EnemyAI.cpp
-
+    
     src/renderer/BattleRenderer.cpp
-
+    
     src/data/UnitLoader.cpp
     src/data/SkillLoader.cpp
     src/data/SettingsManager.cpp
-
+    
     src/config/BattleCatalog.cpp
-
+    
     src/systems/RosterSystem.cpp
     src/systems/PartySystem.cpp
     src/systems/PartyContext.cpp
@@ -45,7 +46,7 @@ set(GAME_SOURCES
     src/systems/BattleParticipantsBuilder.cpp
     src/systems/CombatAnimationSystem.cpp
     src/events/BattleEventSystem.cpp
-
+    
     src/ui/Cursor.cpp
     src/ui/UIManager.cpp
     src/ui/DamagePreview.cpp
@@ -53,7 +54,7 @@ set(GAME_SOURCES
     src/ui/UnitPortrait.cpp
     src/ui/BattleHud.cpp  
     src/ui/FloatingTextSystem.cpp
-
+    
     src/ui/windows/ButtonMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
@@ -63,19 +64,20 @@ set(GAME_SOURCES
     src/ui/windows/SettingsRowWindow.cpp
     src/ui/windows/UnitPanelWindow.cpp
     src/ui/windows/ButtonMenuWindow.cpp
-)
-
-set(GAME_HEADERS
-    src/states/BootState.h
-    src/states/MainMenuState.h
-    src/states/WorldMapState.h
-    src/states/BattleState.h
-    src/states/ResultState.h
-    src/states/HumanTurnController.h
-    src/states/SettingsState.h
-    src/states/AudioSettings.h
-    src/states/GraphicsSettings.h
-
+    src/ui/windows/UnitInspectWindow.cpp
+    
+    )
+    
+    set(GAME_HEADERS
+    src/scenes/BootState.h
+    src/scenes/MainMenuState.h
+    src/scenes/BattleState.h
+    src/scenes/ResultState.h
+    src/scenes/SettingsState.h
+    src/scenes/AudioSettings.h
+    src/scenes/GraphicsSettings.h
+    src/scenes/WorldMapState.h
+    
     src/battle/Grid.h
     src/battle/Unit.h
     src/battle/UnitData.h
@@ -87,14 +89,16 @@ set(GAME_HEADERS
     src/battle/GameTile.h
     src/battle/BattleMap.h
     src/battle/UnitFactory.h
+    src/battle/AttackResolutionController.h
     src/battle/PendingAttackController.h
+    src/battle/HumanTurnController.h
     src/battle/BattleSession.h
-
+    
     src/ai/EnemyAI.h
-
+    
     src/renderer/BattleRenderer.h
     src/renderer/BattleRendererContext.h
-
+    
     src/data/UnitLoader.h
     src/data/SkillLoader.h
     src/data/SettingsManager.h
@@ -108,7 +112,7 @@ set(GAME_HEADERS
     src/systems/BattleParticipantsBuilder.h
     src/systems/CombatAnimationSystem.h
     src/events/BattleEventSystem.h
-
+    
     src/ui/Cursor.h
     src/ui/UITheme.h
     src/ui/UIEvent.h
@@ -131,12 +135,13 @@ set(GAME_HEADERS
     src/ui/windows/SettingsRowWindow.h
     src/ui/windows/UnitPanelWindow.h
     src/ui/windows/ButtonMenuWindow.h
-
+    src/ui/windows/UnitInspectWindow.h
+    
     src/world/WorldGraph.h
     src/world/WorldPathfinding.h
-)
-
-add_executable(game
+    )
+    
+    add_executable(game
     ${GAME_SOURCES}
     ${GAME_HEADERS}
 )

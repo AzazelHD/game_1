@@ -1,3 +1,4 @@
+#include "engine/core/App.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
@@ -8,14 +9,12 @@
 #include "engine/renderer/Renderer.h"
 #include "engine/statemachine/StateMachine.h"
 #include "config/GameConstants.h"
-#include "states/MainMenuState.h"
-#include "states/WorldMapState.h"
-#include "states/SettingsState.h"
+#include "scenes/MainMenuState.h"
+#include "scenes/SettingsState.h"
 #include "ui/windows/ButtonMenuWindow.h"
 #include "ui/ActionId.h"
 #include "ui/WindowId.h"
-
-#include <SDL3/SDL.h>
+#include "scenes/WorldMapState.h"
 
 MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool fadeInOnEnter)
     : m_stateMachine(sm),
@@ -126,10 +125,7 @@ void MainMenuState::processUIEvents()
         }
         case ActionId::QuitGame:
         {
-            SDL_Event quitEvent{};
-            quitEvent.type = SDL_EVENT_QUIT;
-            SDL_PushEvent(&quitEvent);
-            m_transitioning = false;
+            App::requestQuit();
             break;
         }
 

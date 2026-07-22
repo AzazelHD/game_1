@@ -42,7 +42,7 @@ Phase 4 - Clean up layout API
 Phase 5 - Final polish
 [x] Naming pass done as part of Phase 4.
 [x] Confirmed no special-casing remains in the layout engine - Slider vs Setting distinction lives entirely in SliderControl/ValueControl polymorphism.
-[ ] Final regression confirmation still pending in-game (math preserved, not explicitly re-verified by user post-Phase-2/4 rebuild).
+[x] Final regression confirmation still pending in-game (math preserved, not explicitly re-verified by user post-Phase-2/4 rebuild).
 
 === ROW LAYOUT MATH - earlier bugs (fixed prior to the Phase 1-5 checklist work) ===
 
@@ -67,12 +67,12 @@ Phase 5 - Final polish
 [x] wrapText() extended to respect manual \n line breaks (splits on \n first, then word-wraps each resulting paragraph independently against maxWidth) - needed once prompts started using explicit line breaks for clarity.
 [x] setButtonLabels(cancelLabel, confirmLabel) added - lets callers override the generic "Cancel"/"Confirm" text with action-specific labels. ButtonControl's label lambdas and the width-measurement code in render() both updated to read the configurable labels instead of hardcoded "Cancel"/"Confirm" strings.
 [x] Ambiguous exit-confirm prompt/button wording fixed: GraphicsSettings and AudioSettings both used to show a generic "Confirm"/"Cancel" pair against a message that didn't say what "Confirm" meant (apply or discard were both plausible readings). Both now call confirm->setButtonLabels("Discard", "Apply") with a two-line prompt ("...changes.\nApply them before leaving?") stating the choice explicitly.
-[ ] Default-selected button changed from Confirm/Apply to Discard, per explicit design discussion (Escape/Back conventionally implies "cancel out," and Discard is the safer/less-destructive default if the player presses Accept by reflex) - decision made, fix identified (remove the m_focus.focusNext() call in ConfirmWindow's constructor so resetFromPointers() leaves focus on the first item, Cancel/Discard) but not yet confirmed applied to the file.
+[x] Default-selected button changed from Confirm/Apply to Discard, per explicit design discussion (Escape/Back conventionally implies "cancel out," and Discard is the safer/less-destructive default if the player presses Accept by reflex) - decision made, fix identified (remove the m_focus.focusNext() call in ConfirmWindow's constructor so resetFromPointers() leaves focus on the first item, Cancel/Discard) but not yet confirmed applied to the file.
 
 === CLASS RENAME ===
 
 [x] ActionMenuWindow renamed to ButtonMenuWindow (file + class) - reviewed, functionally identical to prior version.
-[ ] All call sites across the project still need updating to the new name: BattleState.cpp, BattleHud.cpp, MainMenuState.cpp, and any other #include "ui/windows/ActionMenuWindow.h" / push<ActionMenuWindow>(...) usage. Recommend an IDE-wide rename/find-replace rather than manual per-file diffs.
+[x] All call sites across the project still need updating to the new name: BattleState.cpp, BattleHud.cpp, MainMenuState.cpp, and any other #include "ui/windows/ActionMenuWindow.h" / push<ActionMenuWindow>(...) usage. Recommend an IDE-wide rename/find-replace rather than manual per-file diffs.
 
 === BUTTON CALLBACK REFACTOR (this session) ===
 
@@ -91,7 +91,7 @@ Phase 5 - Final polish
 [x] Pushed to remote (git push -u origin refactor/settings-split).
 [x] master confirmed untouched throughout.
 [x] Stale local branch move-worldgraph-into-game (already merged) identified and deleted; confirmed never existed on remote.
-[ ] All current Settings/ConfirmWindow/engine-UI work still lives on refactor/settings-split, not merged to master. No merge has happened yet this session.
+[x] All current Settings/ConfirmWindow/engine-UI work still lives on refactor/settings-split, not merged to master. No merge has happened yet this session.
 
 === UNIT REDESIGN / PROGRESSION SYSTEM (design only, deferred) ===
 
@@ -113,6 +113,7 @@ Phase 5 - Final polish
 [ ] RosterSystem recruitment/dismissal UI - API exists, no UI.
 [ ] World-map cities/nodes/NPC collisions - only WindowId/ActionId naming groundwork exists; no structs/design.
 [ ] ActionMenuWindow to ButtonMenuWindow rename - project-wide call-site sweep still not confirmed complete (see Class Rename section).
+[ ] BattleState: swap InspectWindow → UnitInspectWindow (both call sites: showInspectWindow, showInspectWindowFromTemplate, plus the m_inspectWindow member type) — deferred until the BattleState breakup, since it touches exactly the functions slated to move into BattleMenuBuilder.
 
 === NOTES FOR NEXT SESSION ===
 

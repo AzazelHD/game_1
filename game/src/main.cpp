@@ -1,7 +1,7 @@
 #include "engine/core/App.h"
-#include "config/GameConstants.h"
-#include "states/BootState.h"
 #include "engine/scene/Scene.h"
+#include "config/GameConstants.h"
+#include "scenes/BootState.h"
 #include <SDL3/SDL.h>
 
 #include <exception>

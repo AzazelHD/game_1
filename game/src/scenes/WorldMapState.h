@@ -1,11 +1,10 @@
 #pragma once
 
+#include "engine/math/Vec2.h"
 #include "engine/scene/Scene.h"
 #include "engine/statemachine/StateMachine.h"
-#include "world/WorldGraph.h"
 #include "ui/UIManager.h"
-
-#include "engine/math/Vec2.h"
+#include "world/WorldGraph.h"
 
 #include <string>
 #include <unordered_map>
@@ -35,6 +34,7 @@ private:
     {
         NodeType type = NodeType::Empty;
         std::string battleMapPath;
+        std::string description = "Empty Node";
     };
 
     struct PendingBattle
@@ -53,6 +53,7 @@ private:
     void updatePlayerMovement(float dt);
     void onArriveAtNode(int nodeId);
     void processUIEvents();
+    void showNodeInfo(int nodeId);
 
     void startBattle(PendingBattle battle);
 
@@ -65,6 +66,7 @@ private:
     world::WorldGraph m_graph;
     std::unordered_map<int, Vec2i> m_nodeGridPos;
     std::unordered_map<int, NodeMeta> m_nodeMeta;
+    std::vector<std::string> m_partyEntryTemplatePaths;
 
     int m_playerNodeId = 4;
     int m_hoveredNodeId = -1;

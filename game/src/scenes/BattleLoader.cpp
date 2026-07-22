@@ -3,7 +3,7 @@
 #include "engine/data/TiledJsonLoader.h"
 #include "engine/renderer/Renderer.h"
 #include "config/GameConstants.h"
-#include "states/BattleLoader.h"
+#include "scenes/BattleLoader.h"
 
 #include <algorithm>
 

@@ -9,7 +9,7 @@
 #include "engine/ui/ButtonControl.h"
 #include "config/GameConstants.h"
 #include "data/SettingsManager.h"
-#include "states/GraphicsSettings.h"
+#include "scenes/GraphicsSettings.h"
 #include "ui/ActionId.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
