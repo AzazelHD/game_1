@@ -11,7 +11,10 @@ struct Resolution
 enum class WindowMode
 {
     Windowed,
-    Borderless
+    Borderless,
+    // Fullscreen,
+
+    Count
 };
 
 class SettingsManager
@@ -20,15 +23,21 @@ public:
     struct Settings
     {
         std::vector<Resolution> resolutions = {
-            {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}};
+            {1280, 720},
+            {1366, 768},
+            {1600, 900},
+            {1920, 1080}};
         int resolutionIndex = 0;
+
         WindowMode windowMode = WindowMode::Windowed;
+
         float masterVolume = 1.0f;
         float musicVolume = 1.0f;
 
         // Last applied / saved values
         int appliedResolutionIndex = 0;
         WindowMode appliedWindowMode = WindowMode::Windowed;
+
         float appliedMasterVolume = 1.0f;
         float appliedMusicVolume = 1.0f;
     };
@@ -46,6 +55,7 @@ public:
 
 private:
     SettingsManager() = default;
+
     Settings m_settings;
     bool m_loaded = false;
 };

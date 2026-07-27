@@ -44,7 +44,7 @@ public:
     // Hides a window in place instead of destroying it (see UIWindow::
     // setVisible). Use this instead of popById for persistent windows —
     // popById would erase the unique_ptr and dangle any raw pointer an
-    // owner (e.g. BattleHud) cached for reuse.
+    // owner (e.g. BattleUIManager) cached for reuse.
     void hideById(WindowId id);
     bool hasWindow(WindowId id) const;
     void clear();

@@ -1,4 +1,5 @@
 #include "engine/core/App.h"
+#include "engine/core/Log.h"
 #include "engine/core/Window.h"
 #include "data/SettingsManager.h"
 #include "ui/UIScale.h"
@@ -73,17 +74,28 @@ void SettingsManager::applyGraphics()
 {
     Window *window = App::getWindow();
     if (!window)
+    {
+        LOG_ERROR("Settings", "applyGraphics: no window!");
         return;
+    }
+
+    LOG_INFO("Settings", "applyGraphics: mode=%s resIndex=%d",
+             m_settings.windowMode == WindowMode::Borderless ? "Borderless" : "Windowed",
+             m_settings.resolutionIndex);
 
     if (m_settings.windowMode == WindowMode::Borderless)
     {
+        LOG_INFO("Settings", "Calling setBorderlessWindowed(true)");
         window->setBorderlessWindowed(true);
+        window->getRenderer().setPresentationMode(Renderer::PresentationMode::Stretch);
     }
     else
     {
+        LOG_INFO("Settings", "Calling setBorderlessWindowed(false), setSize");
         window->setBorderlessWindowed(false);
         const Resolution &res = m_settings.resolutions[m_settings.resolutionIndex];
         window->setSize(res.width, res.height);
+        window->getRenderer().setPresentationMode(Renderer::PresentationMode::Letterbox);
     }
     UIScale::refresh();
 }

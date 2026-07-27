@@ -1,129 +1,89 @@
 TRPG PROJECT — UNIFIED SUMMARY (unitsummary)
 
-=== SETTINGS MENU UNIFICATION - SettingsRowWindow + engine IFocusable integration ===
-
-[x] Identified and corrected the menu-architecture inconsistency: Settings pages were hand-rolling row rendering/input while MainMenuState used UIManager/ButtonMenuWindow. Unification completed this session.
-[x] Discovered a pre-existing engine UI framework (engine/ui/IFocusable.h, FocusGroup.h, Button.h/.cpp, TextLabel.h/.cpp, MenuPanel.h/.cpp, UIAnimation.h) partway through building a parallel one - stopped, reconciled, integrated instead of duplicating.
-[x] IRowControl (new) redesigned to extend IFocusable - plugs directly into FocusGroup for navigation/selection, same as Button already does in MenuPanel.
-[x] FocusGroup extended additively (MenuPanel/Button unaffected): resetFromPointers() for pointer-owned/polymorphic items, handleSelectedLeft()/handleSelectedRight() for left/right-adjustable controls.
-[x] IFocusable extended with optional handleLeft()/handleRight() (default no-op) - additive, does not break Button.
-[x] Three concrete IRowControl implementations built in engine/ui/: SliderControl (wraps existing Slider*), ValueControl (label + left/right-cycled display value, e.g. resolution/window mode), ButtonControl (full-width activatable row).
-[x] ButtonControl gained setLabelFormatter() (game-supplied std::function<std::string(const std::string&, bool)>) - keeps engine/ui/ free of any dependency on game-specific UITheme/UIUtils.
-[x] SettingsRowWindow fully rewritten to own a FocusGroup instead of hand-rolled focus-index navigation; iterates rows calling only IRowControl interface methods (measureWidth, render, isFullWidth) - no RowType enum, no type-switching anywhere in the window class.
-[x] AudioSettings converted to SettingsRowWindow (Master/Music SliderControl rows + ButtonControl Back/Apply row).
-[x] GraphicsSettings converted to SettingsRowWindow (Resolution/Window Mode ValueControl rows + ButtonControl Back/Apply row).
-[x] SettingsState (hub page) - confirmed converted to ButtonMenuWindow, matching the MainMenuState pattern exactly (UIManager + push<ButtonMenuWindow> + processUIEvents()). No hand-rolled rendering/input remaining.
-[x] Real bug found and fixed twice (once per file): handleInput() guard (if (m_showExitConfirm) return;) in both AudioSettings and GraphicsSettings was silently blocking all input to the pushed ConfirmWindow, soft-locking the exit-confirm popup. Removed from both.
-[x] ActionId::AdjustLeft/AdjustRight added - confirmed correct usage (emitted by an independent UIWindow, not a BattleMenuItem-style internal construct).
-[x] WindowId::SettingsGraphics, SettingsAudio, SettingsExitConfirm added.
-
-=== SettingsRowWindow LAYOUT ENGINE REFACTOR (DeepSeek-authored checklist, completed this session) ===
-
-Phase 1 - Remove type knowledge from the layout engine
-[x] Generic layout structures used (reused existing HorizontalLayout::Item/Container rather than introducing new duplicate types).
-[x] computeRowLayout() no longer takes bool isSlider - branches only on row.control->isFullWidth().
-[x] Graphics and Audio screens verified to render identically pre/post-refactor.
-
-Phase 2 - Build columns at the call site
-[x] makeLabelColumn() helper added.
-[x] makeControlsColumn() helper added (generic, no slider-specific branching left in it).
-[x] render() constructs labelColumn/controlsColumn once per frame, outside the row loop.
-[x] All slider-specific logic removed from computeRowLayout() itself.
-
-Phase 3 - Remove duplicated button layout
-[x] computeButtonRowBox() deleted.
-[x] Button rows go through the same computeRowLayout() path, sharing sharedContentWidth with every other row.
-[x] Verified Back button width matches every other row exactly.
-
-Phase 4 - Clean up layout API
-[x] Duplicate measurement removed (previously measured label/control widths twice per frame). computeContentWidth() now derives width from already-built columns, one measurement pass.
-[x] Renamed for clarity: makeLabelColumn, makeControlsColumn, computeContentWidth.
-
-Phase 5 - Final polish
-[x] Naming pass done as part of Phase 4.
-[x] Confirmed no special-casing remains in the layout engine - Slider vs Setting distinction lives entirely in SliderControl/ValueControl polymorphism.
-[x] Final regression confirmation still pending in-game (math preserved, not explicitly re-verified by user post-Phase-2/4 rebuild).
-
-=== ROW LAYOUT MATH - earlier bugs (fixed prior to the Phase 1-5 checklist work) ===
-
-[x] Label/slider overlap + "%" text outside box - fixed via HorizontalLayout::Container-based sizing (ported from old monolithic SettingsState::computeAudioRowLayout()).
-[x] Master Volume / Music Volume mismatched label-column widths - fixed via shared max-width measurement across all rows in a window.
-[x] Slider vertically off-center - fixed via computed centering offset (rowH - kTrackH * ui) * 0.5f, replacing stale fixed kSliderMarginTop.
-[x] Row outer padding done via Insets/HorizontalLayout::computeBounds consistently (manual x - gap hack explicitly rejected in favor of this).
-[x] HorizontalLayout/VerticalLayout renamed by user mid-session (stack() to layoutItems(), layoutRow() to layoutContainers()) - call sites updated to match.
-
-=== ConfirmWindow REBUILD ===
-
-[x] Converted from hand-rolled bool m_confirmSelected toggle to real ButtonControl + FocusGroup.
-[x] Cancel/Confirm kept horizontal (deliberate - binary Yes/No convention, not a scannable list).
-[x] No individual per-button rectangle - plain text + "> label <" highlight via ButtonControl::setLabelFormatter, matching original visual exactly.
-[x] Popup box now sizes to actual prompt text via measureText() instead of fixed 300x130 box.
-[x] Popup width capped (kMinW = 300, kMaxW = 520, both * ui) with real word-wrap (wrapText() helper, greedy line-packing).
-[x] Top/bottom padding unified to one shared value (both 24.0f, previously asymmetric 20 vs 30). Gap between prompt text and buttons separated into its own named constant kButtonsGap (56.0f).
-[x] All sizing constants moved from inside render() into the file's anonymous namespace.
-[x] Q/E (NavigatePrevious/NavigateNext) preserved unchanged for Battle's attack-target-cycling use of this window.
-[x] UIUtils::formatButtonLabel default-params signature mismatch with LabelFormatter fixed via 2-arg lambda wrapper at each call site.
-[x] Box width bug fixed: box was sized only from the prompt text, so short messages with wide buttons let the "> Cancel <"/"> Confirm <" selection markers overflow past the box edge. Fixed by also measuring the worst-case (bracketed) width of both buttons and taking the max against the message width when computing box width w.
-[x] wrapText() extended to respect manual \n line breaks (splits on \n first, then word-wraps each resulting paragraph independently against maxWidth) - needed once prompts started using explicit line breaks for clarity.
-[x] setButtonLabels(cancelLabel, confirmLabel) added - lets callers override the generic "Cancel"/"Confirm" text with action-specific labels. ButtonControl's label lambdas and the width-measurement code in render() both updated to read the configurable labels instead of hardcoded "Cancel"/"Confirm" strings.
-[x] Ambiguous exit-confirm prompt/button wording fixed: GraphicsSettings and AudioSettings both used to show a generic "Confirm"/"Cancel" pair against a message that didn't say what "Confirm" meant (apply or discard were both plausible readings). Both now call confirm->setButtonLabels("Discard", "Apply") with a two-line prompt ("...changes.\nApply them before leaving?") stating the choice explicitly.
-[x] Default-selected button changed from Confirm/Apply to Discard, per explicit design discussion (Escape/Back conventionally implies "cancel out," and Discard is the safer/less-destructive default if the player presses Accept by reflex) - decision made, fix identified (remove the m_focus.focusNext() call in ConfirmWindow's constructor so resetFromPointers() leaves focus on the first item, Cancel/Discard) but not yet confirmed applied to the file.
+=== SETTINGS MENU UNIFICATION — SettingsRowWindow + engine IFocusable integration ===
+[x] All items complete and merged to master (see GIT WORKFLOW below).
+[x] ConfirmWindow default-focus fix (Discard/Cancel default, not Confirm/Apply) — applied and verified via FocusGroup trace.
+[x] SettingsRowWindow Phase 1–5 layout refactor — confirmed in-game, renders identically.
+[x] Settings "Graphics" page — explicitly stays as-is (Resolution + Window Mode only). No Video/Graphics split. Closed, not deferred.
 
 === CLASS RENAME ===
+[x] ActionMenuWindow → ButtonMenuWindow — project-wide sweep confirmed complete via findstr, zero remaining references.
 
-[x] ActionMenuWindow renamed to ButtonMenuWindow (file + class) - reviewed, functionally identical to prior version.
-[x] All call sites across the project still need updating to the new name: BattleState.cpp, BattleHud.cpp, MainMenuState.cpp, and any other #include "ui/windows/ActionMenuWindow.h" / push<ActionMenuWindow>(...) usage. Recommend an IDE-wide rename/find-replace rather than manual per-file diffs.
+=== GIT WORKFLOW ===
+[x] refactor/settings-split merged into master (fast-forward, confirmed via git log), pushed to origin. Nothing outstanding on this branch.
 
-=== BUTTON CALLBACK REFACTOR (this session) ===
+=== SDL DECOUPLING (this arc) ===
+[x] App::requestQuit() added (App.h/.cpp) — game code no longer touches SDL directly for quit.
+[x] WorldMapState.cpp, MainMenuState.cpp — SDL_Event/SDL_PushEvent replaced with App::requestQuit().
+[x] Dead #include <SDL3/SDL.h> removed from BattleMap.cpp (was unused).
+[x] Confirmed remaining SDL includes are expected/correct: main.cpp (entry point), App.cpp/Window.cpp (owning wrappers), vcpkg third-party headers (not project code).
 
-[x] ButtonControl's onAccept param renamed to onClick for clarity, and the earlier ActionId actionId constructor param (added, then identified as a mistake) fully reverted - engine/ui/ must not depend on game-specific ActionId. ButtonControl is back to two params only: getLabel, onClick.
-[x] SettingsRowWindow's Accept handler simplified to just (void)m_focus.activateSelected(); - no longer inspects which control type was activated or emits a per-button ActionId, since each ButtonControl's own onClick now does the real work directly and synchronously (no event round-trip needed for button presses specifically).
-[x] AudioSettings and GraphicsSettings's Back/Apply buttons rewritten to do their apply-and-pop / apply-and-exit logic directly inside onClick, instead of emitting an event and matching it later in processUIEvents(). Dead ActionId::Confirm/ButtonPressed branches removed from both files' processUIEvents().
-[x] AdjustLeft/AdjustRight event handling confirmed still necessary and correctly kept in AudioSettings only (SliderControl mutates a separate Slider object that needs explicit re-sync into SettingsManager's data + applyVolume() call) - confirmed NOT needed in GraphicsSettings (ValueControl's onAdjust lambda already writes directly into SettingsManager's real data with no intermediate object), so its absence there is correct, not a bug.
-[x] Real bug found and fixed in GraphicsSettings::processUIEvents()'s ConfirmResult handler: was popping the exit-confirm popup and clearing the flag, but never actually calling applyAndSaveGraphics()/discardGraphicsChanges() or m_sm.pop() - meant pressing either Discard or Apply on the graphics exit-confirm did nothing except close the popup, changes were never actually applied or discarded and the player never left the screen. Fixed to match AudioSettings's already-correct equivalent.
-[x] ActionId enum cleaned up: ButtonPressed and ExitOrApply (both introduced and reverted mid-session while iterating on this design) removed. ActionId::Accept restored/kept (needed by DeploymentSystem's own use of Accept, unrelated to the Settings button work - was almost accidentally deleted).
-[x] Two [[nodiscard]] warnings fixed (ConfirmWindow.cpp, SettingsRowWindow.cpp) by wrapping the now-return-value-ignored m_focus.activateSelected() calls in (void).
-[x] Post-refactor compile errors fixed: BattleState.cpp and DeploymentWindow.cpp were both still referencing the now-deleted ActionId::ButtonPressed - DeploymentWindow.cpp's Accept-key emit corrected to ActionId::Accept (its actual pre-existing generic "accept/interact" meaning), BattleState.cpp's matching event.actionId comparison updated to match.
+=== PARTYWINDOW REBUILD ===
+[x] Reviewed — was clean (no pre-WindowId/ActionId remnants), but hand-rolled nav instead of FocusGroup.
+[x] Rebuilt on FocusGroup/IFocusable (EntryFocusable wrapper), replacing manual m_selected/m_scroll toggling. Note: FocusGroup wraps around (vs. old clamp-at-ends behavior) — accepted as consistent with ConfirmWindow/SettingsRowWindow.
+[x] Accept now distinct from Back: emits ActionSelected/Inspect(index) instead of duplicating Close.
+[x] Row highlight now uses UIUtils::formatButtonLabel instead of hand-rolled "> label <" formatting.
+[x] ui/windowId.h include-casing bug fixed (→ WindowId.h, matches project convention).
 
-=== GIT WORKFLOW (established this session) ===
+=== UnitInspectWindow (new class) ===
+[x] Built as the permanent replacement for the old generic InspectWindow — curated fields only (name, job, Stats section), colored border by Relation (Player=blue, Ally=green, Enemy=red), explicitly scoped to be extended with more Sections later (Skills/Gear) once the unit progression system lands. Not a temporary hack.
+[x] Wired into WorldMapState (PartyWindow's Accept → node info) and BattleState's DeploymentWindow's Details/Tab flow.
+[x] Wired into BattleMenuController (showInspectWindow, showInspectWindowFromTemplate) — the deferred BattleState swap is DONE. Old InspectWindow.h/.cpp confirmed fully dead via findstr (only self-reference remained) and deleted.
+[x] WindowId::PartyInspect added.
 
-[x] Branch refactor/settings-split created carrying all in-progress Settings work.
-[x] Pushed to remote (git push -u origin refactor/settings-split).
-[x] master confirmed untouched throughout.
-[x] Stale local branch move-worldgraph-into-game (already merged) identified and deleted; confirmed never existed on remote.
-[x] All current Settings/ConfirmWindow/engine-UI work still lives on refactor/settings-split, not merged to master. No merge has happened yet this session.
+=== WORLD MAP ===
+[x] Tab now opens node info (DialogWindow reused, "Empty Node" default description on all nodes). Party still reachable via Esc menu, per explicit decision to keep both.
+[x] NodeMeta::description field added (defaults "Empty Node").
 
-=== UNIT REDESIGN / PROGRESSION SYSTEM (design only, deferred) ===
+=== BUG FIXES (this arc) ===
+[x] Boss/critical-unit death not triggering defeat — test_map's BattleDefinition was missing .defeatRule = BattleDefeatRule{.type = DefeatConditionType::CriticalUnitDied}. One-line BattleCatalog.cpp fix. Confirmed working in-game.
+[x] Move/Attack Accept doing nothing in combat — HumanTurnController::handleActiveTurn had MoveTarget/AttackTarget branches nested unreachably inside `if (phase == FreeCursor)` as dead else-ifs. Fixed to sibling else-ifs off the same top-level phase check. Confirmed working in-game.
+[x] Deployment initial selection landing on an already-placed forced/boss unit (e.g. Aria) instead of skipping to the first unplaced roster slot — DeploymentSystem::initialize() now applies the same "first unplaced in roster order" rule placeGrabbed() already used, once at startup. Confirmed working in-game.
+[x] Confirmed pre-existing and correct, no fix needed: forced/boss units' .locked flag already prevented grab/unplace (grabUnit/unplaceUnit both check it); maxUnits was already correctly sourced from BattleDefinition, not a second source of truth.
 
-[ ] User provided a detailed Spanish-language design document (kept separate from this summary, not copied here) describing a full unit progression system: recruited-army philosophy (no fixed protagonists), three-layer unit identity (aptitudes/IVs, nature with stat bonus-malus pairs, permanent single class per unit), permanent non-respec skill point investment, three skill categories (active skills with 5 levels and escalating point costs, passives with 3 levels, reactions with no levels), a promotion system (permanent, raises level cap 40 to 50, adds exclusive free skills, expands active-skill loadout from 5 to 6), and an equip-vs-learn separation (learned skills permanent, equipped loadout freely changeable outside combat).
-[ ] Confirmed during design discussion: race still gates class eligibility (a unit's race determines which classes it can be recruited/trained as), and race's existing flat stat bonus/growth tables stay as an additive layer alongside class, not replaced by it.
-[ ] Confirmed isolated from BattleState/DeploymentSystem/BattleSession - combat code only ever needs final computed stats + equipped skill ids, same boundary already established elsewhere in the codebase. Two touch points identified for whenever this is built: RosterUnit needs a Generated/Authored origin split (random recruits vs named unique units like Aria), and UnitFactory needs a createGeneratedUnit(race, gender, class, level) function.
-[ ] User explicitly decided to defer this entire system to the end of the project - not started, no structs written, no code produced. Revisit only once other refactors (BattleState breakup, Settings unification) are settled.
+=== FOLDER RESTRUCTURE ===
+[x] states/ → scenes/ (renamed to match actual base class Scene; states/ was ambiguous with "game state" data).
+[x] HumanTurnController, AttackResolutionController, DeploymentPhaseController, BattleMenuController → battle/ (domain/orchestration logic, not Scene subclasses).
+[x] WorldMapState → scenes/ (was inconsistently in its own world/ folder; world/ now holds only WorldGraph.h/WorldPathfinding.h, pure data structures).
+[x] All #include paths and the .vcxproj updated accordingly. Confirmed building clean.
+
+=== BATTLESTATE SRP / GOD-CLASS BREAKUP — all four seams complete ===
+Seam #1 — AttackResolutionController (battle/):
+[x] Owns PendingAttackController, pending skill id, roll-ahead hit-result playback (prepare/cycleFocus/updatePreview/beginResolution/processNextResult/cancel).
+[x] BattleState::AttackResolutionContext bundles the shared turn-flow state it needs (mirrors HumanTurnContext pattern). TurnState/PendingResolution enums made public on BattleState for this.
+
+Seam #2 — DeploymentPhaseController (battle/):
+[x] Owns DeploymentSystem outright (not just orchestration around it) plus the preview Unit* list and DeploymentWindow pointer.
+[x] BattleState::DeploymentContext bundles shared state. BattleFlowPhase enum made public for this.
+[x] handleUIEvent() replaces the old inline WindowId::BattleDeployment block in BattleState::processUIEvents.
+
+Seam #3 — BattleMenuController (battle/):
+[x] Owns the action menu, skill submenu, system menu, and the full unit-inspect flow (inspect menu + UnitInspectWindow itself — see above).
+[x] BattleState::MenuContext bundles shared state (largest context struct, includes references to AttackResolutionController/DeploymentPhaseController for cross-controller calls like Start Battle confirm and move-undo).
+[x] Deferred InspectWindow→UnitInspectWindow swap folded in here — see UnitInspectWindow section above.
+
+Seam #4 — render() decomposition (no new controller, no ownership change):
+[x] Split into buildInterpolatedCamera, renderSceneAndOverlays, renderDeploymentGrabbedGhost, syncUnitPanelWindow, renderDeploymentHud, renderTopBattleText, renderEffects, renderUIStack, renderEndOverlay.
+[x] Defeat/Victory overlay blocks deduplicated into one parameterized renderEndOverlay(bool victory) — same pixels, one code path instead of two.
+[x] Flagged, not fixed: syncUnitPanelWindow() mutates state during the render pass (pre-existing behavior, preserved as-is — a real update/render timing smell worth a future look, not touched here).
+
+BattleState itself is now down to: lifecycle (onEnter/onExit/handleInput/update/render), the turn-flow state machine (processCurrentTurn/advanceToNextUnit, deliberately NOT extracted — it's the conductor tying the four controllers together), and the Context-struct factories. This matches the "seams first, conductor stays" plan agreed at the start of the breakup.
+
+=== UNIT REDESIGN / PROGRESSION SYSTEM (design only, still deferred) ===
+[ ] Full Spanish-language design doc exists (not copied here) — recruited-army philosophy, three-layer unit identity, skill points, promotion system, equip-vs-learn separation. Confirmed isolated from BattleState/DeploymentSystem/BattleSession by existing boundaries.
+[ ] Still explicitly deferred by user decision. BattleState breakup (the stated blocking condition) is now DONE — this is the natural next candidate once the user chooses to re-open it, but do NOT start unprompted.
 
 === STILL OPEN / NOT IMPLEMENTED ===
-
-[ ] ConfirmWindow default-focus change (Discard instead of Apply) - decided, not yet confirmed applied. See ConfirmWindow section above.
-[ ] Blurry text after resolution change - root cause diagnosed (SDL3 SDL_SetRenderLogicalPresentation letterbox scaling likely defaults to linear filtering; separate from Renderer::setTextureScaleMode which is per-texture only) - not yet fixed, needs real SDL3 API research since Renderer's current interface exposes no logical-presentation scale-quality control.
-[ ] PartyWindow.h/.cpp - still never reviewed this project; may still contain pre-WindowId/ActionId string remnants.
-[ ] BattleState SRP / god-class breakup - still the single largest pending item overall, completely unstarted, still blocked on the user providing current, post-all-sessions BattleState.h/.cpp.
-[ ] Settings "Graphics" to "Video"/"Graphics" page split - raised, not designed.
-[ ] Turn queue UI widget - parked.
-[ ] Real animations - blocked on assets.
-[ ] Multi-cast skills ("Double Cast") - not implemented.
-[ ] RosterSystem recruitment/dismissal UI - API exists, no UI.
-[ ] World-map cities/nodes/NPC collisions - only WindowId/ActionId naming groundwork exists; no structs/design.
-[ ] ActionMenuWindow to ButtonMenuWindow rename - project-wide call-site sweep still not confirmed complete (see Class Rename section).
-[ ] BattleState: swap InspectWindow → UnitInspectWindow (both call sites: showInspectWindow, showInspectWindowFromTemplate, plus the m_inspectWindow member type) — deferred until the BattleState breakup, since it touches exactly the functions slated to move into BattleMenuBuilder.
+[x] Blurry text after resolution change — root cause diagnosed (SDL_SetRenderLogicalPresentation letterbox scaling likely defaults to linear filtering; Renderer::setTextureScaleMode is per-texture only, doesn't cover this). Needs real SDL3 documentation research before writing a fix — not yet done.
+[ ] Turn queue UI widget — parked, no layout decided.
+[ ] Real animations — blocked on assets.
+[ ] Multi-cast skills ("Double Cast") — not implemented.
+[ ] RosterSystem recruitment/dismissal UI — backend API exists, no UI.
+[ ] World-map cities/nodes/NPC collisions — only WindowId/ActionId naming groundwork exists; no structs/design.
+[ ] syncUnitPanelWindow() render/update timing smell (see Seam #4 note) — not urgent, flagged only.
 
 === NOTES FOR NEXT SESSION ===
-
-Confirm in-game: ConfirmWindow's rebuilt Cancel/Confirm-now-Discard/Apply buttons, across all three uses (Graphics exit-confirm, Audio exit-confirm, Battle's attack-confirm) - box width fix, word-wrap with manual \n, and default-focus change all need visual/behavioral confirmation.
-Confirm Phase 2/4 SettingsRowWindow rewrite renders identically to pre-refactor.
-Apply the ConfirmWindow default-focus fix (remove m_focus.focusNext() in constructor) if not already done - flagged as decided but unconfirmed-applied above.
-Send PartyWindow.h/.cpp - still outstanding from several sessions ago.
-Merge refactor/settings-split into master once the above is confirmed working - nothing merged yet.
-The blurry-text SDL3 fix needs dedicated research time against SDL3 docs, not guesswork.
-BattleState.h/.cpp current copies remain the top blocker for the other major pending thread - same standing request as every prior summary.
-ActionMenuWindow to ButtonMenuWindow rename needs a project-wide sweep - not yet confirmed complete.
-Unit redesign/progression system remains fully deferred by explicit user decision - do not start building it unprompted; the design doc exists and is understood, but no code should be written for it until the user says so.
-User has been increasingly frustrated this session (hostile language directed at the assistant on multiple occasions); assistant declined to continue during the worst of it but resumed once the person redirected back to technical work. Worth maintaining a calm, concise, code-first response style given the person's explicit repeated requests to minimize token/explanation overhead and just deliver working diffs.
+BattleState breakup is DONE — all 4 seams extracted and compiling. Full deployment→combat→attack→victory/defeat smoke test still recommended after Seam #4, not yet explicitly confirmed by user.
+Next real candidate for a large session: either the blurry-text SDL3 research, or re-opening the unit progression/class system now that its stated blocker (BattleState breakup) is resolved — user's call, don't assume.
+The separate "Remaining Work — Handoff Plan" document is now RETIRED — its contents are fully absorbed into this summary (all of steps 0–4 are done or tracked above). Use this single document going forward.
+Working-style notes (still apply): user tracks token/effort budget carefully; prefers real, correctly-generalized fixes over quick patches; always ask for current file contents before proposing edits to anything that may have changed; direct, code-first answers with minimal explanation once a design is agreed.

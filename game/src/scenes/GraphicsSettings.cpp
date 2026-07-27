@@ -46,13 +46,12 @@ void GraphicsSettings::onEnter()
             std::snprintf(buf, sizeof(buf), "%d x %d", res.width, res.height);
             return std::string("< ") + buf + " >";
         },
-        [&s](bool right)
+        [&s](bool forward)
         {
             const int count = static_cast<int>(s.resolutions.size());
-            if (right)
-                s.resolutionIndex = (s.resolutionIndex + 1) % count;
-            else
-                s.resolutionIndex = (s.resolutionIndex - 1 + count) % count;
+            const int delta = forward ? 1 : -1;
+
+            s.resolutionIndex = (s.resolutionIndex + delta + count) % count;
         });
     rows.push_back(std::move(resolutionRow));
 
@@ -61,14 +60,31 @@ void GraphicsSettings::onEnter()
     windowModeRow.control = std::make_unique<ValueControl>(
         [&s]() -> std::string
         {
-            return std::string("< ") +
-                   (s.windowMode == WindowMode::Borderless ? "Borderless" : "Windowed") + " >";
+            switch (s.windowMode)
+            {
+            case WindowMode::Windowed:
+                return "< Windowed >";
+
+            case WindowMode::Borderless:
+                return "< Borderless >";
+
+                // Add this later:
+                // case WindowMode::Fullscreen:
+                //     return "< Fullscreen >";
+
+            default:
+                return "";
+            }
         },
-        [&s](bool)
+        [&s](bool forward)
         {
-            s.windowMode = (s.windowMode == WindowMode::Windowed)
-                               ? WindowMode::Borderless
-                               : WindowMode::Windowed;
+            constexpr int count = static_cast<int>(WindowMode::Count);
+            const int delta = forward ? 1 : -1;
+
+            int index = static_cast<int>(s.windowMode);
+            index = (index + delta + count) % count;
+
+            s.windowMode = static_cast<WindowMode>(index);
         });
     rows.push_back(std::move(windowModeRow));
 
@@ -76,15 +92,19 @@ void GraphicsSettings::onEnter()
     {
         auto btn = std::make_unique<ButtonControl>(
             [this]() -> std::string
-            { return hasGraphicsChanges() ? "Apply Changes" : "Back"; },
+            {
+                return hasGraphicsChanges() ? "Save & Back" : "Back";
+            },
             [this]()
             {
                 if (hasGraphicsChanges())
                     applyAndSaveGraphics();
                 m_sm.pop();
             });
+
         btn->setLabelFormatter([](const std::string &label, bool selected)
                                { return UIUtils::formatButtonLabel(label, selected); });
+
         backRow.control = std::move(btn);
     }
     rows.push_back(std::move(backRow));
@@ -162,14 +182,17 @@ void GraphicsSettings::applyAndSaveGraphics()
     auto &mgr = SettingsManager::instance();
     mgr.applyGraphics();
     auto &s = mgr.data();
+
     s.appliedResolutionIndex = s.resolutionIndex;
     s.appliedWindowMode = s.windowMode;
+
     mgr.saveToFile();
 }
 
 void GraphicsSettings::discardGraphicsChanges()
 {
     auto &s = SettingsManager::instance().data();
+
     s.resolutionIndex = s.appliedResolutionIndex;
     s.windowMode = s.appliedWindowMode;
 }
@@ -179,6 +202,6 @@ void GraphicsSettings::showExitConfirm()
     m_showExitConfirm = true;
     auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SettingsExitConfirm);
     confirm->setFont(FontManager::instance().get(FontRole::Heading));
-    confirm->setPrompt("You have unapplied graphics changes.\nApply them before leaving?");
-    confirm->setButtonLabels("Discard", "Apply");
+    confirm->setPrompt("You have unsaved graphics changes.\nSave them before leaving?");
+    confirm->setButtonLabels("Discard", "Save");
 }

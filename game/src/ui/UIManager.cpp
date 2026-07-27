@@ -47,7 +47,7 @@ void UIManager::hideById(WindowId id)
 bool UIManager::hasWindow(WindowId id) const
 {
     // Visible-only by design: every prior call site (BattleState's ESC/
-    // update-phase checks, BattleHud::isOpen) uses this to mean "is this
+    // update-phase checks, BattleUIManager::isOpen) uses this to mean "is this
     // window currently showing", which is exactly what it meant back when
     // "not showing" implied "not on the stack at all". A hidden-but-alive
     // persistent window must keep reporting as absent here.

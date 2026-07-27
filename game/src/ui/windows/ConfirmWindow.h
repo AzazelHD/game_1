@@ -28,6 +28,11 @@ public:
         m_confirmLabelText = std::move(confirmLabel);
     }
 
+    // Overrides the default-selected button. false (default) = Cancel/Discard,
+    // matching every existing ConfirmWindow use. true = Confirm/Apply selected
+    // instead — call once, right after construction, before any input.
+    void setConfirmSelectedByDefault() { m_focus.focusNext(); }
+
 private:
     const Font *m_font = nullptr;
     std::string m_prompt = "???";

@@ -1,0 +1,65 @@
+TRPG Project — Renderer World/Native Pass Split (Session Summary)
+What we did this session
+
+Diagnosed: blurry text after resolution change, caused by SDL's letterbox logical-presentation stretching a fixed-resolution canvas up to the real window size (linear filtering), unrelated to font size or DPI.
+
+Root fix implemented and confirmed compiling/working in-game:
+
+Renderer now owns its own SDL_Texture* m_logicalTarget (SDL_TEXTUREACCESS_TARGET, created in setLogicalPresentation()) instead of using SDL_SetRenderLogicalPresentation. This replaces SDL's automatic logical-presentation scaling with manual control.
+New beginWorldPass() / endWorldPass(): the former targets the internal texture and clears it; the latter switches back to the window, computes a manual letterbox rect (computeLetterboxTransform() — same uniform-scale-fit math SDL's own letterbox used), and stretches the texture into it with a controllable ScaleMode via setLogicalScaleMode().
+New "native/UI" default mode: when not inside a world pass, every primitive (fillRect, drawRect, drawLine, renderText, drawTexture) transparently converts logical coordinates to physical window pixels via toNativeRect()/toNativePos() — same scale+offset math as the letterbox. No UI window file needs to change — they keep passing logical coordinates (Rectf{0,0,VIEW_W,24}) as before.
+The actual crispness fix: renderText() now temporarily bumps the font's point size via TTF_SetFontSize() (new ScopedFontSize RAII guard, same pattern as the existing ScopedFontStyle) before rasterizing, scaled by the native-pass scale factor — so glyphs are rasterized at real on-screen pixel density, not just repositioned/stretched as a small bitmap. Text's resulting texture is drawn 1:1 (no size scaling), only its position goes through the native transform — this asymmetry (position scaled, size not) is intentional and was flagged explicitly to avoid double-scaling.
+measureText() deliberately untouched — still reports logical-space sizes, so all existing UI layout math (everything built this session in SettingsRowWindow, ConfirmWindow, etc.) stays correct with zero changes.
+Added proper Rule-of-5 to Renderer (previously default-constructible/copyable with no real resources) since it now owns an SDL texture — move-only, copy deleted.
+Verified no conflict with UIScale: UIScale::factor() (clamped [0.75, 1.0], shrinks logical-space sizes for small windows) and the new native-pass transform (converts already-decided logical coordinates to physical pixels) solve different problems and compose correctly — confirmed by reading UIScale.cpp, no changes needed there.
+Verified DamagePreview draws in fixed screen coordinates (not camera-relative) → belongs in native pass.
+Verified CombatAnimationSystem::render() is currently an empty no-op stub → correctly stays categorized for the future world pass (per its own TODO), no action needed now.
+This work happened on a new branch, refactor/renderer-passes, branched from master (not from refactor/settings-split, to keep the two unrelated efforts independently reviewable/revertable). Committed and pushed.
+What's NOT done yet — next session should start here
+
+BattleState::render() has not been updated to actually use beginWorldPass()/endWorldPass(). I now have the full current text of render() and all its helper methods (buildInterpolatedCamera, renderSceneAndOverlays, renderDeploymentGrabbedGhost, syncUnitPanelWindow, renderDeploymentHud, renderTopBattleText, renderEffects, renderUIStack, renderEndOverlay) — this was mid-review when credits ran out, so the next session can proceed immediately without re-requesting files.
+
+Confirmed categorization, ready to implement:
+
+World pass: renderSceneAndOverlays (tiles/units/camera-relative), renderDeploymentGrabbedGhost (positioned via renderCam transform), CombatAnimationSystem::render (stub, staying here per its own future-camera-relative TODO), DebugRenderer::flush (currently called inside renderEffects, dev-only, has both iso and screen debug primitives — plan says leave entirely in world pass, acceptable tradeoff since it's stripped in Release).
+Native pass: syncUnitPanelWindow (no draws, just state — order-irrelevant), renderDeploymentHud, renderTopBattleText, DamagePreview::render (confirmed fixed-screen-space), renderUIStack (m_uiManager.render), renderEndOverlay, m_transition.render.
+
+renderEffects() needs to be split — it currently bundles DamagePreview::render (native) + CombatAnimationSystem::render (world, stub) + DebugRenderer::flush (world) together in one function; these need to move into their correct passes separately rather than staying bundled.
+
+Target shape for the rewritten render() (from the plan, not yet applied):
+
+cpp
+void BattleState::render(float alpha)
+{
+    if (!m_renderer) return;
+    const Camera renderCam = buildInterpolatedCamera(alpha);
+
+    m_renderer->beginWorldPass();
+    renderSceneAndOverlays(renderCam);
+    renderDeploymentGrabbedGhost(renderCam);
+    m_combatAnimations.render(m_renderer);
+    if (m_debugRenderer) m_debugRenderer->flush(m_renderer, renderCam);
+    m_renderer->endWorldPass();
+
+    syncUnitPanelWindow();
+    renderDeploymentHud();
+    renderTopBattleText();
+    m_damagePreview.render(m_renderer, FontManager::instance().get(FontRole::Body));
+    renderUIStack();
+    m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
+    if (m_showDefeatOverlay) renderEndOverlay(false);
+    if (m_showVictoryOverlay) renderEndOverlay(true);
+}
+
+This also folds in Seam #4 (splitting render() into named methods) — that work turns out to already be mostly done (all the helper methods above already exist and are already named/split), so Seam #4 may effectively already be complete; next session should just confirm nothing further needs splitting once the pass-wrapping is applied.
+
+Also still open (unrelated, unchanged from before this session)
+BattleState.h/.cpp — confirm current versions once more before the render() edit, in case anything shifted.
+PartyWindow.h/.cpp — still never reviewed.
+ActionMenuWindow→ButtonMenuWindow rename — project-wide sweep still not confirmed complete.
+Settings "Graphics"→"Video"/"Graphics" split — undesigned.
+Unit progression/class system — explicitly deferred, don't start unprompted.
+refactor/settings-split branch — still not merged into master (separate from this session's refactor/renderer-passes branch).
+Immediate next action
+
+Apply the render() rewrite above (world-pass wrap + renderEffects() split), test in-game at multiple resolutions to confirm text is crisp and nothing renders in the wrong space (especially watch DamagePreview and the deployment ghost/portrait), commit on refactor/renderer-passes, then merge once confirmed.

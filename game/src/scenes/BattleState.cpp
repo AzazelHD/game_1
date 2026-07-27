@@ -14,6 +14,7 @@
 #include "engine/renderer/FontManager.h"
 #include "engine/effects/ScreenTransition.h"
 #include "config/BattleCatalog.h"
+#include "data/SettingsManager.h"
 #include "scenes/BattleState.h"
 #include "scenes/BattleLoader.h"
 #include "scenes/MainMenuState.h"
@@ -21,10 +22,9 @@
 #include "battle/UnitFactory.h"
 #include "battle/UnitProgression.h"
 #include "battle/AttackResolutionController.h"
+#include "battle/DeploymentPhaseController.h"
 #include "battle/MovementRange.h"
 #include "battle/CombatSystem.h"
-#include "systems/PartyContext.h"
-#include "systems/BattleParticipantsBuilder.h"
 #include "renderer/BattleRendererContext.h"
 #include "ai/EnemyAI.h"
 #include "ui/Cursor.h"
@@ -34,8 +34,6 @@
 #include "ui/windows/ButtonMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/DialogWindow.h"
-#include "ui/windows/DeploymentWindow.h"
-#include "ui/windows/InspectWindow.h"
 #include "data/SkillLoader.h"
 #include "data/UnitLoader.h"
 
@@ -92,7 +90,6 @@ void BattleState::onEnter()
     m_reachableTiles.clear();
     m_currentAttackRange = 1;
     m_session.init({});
-    m_deploymentPreviewUnits.clear();
     m_floatingText.clear();
     m_pendingRewardXp = 0;
     m_flowPhase = BattleFlowPhase::Deployment;
@@ -120,13 +117,15 @@ void BattleState::onEnter()
         return;
 
     // ── 2. Configure window and renderer ──
-    window->setResizable(true);
-    window->setAspectRatio(16.0f / 9.0f, 16.0f / 9.0f);
+    const bool borderless = SettingsManager::instance().data().windowMode == WindowMode::Borderless;
+    window->setResizable(!borderless);
+    if (!borderless)
+        window->setAspectRatio(16.0f / 9.0f, 16.0f / 9.0f);
 
     m_renderer->setLogicalPresentation(
         static_cast<int>(GameConstants::VIEW_W),
         static_cast<int>(GameConstants::VIEW_H),
-        Renderer::PresentationMode::Letterbox);
+        borderless ? Renderer::PresentationMode::Stretch : Renderer::PresentationMode::Letterbox);
 
     // ── 3-6. Load map, build grid, load tileset, compute origin ──
     BattleLoadResult loaded = BattleLoader{m_renderer}.load(m_request.mapPath.c_str(), m_scale, SPRITE_H);
@@ -146,8 +145,17 @@ void BattleState::onEnter()
 
     m_camera.setTileSize(m_mapData.tileWidth, m_mapData.tileHeight);
     m_camera.setMapSize(m_mapData.width, m_mapData.height);
+    m_camera.setViewportSize(Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H});
+    m_camera.setRenderScale(static_cast<float>(m_scale));
     m_camera.setOffset(origin);
     m_camera.setZoom(m_battleDefinition->defaultZoom);
+    m_camera.setMapBoundsMargin(0.0f);
+
+    // origin is a screen-space placement value, not a valid iso-space camera
+    // offset — clamp immediately so the very first rendered frame already
+    // sits inside valid bounds, instead of snapping there on the first
+    // trackTarget()/clampToBounds() call later (visible as a hard "jump").
+    m_camera.clampToBounds();
     m_previousCamera = m_camera;
 
     // ── 7. Set up debug renderer ──
@@ -171,26 +179,29 @@ void BattleState::onEnter()
     m_uiManager.clear();
     m_unitPanelWindow = m_uiManager.push<UnitPanelWindow>(WindowId::BattleUnitPanel);
     m_unitPanelWindow->setFont(FontManager::instance().get(FontRole::Body));
-    m_deploymentWindow = m_uiManager.push<DeploymentWindow>(WindowId::BattleDeployment);
-    m_deploymentWindow->setFont(FontManager::instance().get(FontRole::Body));
+
+    auto *deploymentWindow = m_uiManager.push<DeploymentWindow>(WindowId::BattleDeployment);
+    deploymentWindow->setFont(FontManager::instance().get(FontRole::Body));
+    m_deploymentPhase.setDeploymentWindow(deploymentWindow);
 
     m_hud.clear();
 
-    initializeDeploymentPhase();
+    m_deploymentPhase.initializeDeploymentPhase();
 
-    m_eventSystem.initialize(*m_battleDefinition, BattleEventSystem::Callbacks{
-                                                      .showDialogue = [this](const std::string &text)
-                                                      { showDialogueFromEvent(text); },
-                                                      .spawnUnitByTemplate = [this](const std::string &templatePath)
-                                                      { spawnEnemyFromEvent(templatePath); },
-                                                      .giveRewardXp = [this](int xp)
-                                                      { m_pendingRewardXp += xp; },
-                                                      .playAnimation = [this](const std::string &name)
-                                                      { m_combatAnimations.enqueue(name); },
-                                                      .startCutscene = [](const std::string & /*id*/) {},
-                                                      .endBattle = [this](bool win)
-                                                      { startBattleEnd(win); },
-                                                  });
+    m_eventSystem.initialize(*m_battleDefinition,
+                             BattleEventSystem::Callbacks{
+                                 .showDialogue = [this](const std::string &text)
+                                 { showDialogueFromEvent(text); },
+                                 .spawnUnitByTemplate = [this](const std::string &templatePath)
+                                 { spawnEnemyFromEvent(templatePath); },
+                                 .giveRewardXp = [this](int xp)
+                                 { m_pendingRewardXp += xp; },
+                                 .playAnimation = [this](const std::string &name)
+                                 { m_combatAnimations.enqueue(name); },
+                                 .startCutscene = [](const std::string & /*id*/) {},
+                                 .endBattle = [this](bool win)
+                                 { startBattleEnd(win); },
+                             });
 
     // ── 9. Start fade‑in transition ──
     m_transition.start({
@@ -200,268 +211,10 @@ void BattleState::onEnter()
     });
 }
 
-void BattleState::showBattleMenu(bool canMove, bool canAttack, bool canWait)
-{
-    std::vector<BattleMenuItem> items;
-    items.push_back(BattleMenuItem{
-        .label = "Move",
-        .enabled = canMove,
-        .onSelect = [this]()
-        {
-            Unit *active = m_session.getCurrentUnit();
-            if (active)
-            {
-                m_reachableTiles = MovementRange::compute(m_grid, m_battleMap,
-                                                          active->getPosition(),
-                                                          active->getMoveRangeLeft(),
-                                                          active->getTeam(),
-                                                          m_session.getUnitPtrs(),
-                                                          active->getJump());
-                m_cursor.setPosition(active->getPosition());
-            }
-            m_humanTurnPhase = HumanTurnPhase::MoveTarget;
-            m_hud.clear();
-        }});
-
-    items.push_back(BattleMenuItem{
-        .label = "Attack",
-        .enabled = canAttack,
-        .onSelect = [this]()
-        {
-            Unit *active = m_session.getCurrentUnit();
-            if (active)
-            {
-                m_currentAttackRange = 1;
-                m_selectedSkillId.clear();
-                computeAttackRangeTiles();
-                m_cursor.setPosition(active->getPosition());
-            }
-            m_humanTurnPhase = HumanTurnPhase::AttackTarget;
-            m_hud.clear();
-        }});
-
-    Unit *active = m_session.getCurrentUnit();
-    if (active && !active->getSkillIds().empty())
-    {
-        items.push_back(BattleMenuItem{
-            .label = "Skills",
-            .enabled = canAttack,
-            .onSelect = [this]()
-            { showSkillMenu(); }});
-    }
-
-    items.push_back(BattleMenuItem{
-        .label = "Defend",
-        .enabled = canAttack,
-        .onSelect = [this]()
-        {
-            Unit *active = m_session.getCurrentUnit();
-            if (active)
-                active->setMajorAction(MajorAction::Defend);
-            m_hud.clear();
-            advanceToNextUnit();
-            m_turnState = TurnState::Idle;
-        }});
-
-    items.push_back(BattleMenuItem{
-        .label = "Wait",
-        .enabled = canWait,
-        .onSelect = [this]()
-        {
-            m_hud.clear();
-            advanceToNextUnit();
-            m_turnState = TurnState::Idle;
-        }});
-
-    m_hud.setItems(std::move(items), m_flowPhase == BattleFlowPhase::Combat);
-}
-
-void BattleState::showSkillMenu()
-{
-    Unit *active = m_session.getCurrentUnit();
-    if (!active)
-        return;
-
-    m_skillMenuItems.clear();
-
-    for (const std::string &skillId : active->getSkillIds())
-    {
-        auto it = m_skillDB.find(skillId);
-        if (it == m_skillDB.end())
-            continue;
-
-        const SkillData &skill = it->second;
-        std::string label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
-        bool canUse = (active->getCurrentMp() >= skill.mpCost);
-
-        m_skillMenuItems.push_back(BattleMenuItem{
-            .label = label,
-            .enabled = canUse,
-            .onSelect = [this, skillId]()
-            {
-                auto it = m_skillDB.find(skillId);
-                if (it != m_skillDB.end())
-                {
-                    m_currentAttackRange = it->second.range;
-                    m_selectedSkillId = skillId;
-                    computeAttackRangeTiles();
-                }
-                if (Unit *active = m_session.getCurrentUnit())
-                    m_cursor.setPosition(active->getPosition());
-                m_humanTurnPhase = HumanTurnPhase::AttackTarget;
-                m_uiManager.popById(WindowId::BattleSkillMenu);
-                m_hud.clear();
-            }});
-    }
-
-    // A real push onto the UI stack — a second, distinct level above
-    // battle.actionmenu, which stays untouched underneath. Back pops just
-    // this window and battle.actionmenu is revealed exactly as it was, the
-    // same way any other stacked window already behaves.
-    m_uiManager.popById(WindowId::BattleSkillMenu);
-    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::BattleSkillMenu);
-    menu->setFont(FontManager::instance().get(FontRole::Body));
-    if (m_flowPhase == BattleFlowPhase::Combat)
-    {
-        UIScale::refresh();
-        const float ui = UIScale::factor();
-        menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
-    }
-
-    std::vector<ButtonMenuWindow::Item> uiItems;
-    uiItems.reserve(m_skillMenuItems.size());
-    for (int i = 0; i < static_cast<int>(m_skillMenuItems.size()); ++i)
-    {
-        uiItems.push_back(ButtonMenuWindow::Item{
-            .label = m_skillMenuItems[i].label,
-            .enabled = m_skillMenuItems[i].enabled,
-        });
-    }
-    menu->setItems(std::move(uiItems));
-}
-
-void BattleState::showSystemMenu()
-{
-    const bool deploying = (m_flowPhase == BattleFlowPhase::Deployment);
-
-    BattleMenuItem firstItem;
-    if (deploying)
-    {
-        firstItem = BattleMenuItem{
-            .label = "Start Battle",
-            .enabled = m_deployment.canStartBattle(),
-            .onSelect = [this]()
-            {
-                m_uiManager.popById(WindowId::BattleDeploymentConfirm);
-                auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::BattleDeploymentConfirm);
-                confirm->setFont(FontManager::instance().get(FontRole::Body));
-                confirm->setPrompt("Start Battle?");
-            }};
-    }
-    else
-    {
-        firstItem = BattleMenuItem{
-            .label = "Resume",
-            .enabled = true,
-            .onSelect = [this]()
-            { m_hud.clear(); }};
-    }
-
-    BattleMenuItem quitItem{
-        .label = "Quit",
-        .enabled = true,
-        .onSelect = [this]()
-        { m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer)); }};
-
-    m_hud.setItems({std::move(firstItem), std::move(quitItem)}, false);
-}
-
-void BattleState::showStatusMenu(Unit *unit)
-{
-    if (!unit)
-        return;
-    showInspectWindow(unit);
-}
-
-void BattleState::showInspectWindow(Unit *unit)
-{
-    if (!unit)
-        return;
-
-    m_uiManager.popById(WindowId::BattleInspect);
-    auto *inspect = m_uiManager.push<InspectWindow>(WindowId::BattleInspect);
-    inspect->setFont(FontManager::instance().get(FontRole::Body));
-    inspect->setTitle("Inspect");
-    inspect->setLines(InspectWindow::buildLines(unit->getData()));
-    m_inspectWindow = inspect;
-}
-
-void BattleState::openUnitInspectMenu(Unit *unit)
-{
-    if (!unit)
-        return;
-
-    m_inspectTargetUnit = unit;
-    m_uiManager.popById(WindowId::BattleInspectMenu);
-    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::BattleInspectMenu);
-    menu->setFont(FontManager::instance().get(FontRole::Body));
-    menu->setAnchorBottomRight();
-    menu->setItems({
-        ButtonMenuWindow::Item{.id = ActionId::Inspect, .label = "Inspect", .enabled = true},
-    });
-}
-
-void BattleState::showInspectWindowFromTemplate(const std::string &templatePath)
-{
-    // For a roster unit that hasn't been placed yet there's no live Unit
-    // object to inspect — build the same effective stats a live Unit would
-    // have (race/gender bonuses applied) from its template instead.
-    try
-    {
-        const UnitData templateData = UnitLoader::load(templatePath);
-        const RaceData &raceData = getRaceData(templateData.race);
-        const GenderData &genderData = getGenderData(templateData.gender);
-        const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
-
-        m_uiManager.popById(WindowId::BattleInspect);
-        auto *inspect = m_uiManager.push<InspectWindow>(WindowId::BattleInspect);
-        inspect->setFont(FontManager::instance().get(FontRole::Body));
-        inspect->setTitle("Unit Inspect");
-        inspect->setLines(InspectWindow::buildLines(previewUnit.getData()));
-        m_inspectWindow = inspect;
-    }
-    catch (...)
-    {
-        // Template failed to load — nothing sensible to show.
-    }
-}
-
-void BattleState::syncCursorToSelection()
-{
-    // Whenever the roster selection points at a unit that's already on the
-    // field, snap the cursor to it — hovering and "being selected" become
-    // the same thing for placed units, so there's exactly one way to land
-    // on them instead of two (roster cycling vs. manually walking the
-    // cursor over). The cursor only moves here; whether it's then allowed
-    // to move freely again is decided by DeploymentSystem::isSelectionLocked()
-    // at the point movement input is read.
-    if (const DeploymentEntry *entry = m_deployment.selectedEntry())
-    {
-        if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(entry->instanceId))
-            m_cursor.setPosition(placed->position);
-    }
-}
-
 void BattleState::openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger)
 {
-    showBattleMenu(canMove, canAttack, canWait);
+    m_battleMenu.showBattleMenu(canMove, canAttack, canWait);
     Input::instance().consumeKey(trigger);
-}
-
-void BattleState::openStatusMenu(Unit *unit)
-{
-    showStatusMenu(unit);
-    Input::instance().consumeKey(KeyCode::Accept);
 }
 
 BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
@@ -512,6 +265,58 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
     };
 }
 
+BattleState::DeploymentContext BattleState::makeDeploymentContext()
+{
+    return DeploymentContext{
+        .session = m_session,
+        .eventSystem = m_eventSystem,
+        .uiManager = m_uiManager,
+        .cursor = m_cursor,
+        .grid = m_grid,
+        .battleMap = m_battleMap,
+        .battleDefinition = m_battleDefinition,
+        .hoveredUnit = m_hoveredUnit,
+        .inspectTargetUnit = m_inspectTargetUnit,
+        .unitPanelWindow = m_unitPanelWindow,
+        .flowPhase = m_flowPhase,
+        .turnState = m_turnState,
+        .pendingResolution = m_pendingResolution,
+        .pendingActor = m_pendingActor,
+        .pendingTarget = m_pendingTarget,
+        .pendingActionLabel = m_pendingActionLabel,
+        .topBattleText = m_topBattleText,
+        .camera = m_camera,
+        .mapData = m_mapData,
+    };
+}
+
+BattleState::MenuContext BattleState::makeMenuContext()
+{
+    return MenuContext{
+        .session = m_session,
+        .grid = m_grid,
+        .battleMap = m_battleMap,
+        .cursor = m_cursor,
+        .reachableTiles = m_reachableTiles,
+        .currentAttackRange = m_currentAttackRange,
+        .uiManager = m_uiManager,
+        .hud = m_hud,
+        .humanTurnPhase = m_humanTurnPhase,
+        .flowPhase = m_flowPhase,
+        .turnState = m_turnState,
+        .skillDB = m_skillDB,
+        .selectedSkillId = m_selectedSkillId,
+        .moveStartPos = m_moveStartPos,
+        .moveStartPointsLeft = m_moveStartPointsLeft,
+        .canUndoLastMove = m_canUndoLastMove,
+        .inspectTargetUnit = m_inspectTargetUnit,
+        .attackResolution = m_attackResolution,
+        .deploymentPhase = m_deploymentPhase,
+        .sm = m_sm,
+        .renderer = m_renderer,
+    };
+}
+
 bool BattleState::canActiveUnitMove() const
 {
     const Unit *active = m_session.getCurrentUnit();
@@ -531,310 +336,11 @@ void BattleState::processUIEvents(Unit *active)
             continue;
         }
 
-        if (event.windowId == WindowId::BattleDeployment && event.type == UIEventType::ActionSelected)
-        {
-            const bool wasGrabbed = m_deployment.hasGrabbedUnit();
-            if (event.actionId == ActionId::CyclePrev)
-            {
-                m_deployment.cycleSelection(-1);
-                if (!wasGrabbed)
-                    syncCursorToSelection();
-                else
-                    syncDeploymentPreviewUnits();
-                refreshDeploymentWindow();
-                continue;
-            }
-            if (event.actionId == ActionId::CycleNext)
-            {
-                m_deployment.cycleSelection(1);
-                if (!wasGrabbed)
-                    syncCursorToSelection();
-                else
-                    syncDeploymentPreviewUnits();
-                refreshDeploymentWindow();
-                continue;
-            }
-            if (event.actionId == ActionId::Accept)
-            {
-                const Vec2i cursorPos = m_cursor.getPosition();
-
-                if (wasGrabbed)
-                {
-                    if (!m_deployment.isSpawnTile(cursorPos))
-                    {
-                        // TODO: play "impossible action" sound (or similar) here
-                        continue;
-                    }
-
-                    // Occupied by one of YOUR OWN placed units: swap places
-                    // instead of blocking — you end up holding whichever
-                    // unit was there.
-                    if (m_deployment.isOccupied(cursorPos))
-                    {
-                        if (m_deployment.swapGrabbedWithPlacedAt(cursorPos))
-                        {
-                            syncDeploymentPreviewUnits();
-                            refreshDeploymentWindow();
-                        }
-                        continue;
-                    }
-
-                    if (m_deployment.placeGrabbed(cursorPos))
-                    {
-                        syncDeploymentPreviewUnits();
-                        // Selection auto-advanced inside placeGrabbed(); snap
-                        // the cursor if it now points at another placed unit.
-                        syncCursorToSelection();
-                        refreshDeploymentWindow();
-                    }
-                    continue;
-                }
-
-                // Not grabbing, hovering an enemy preview unit: open the
-                // ActionId::Inspect submenu (kept as a submenu rather than instant,
-                // since Accept on an enemy could grow more options later).
-                if (m_hoveredUnit && m_hoveredUnit->getTeam() != 0)
-                {
-                    openUnitInspectMenu(m_hoveredUnit);
-                    continue;
-                }
-
-                // A placed unit under the cursor — checked by TILE, not by
-                // selectedEntry(), so walking the cursor onto a placed unit
-                // (without QE-selecting it) behaves the same as QE landing on it.
-                if (const DeploymentEntry *placedHere = m_deployment.deployedEntryAt(cursorPos))
-                {
-                    const int instanceId = placedHere->instanceId;
-                    if (m_deployment.unplaceUnit(instanceId) &&
-                        m_deployment.grabUnit(instanceId))
-                    {
-                        syncDeploymentPreviewUnits();
-                        refreshDeploymentWindow();
-                    }
-                    continue;
-                }
-
-                const DeploymentEntry *selected = m_deployment.selectedEntry();
-                if (!selected)
-                    continue;
-
-                // Already placed (the cursor is pinned to it, per
-                // isSelectionLocked): pick it back up so it can be relocated.
-                if (m_deployment.isUnitPlaced(selected->instanceId))
-                {
-                    if (m_deployment.unplaceUnit(selected->instanceId) && m_deployment.grabUnit(selected->instanceId))
-                    {
-                        syncDeploymentPreviewUnits();
-                        refreshDeploymentWindow();
-                    }
-                    continue;
-                }
-
-                if (!m_deployment.isOccupied(cursorPos))
-                {
-                    if (m_deployment.placedCount() >= m_deployment.maxUnits())
-                    {
-                        // TODO: play "impossible action" sound (or similar) here
-                        continue;
-                    }
-
-                    if (m_deployment.grabSelected())
-                        refreshDeploymentWindow();
-                }
-                else
-                {
-                    refreshDeploymentWindow();
-                }
-                continue;
-            }
-            if (event.actionId == ActionId::Details)
-            {
-                // Details (Tab): inspect, in priority order —
-                //   1. Whatever's grabbed in hand (if anything).
-                //   2. Whatever's hovered under the cursor (ours or enemy preview).
-                //   3. Whatever's QE-selected in the roster (even unplaced —
-                //      stats read straight from its template).
-                if (const DeploymentEntry *grabbed = m_deployment.grabbedEntry())
-                {
-                    showInspectWindowFromTemplate(grabbed->templatePath);
-                    continue;
-                }
-
-                if (m_hoveredUnit && !m_hoveredUnit->isDead())
-                {
-                    showInspectWindow(m_hoveredUnit);
-                    continue;
-                }
-
-                if (const DeploymentEntry *selected = m_deployment.selectedEntry())
-                    showInspectWindowFromTemplate(selected->templatePath);
-                continue;
-            }
-            if (event.actionId == ActionId::Back)
-            {
-                if (wasGrabbed)
-                {
-                    m_deployment.releaseGrabbed();
-                    refreshDeploymentWindow();
-                    continue;
-                }
-                showSystemMenu();
-                continue;
-            }
-            if (event.actionId == ActionId::StartCombat)
-            {
-                if (!m_deployment.canStartBattle())
-                    continue;
-
-                m_uiManager.popById(WindowId::BattleDeploymentConfirm);
-                auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::BattleDeploymentConfirm);
-                confirm->setFont(FontManager::instance().get(FontRole::Body));
-                confirm->setPrompt("Start Battle?");
-                continue;
-            }
-        }
-
-        if (event.windowId == WindowId::BattleInspectMenu)
-        {
-            if (event.type == UIEventType::ActionSelected && event.actionId == ActionId::Inspect)
-            {
-                m_uiManager.popById(WindowId::BattleInspectMenu);
-                if (m_inspectTargetUnit && !m_inspectTargetUnit->isDead())
-                    showInspectWindow(m_inspectTargetUnit);
-                continue;
-            }
-
-            if (event.type == UIEventType::ActionCanceled)
-            {
-                m_uiManager.popById(WindowId::BattleInspectMenu);
-                m_inspectTargetUnit = nullptr;
-                continue;
-            }
-        }
-
-        if (m_flowPhase == BattleFlowPhase::Deployment && event.windowId == WindowId::BattleActionMenu)
-        {
-            if (event.type == UIEventType::ActionSelected)
-            {
-                const int index = event.index;
-                if (index < 0 || index >= static_cast<int>(m_hud.items().size()))
-                    continue;
-
-                BattleMenuItem item = m_hud.items()[index];
-                // hideById, not popById: the action menu is a persistent
-                // window owned by BattleHud (see BattleHud::m_menu) — popById
-                // would destroy it out from under BattleHud's cached pointer.
-                m_uiManager.hideById(WindowId::BattleActionMenu);
-                if (item.enabled && item.onSelect)
-                    item.onSelect();
-                continue;
-            }
-
-            if (event.type == UIEventType::ActionCanceled)
-            {
-                m_hud.clear();
-                continue;
-            }
-        }
-
-        if (event.windowId == WindowId::BattleInspect && event.type == UIEventType::ActionCanceled)
-        {
-            m_uiManager.popById(WindowId::BattleInspect);
-            m_inspectWindow = nullptr;
-            continue;
-        }
-
-        if (event.windowId == WindowId::BattleDeploymentConfirm && event.type == UIEventType::ConfirmResult)
-        {
-            m_uiManager.popById(WindowId::BattleDeploymentConfirm);
-            if (event.confirmed)
-                startCombatPhase();
-            continue;
-        }
-
-        if (m_flowPhase != BattleFlowPhase::Combat)
+        if (m_deploymentPhase.handleUIEvent(event))
             continue;
 
-        if (event.windowId == WindowId::BattleActionMenu && event.type == UIEventType::ActionSelected)
-        {
-            const int index = event.index;
-            if (index < 0 || index >= static_cast<int>(m_hud.items().size()))
-                continue;
-
-            BattleMenuItem item = m_hud.items()[index];
-            // Same reasoning as the Deployment branch above: hide, don't pop.
-            m_uiManager.hideById(WindowId::BattleActionMenu);
-            if (item.enabled && item.onSelect)
-                item.onSelect();
-            // The Accept press that selected this menu item is still "live"
-            // for the rest of this frame — without consuming it here, the
-            // very next input pass (HumanTurnController::handleActiveTurn,
-            // called right after this in the same handleInput() call) sees
-            // the same edge and can immediately fire whatever new phase we
-            // just entered (e.g. AoE targeting the cursor's current tile
-            // before the player ever pressed Accept themselves).
-            Input::instance().consumeKey(KeyCode::Accept);
+        if (m_battleMenu.handleUIEvent(event, active))
             continue;
-        }
-
-        if (event.windowId == WindowId::BattleSkillMenu && event.type == UIEventType::ActionSelected)
-        {
-            const int index = event.index;
-            if (index < 0 || index >= static_cast<int>(m_skillMenuItems.size()))
-                continue;
-
-            BattleMenuItem item = m_skillMenuItems[index];
-            if (item.enabled && item.onSelect)
-                item.onSelect();
-            Input::instance().consumeKey(KeyCode::Accept);
-            continue;
-        }
-
-        if (event.windowId == WindowId::BattleSkillMenu && event.type == UIEventType::ActionCanceled)
-        {
-            // Pop just this level — battle.actionmenu underneath was never
-            // touched, so it's revealed exactly as it was. No flag needed:
-            // this IS the stack working correctly.
-            m_uiManager.popById(WindowId::BattleSkillMenu);
-            continue;
-        }
-
-        if (event.windowId == WindowId::BattleActionMenu && event.type == UIEventType::ActionCanceled)
-        {
-            if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
-            {
-                m_attackResolution.cancel();
-                continue;
-            }
-
-            if (!active)
-            {
-                m_hud.clear();
-                continue;
-            }
-
-            if (m_canUndoLastMove)
-            {
-                Vec2i currentPos = active->getPosition();
-                m_grid.getTile(currentPos).occupied = false;
-                active->setPosition(m_moveStartPos);
-                m_grid.getTile(m_moveStartPos).occupied = true;
-                active->refundMovePoints(m_moveStartPointsLeft - active->getMoveRangeLeft());
-                m_canUndoLastMove = false;
-                m_cursor.setPosition(m_moveStartPos);
-
-                m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-                openBattleMenu(canActiveUnitMove(), !active->hasActed(), true, KeyCode::Back);
-                LOG_INFO("Battle", "Move undone for %s", active->getName().c_str());
-            }
-            else if (!active->hasMoved() && !active->hasActed())
-            {
-                m_hud.clear();
-                m_humanTurnPhase = HumanTurnPhase::FreeCursor;
-                m_cursor.setPosition(active->getPosition());
-            }
-            continue;
-        }
 
         if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigatePrevious)
         {
@@ -890,159 +396,6 @@ void BattleState::preparePendingAttack(Unit *active, Vec2i targetPos, Unit *dire
     m_attackResolution.prepare(active, targetPos, directTarget, skill);
 }
 
-void BattleState::initializeDeploymentPhase()
-{
-    PartyContext &partyCtx = PartyContext::instance();
-    partyCtx.ensureInitialized();
-
-    std::unordered_set<Vec2i, Vec2iHash> spawnTiles;
-    for (GameTile *tile : m_battleMap.playerSpawns)
-    {
-        if (tile)
-            spawnTiles.insert(Vec2i{tile->col, tile->row});
-    }
-
-    static const std::vector<ForcedUnitRule> kNoForcedUnits;
-    m_deployment.initialize(
-        m_battleDefinition ? m_battleDefinition->maxUnits : 1,
-        std::move(spawnTiles),
-        partyCtx.party().memberIds(),
-        partyCtx.roster(),
-        m_battleDefinition ? m_battleDefinition->forcedUnits : kNoForcedUnits);
-
-    if (!m_battleMap.playerSpawns.empty() && m_battleMap.playerSpawns.front())
-    {
-        m_cursor.setPosition(Vec2i{m_battleMap.playerSpawns.front()->col, m_battleMap.playerSpawns.front()->row});
-    }
-
-    syncDeploymentPreviewUnits();
-    refreshDeploymentWindow();
-}
-
-void BattleState::syncDeploymentPreviewUnits()
-{
-    m_hoveredUnit = nullptr;
-    m_inspectTargetUnit = nullptr;
-    m_uiManager.popById(WindowId::BattleInspectMenu);
-
-    for (Unit *u : m_deploymentPreviewUnits)
-        delete u;
-    m_deploymentPreviewUnits.clear();
-
-    for (int y = 0; y < m_grid.getHeight(); ++y)
-    {
-        for (int x = 0; x < m_grid.getWidth(); ++x)
-            m_grid.getTile(Vec2i{x, y}).occupied = false;
-    }
-
-    for (const DeploymentEntry &placed : m_deployment.deployed())
-    {
-        Unit *u = UnitFactory::createUnitFromJson(placed.templatePath, placed.position, 0);
-        if (!u)
-            continue;
-
-        m_deploymentPreviewUnits.push_back(u);
-        if (m_grid.isValid(u->getPosition()))
-            m_grid.getTile(u->getPosition()).occupied = true;
-    }
-
-    if (!m_battleDefinition)
-        return;
-
-    std::vector<GameTile *> enemySpawns;
-    for (const auto &pair : m_battleMap.enemySpawnsByTeam)
-    {
-        for (GameTile *tile : pair.second)
-            enemySpawns.push_back(tile);
-    }
-
-    std::size_t spawnIndex = 0;
-    for (const EnemyDefinition &enemy : m_battleDefinition->enemies)
-    {
-        if (enemySpawns.empty())
-            break;
-
-        GameTile *tile = enemySpawns[spawnIndex % enemySpawns.size()];
-        ++spawnIndex;
-        if (!tile)
-            continue;
-
-        Vec2i pos{tile->col, tile->row};
-        if (!m_grid.isValid(pos) || m_grid.getTile(pos).occupied)
-            continue;
-
-        Unit *u = UnitFactory::createUnitFromJson(enemy.templatePath, pos, enemy.team);
-        if (!u)
-            continue;
-
-        m_deploymentPreviewUnits.push_back(u);
-        m_grid.getTile(pos).occupied = true;
-    }
-}
-
-void BattleState::refreshDeploymentWindow()
-{
-    if (!m_deploymentWindow)
-        return;
-
-    const DeploymentEntry *selected = m_deployment.selectedEntry();
-    const DeploymentEntry *grabbed = m_deployment.grabbedEntry();
-    m_deploymentWindow->setSelectedUnitLabel(selected ? loadUnitDisplayName(selected->templatePath) : std::string());
-    m_deploymentWindow->setGrabbedState(grabbed != nullptr, grabbed ? loadUnitDisplayName(grabbed->templatePath) : std::string());
-    m_deploymentWindow->setDeploymentStatus(m_deployment.placedCount(), m_deployment.maxUnits(), m_deployment.canStartBattle());
-}
-
-void BattleState::startCombatPhase()
-{
-    if (m_flowPhase != BattleFlowPhase::Deployment || !m_battleDefinition)
-        return;
-
-    m_hoveredUnit = nullptr;
-    m_inspectTargetUnit = nullptr;
-    m_uiManager.popById(WindowId::BattleInspectMenu);
-
-    // Tear down the preview list, not m_units — m_units is combat-only and
-    // is about to be filled for the first time, right below, from
-    // BattleParticipantsBuilder.
-    for (int y = 0; y < m_grid.getHeight(); ++y)
-    {
-        for (int x = 0; x < m_grid.getWidth(); ++x)
-            m_grid.getTile(Vec2i{x, y}).occupied = false;
-    }
-
-    std::vector<UnitSpawn> spawns = BattleParticipantsBuilder::build(*m_battleDefinition, m_battleMap, m_deployment);
-    if (spawns.empty())
-        return;
-
-    m_session.init(spawns, m_battleDefinition->victoryRule, m_battleDefinition->defeatRule);
-
-    for (Unit *u : m_session.getUnitPtrs())
-    {
-        if (u && m_grid.isValid(u->getPosition()))
-            m_grid.getTile(u->getPosition()).occupied = true;
-    }
-
-    if (Unit *first = m_session.getCurrentUnit(); first)
-        m_cursor.setPosition(first->getPosition());
-
-    m_uiManager.popById(WindowId::BattleDeployment);
-    m_uiManager.popById(WindowId::BattleDeploymentConfirm);
-    m_deploymentWindow = nullptr;
-    if (m_unitPanelWindow)
-        m_unitPanelWindow->clearPreview();
-
-    m_flowPhase = BattleFlowPhase::Combat;
-    m_pendingResolution = PendingResolution::None;
-    m_pendingActor = nullptr;
-    m_pendingTarget = nullptr;
-    m_pendingActionLabel.clear();
-    m_topBattleText.clear();
-    m_turnState = TurnState::ProcessingTurn;
-    processCurrentTurn();
-
-    m_eventSystem.emit(BattleTriggerType::OnBattleStart);
-}
-
 void BattleState::showDialogueFromEvent(const std::string &text)
 {
     m_uiManager.popById(WindowId::BattleDialog);
@@ -1086,15 +439,10 @@ void BattleState::spawnEnemyFromEvent(const std::string &templatePath)
 
 void BattleState::onExit()
 {
-    // m_session owns its Units by value — no manual delete needed.
-    for (Unit *u : m_deploymentPreviewUnits)
-        delete u;
-    m_deploymentPreviewUnits.clear();
+    m_deploymentPhase.resetOnExit();
 
     m_uiManager.clear();
     m_unitPanelWindow = nullptr;
-    m_deploymentWindow = nullptr;
-    m_inspectWindow = nullptr;
     m_inspectTargetUnit = nullptr;
     m_combatAnimations.clear();
 
@@ -1167,16 +515,15 @@ void BattleState::handleInput()
         }
 
         // Not a UI window — deployment's own "unit currently grabbed" state.
-        if (m_flowPhase == BattleFlowPhase::Deployment && m_deployment.hasGrabbedUnit())
+        if (m_flowPhase == BattleFlowPhase::Deployment && m_deploymentPhase.hasGrabbedUnit())
         {
-            m_deployment.releaseGrabbed();
-            refreshDeploymentWindow();
+            m_deploymentPhase.releaseGrabbedUnit();
             return;
         }
 
         if (m_flowPhase == BattleFlowPhase::Deployment)
         {
-            showSystemMenu();
+            m_battleMenu.showSystemMenu();
             return;
         }
 
@@ -1197,7 +544,7 @@ void BattleState::handleInput()
 
         // Only in free-cursor mode does ESC open the system menu.
         if (m_humanTurnPhase == HumanTurnPhase::FreeCursor)
-            showSystemMenu();
+            m_battleMenu.showSystemMenu();
         return;
     }
 
@@ -1269,53 +616,7 @@ void BattleState::update(float dt)
 
     if (m_flowPhase == BattleFlowPhase::Deployment)
     {
-        const bool menuOpen =
-            m_uiManager.hasWindow(WindowId::BattleActionMenu) ||
-            m_uiManager.hasWindow(WindowId::BattleDeploymentConfirm) ||
-            m_uiManager.hasWindow(WindowId::BattleInspect) ||
-            m_uiManager.hasWindow(WindowId::BattleInspectMenu) ||
-            m_uiManager.hasWindow(WindowId::BattleDialog);
-
-        // Cursor movement is locked while the roster selection is pinned to
-        // an already-placed unit (see DeploymentSystem::isSelectionLocked) —
-        // there's nothing to browse for until either that unit is grabbed
-        // (freeing movement to relocate it) or a different, unplaced entry
-        // is selected instead.
-        if (!menuOpen && !m_deployment.isSelectionLocked())
-            m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
-
-        Vec2i cursorPos = m_cursor.getPosition();
-        m_hoveredUnit = unitAt(cursorPos);
-
-        refreshDeploymentWindow();
-
-        if (m_unitPanelWindow)
-        {
-            if (m_deployment.hasGrabbedUnit())
-            {
-                setUnitPanelPreviewFromEntry(m_deployment.grabbedEntry());
-            }
-            else if (m_hoveredUnit)
-            {
-                // If the hovered tile holds one of our placed units, route it
-                // through the preview path so the red "X" placed-marker draws
-                // (setSingle renders via UnitPortrait::render, which has no marker).
-                if (const DeploymentEntry *placed = m_deployment.deployedEntryAt(cursorPos))
-                    setUnitPanelPreviewFromEntry(placed);
-                else
-                    m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam());
-            }
-            else
-            {
-                setUnitPanelPreviewFromEntry(m_deployment.selectedEntry());
-            }
-        }
-
-        // Deployment has its own cursor/hover handling above (including the
-        // isSelectionLocked() gate on movement) — it must not fall through
-        // into the shared Combat code below, which calls m_cursor.update()
-        // unconditionally and would advance the cursor a second time this
-        // same frame, plus recompute m_hoveredUnit redundantly.
+        m_deploymentPhase.update(dt);
         return;
     }
 
@@ -1375,6 +676,16 @@ void BattleState::update(float dt)
 
     // Track unit under cursor
     Vec2i cursorPos = m_cursor.getPosition();
+    LOG_INFO("Battle", "cursor=(%d,%d)", cursorPos.x, cursorPos.y);
+    const Vec2f isoPos = tileToIso(cursorPos, m_mapData.tileWidth, m_mapData.tileHeight);
+    LOG_INFO("Battle",
+             "cursor=(%d,%d) iso=(%.1f %.1f)",
+             cursorPos.x,
+             cursorPos.y,
+             isoPos.x,
+             isoPos.y);
+    m_camera.trackTarget(isoPos, Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H}, dt);
+    m_camera.clampToBounds();
     m_hoveredUnit = unitAt(cursorPos);
 
     // The turn-state machine (and everything that calls
@@ -1634,12 +945,8 @@ void BattleState::advanceToNextUnit()
 // Render
 // ─────────────────────────────────────────────────────────────────────────────
 
-void BattleState::render(float alpha)
+Camera BattleState::buildInterpolatedCamera(float alpha) const
 {
-    if (!m_renderer)
-        return;
-
-    // ── Interpolate camera first ──
     Vec2f interpOffset = m_previousCamera.getOffset() +
                          (m_camera.getOffset() - m_previousCamera.getOffset()) * alpha;
 
@@ -1649,202 +956,225 @@ void BattleState::render(float alpha)
     Camera renderCam = m_camera;
     renderCam.setOffset(interpOffset);
     renderCam.setZoom(interpZoom);
+    return renderCam;
+}
 
-    // ── Draw everything using renderCam ──
+void BattleState::renderSceneAndOverlays(const Camera &renderCam)
+{
     m_battleRenderer->drawBackground(m_bgTop, m_bgBottom);
 
-    if (m_tileset && !m_mapData.isEmpty())
-    {
-        BattleOverlayMode overlayMode = BattleOverlayMode::None;
-        const std::unordered_set<Vec2i, Vec2iHash> *overlayTiles = nullptr;
-        std::unordered_set<Vec2i, Vec2iHash> visibleSpawnTiles;
-        if (m_flowPhase == BattleFlowPhase::Deployment)
-        {
-            visibleSpawnTiles = m_deployment.visibleSpawnTiles();
-            overlayMode = BattleOverlayMode::MoveRange;
-            overlayTiles = &visibleSpawnTiles;
-        }
-        else if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
-        {
-            overlayMode = BattleOverlayMode::MoveRange;
-            overlayTiles = &m_reachableTiles;
-        }
-        else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
-        {
-            overlayMode = BattleOverlayMode::AttackRange;
-            overlayTiles = &m_attackRangeTiles;
-        }
-        else if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
-        {
-            overlayMode = BattleOverlayMode::ConfirmTargets;
-            overlayTiles = &m_attackResolution.pendingAttack().tiles();
-        }
+    if (!m_tileset || m_mapData.isEmpty())
+        return;
 
-        BattleRendererContext renderCtx{
-            .camera = renderCam,
-            .mapData = m_mapData,
-            .battleMap = m_battleMap,
-            .tileset = m_tileset,
-            .tilesPerRow = m_tilesPerRow,
-            .spriteH = m_spriteH,
-            .scale = m_scale,
-            .cursor = m_cursor,
-            .cursorHoverOffset = m_cursorHoverOffset,
-            .cursorTriW = m_cursorTriW,
-            .cursorTriH = m_cursorTriH,
-            .units = (m_flowPhase == BattleFlowPhase::Deployment) ? m_deploymentPreviewUnits : m_session.getUnitPtrs(),
-            .debugRenderer = m_debugRenderer,
-            .showSpawnOverlays = (m_flowPhase == BattleFlowPhase::Deployment),
-            .overlayMode = overlayMode,
-            .overlayTiles = overlayTiles,
-        };
-
-        m_battleRenderer->drawScene(renderCtx);
-    }
-
-    if (m_flowPhase == BattleFlowPhase::Deployment && m_deployment.hasGrabbedUnit())
-    {
-        const Vec2i cursorPos = m_cursor.getPosition();
-        if (m_battleMap.isValid(cursorPos.x, cursorPos.y))
-        {
-            const float s = static_cast<float>(m_scale) * renderCam.getZoom();
-            const float halfTW = static_cast<float>(m_mapData.tileWidth) * s * 0.5f;
-            const float halfTH = static_cast<float>(m_mapData.tileHeight) * s * 0.5f;
-            const float elevStep = static_cast<float>(m_mapData.tileHeight) * 0.5f * s;
-            const Vec2f iso = tileToIso(cursorPos, m_mapData.tileWidth, m_mapData.tileHeight);
-            const float ax = renderCam.getOffset().x + iso.x * s;
-            const float ay = renderCam.getOffset().y + iso.y * s;
-            const GameTile &gt = m_battleMap.at(cursorPos.x, cursorPos.y);
-            const float elev = static_cast<float>(gt.height) * elevStep;
-
-            const float cx = ax;
-            const float cy = ay - elev - halfTH - 6.0f * s;
-
-            const DeploymentEntry *grabbed = m_deployment.grabbedEntry();
-            std::string letter;
-            if (grabbed)
-            {
-                const std::string name = loadUnitDisplayName(grabbed->templatePath);
-                if (!name.empty())
-                    letter = std::string(1, name[0]);
-            }
-            UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, halfTW * 1.2f, 0, letter, 120);
-        }
-    }
-
-    if (m_unitPanelWindow)
-    {
-        if (m_flowPhase != BattleFlowPhase::Deployment)
-        {
-            Unit *active = nullptr;
-            if (m_flowPhase == BattleFlowPhase::Combat)
-                active = m_session.getCurrentUnit();
-            m_unitPanelWindow->setTurnInfo(active, 0);
-
-            if (m_pendingResolution != PendingResolution::None && m_pendingActor)
-            {
-                if (m_pendingTarget && !m_pendingTarget->isDead())
-                    m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget, m_pendingTarget->getTeam() != 0);
-                else
-                    m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam());
-            }
-            else if (m_playerControlMode == PlayerControlMode::Human &&
-                     (m_humanTurnPhase == HumanTurnPhase::AttackTarget ||
-                      m_humanTurnPhase == HumanTurnPhase::AttackConfirm))
-            {
-                Unit *target = nullptr;
-                if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm && !m_attackResolution.pendingAttack().targets().empty())
-                    target = m_attackResolution.pendingAttack().focusedTarget();
-                else
-                    target = m_hoveredUnit;
-
-                if (active && !active->isDead())
-                {
-                    if (target && !target->isDead())
-                        m_unitPanelWindow->setDuel(active, target, target->getTeam() != 0);
-                    else
-                        m_unitPanelWindow->setSingle(active, active->getTeam());
-                }
-                else
-                    m_unitPanelWindow->clearPanels();
-            }
-            else if (m_hoveredUnit)
-                m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam());
-            else
-                m_unitPanelWindow->clearPanels();
-        }
-    }
-
+    BattleOverlayMode overlayMode = BattleOverlayMode::None;
+    const std::unordered_set<Vec2i, Vec2iHash> *overlayTiles = nullptr;
+    std::unordered_set<Vec2i, Vec2iHash> visibleSpawnTiles;
     if (m_flowPhase == BattleFlowPhase::Deployment)
     {
-        const Font *font = FontManager::instance().get(FontRole::Body);
-        if (font)
-        {
-            const std::string deploymentLabel = "Deployment Phase";
-            m_renderer->renderTextInRect(font,
-                                         deploymentLabel,
-                                         Rectf{0.0f, 12.0f, GameConstants::VIEW_W, 24.0f},
-                                         UITheme::SelectedText,
-                                         Renderer::HorizontalAlign::Center,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
-
-            char countBuf[32];
-            std::snprintf(countBuf, sizeof(countBuf), "%d/%d", m_deployment.placedCount(), m_deployment.maxUnits());
-            const std::string countLine = countBuf;
-            m_renderer->renderTextInRect(font,
-                                         countLine,
-                                         Rectf{0.0f, 34.0f, GameConstants::VIEW_W, 24.0f},
-                                         UITheme::Text,
-                                         Renderer::HorizontalAlign::Center,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
-
-            m_renderer->renderTextInRect(font,
-                                         "Q/E: select roster  Enter: grab/place  Esc: cancel/menu",
-                                         Rectf{0.0f, 56.0f, GameConstants::VIEW_W, 24.0f},
-                                         UITheme::Text,
-                                         Renderer::HorizontalAlign::Center,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
-        }
+        visibleSpawnTiles = m_deploymentPhase.deployment().visibleSpawnTiles();
+        overlayMode = BattleOverlayMode::MoveRange;
+        overlayTiles = &visibleSpawnTiles;
     }
-
-    if (!m_topBattleText.empty())
+    else if (m_humanTurnPhase == HumanTurnPhase::MoveTarget)
     {
-        if (const Font *font = FontManager::instance().get(FontRole::Body))
-        {
-            m_renderer->renderTextInRect(font,
-                                         m_topBattleText,
-                                         Rectf{0.0f, 72.0f, GameConstants::VIEW_W, 24.0f},
-                                         UITheme::SelectedText,
-                                         Renderer::HorizontalAlign::Center,
-                                         Renderer::VerticalAlign::Middle,
-                                         false,
-                                         false,
-                                         false);
-        }
+        overlayMode = BattleOverlayMode::MoveRange;
+        overlayTiles = &m_reachableTiles;
+    }
+    else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
+    {
+        overlayMode = BattleOverlayMode::AttackRange;
+        overlayTiles = &m_attackRangeTiles;
+    }
+    else if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
+    {
+        overlayMode = BattleOverlayMode::ConfirmTargets;
+        overlayTiles = &m_attackResolution.pendingAttack().tiles();
     }
 
-    // ── Damage preview (always drawn if visible) ──
-    m_damagePreview.render(m_renderer, FontManager::instance().get(FontRole::Body));
+    BattleRendererContext renderCtx{
+        .camera = renderCam,
+        .mapData = m_mapData,
+        .battleMap = m_battleMap,
+        .tileset = m_tileset,
+        .tilesPerRow = m_tilesPerRow,
+        .spriteH = m_spriteH,
+        .scale = m_scale,
+        .cursor = m_cursor,
+        .cursorHoverOffset = m_cursorHoverOffset,
+        .cursorTriW = m_cursorTriW,
+        .cursorTriH = m_cursorTriH,
+        .units = (m_flowPhase == BattleFlowPhase::Deployment) ? m_deploymentPhase.previewUnits() : m_session.getUnitPtrs(),
+        .debugRenderer = m_debugRenderer,
+        .showSpawnOverlays = (m_flowPhase == BattleFlowPhase::Deployment),
+        .overlayMode = overlayMode,
+        .overlayTiles = overlayTiles,
+    };
 
+    m_battleRenderer->drawScene(renderCtx);
+}
+
+void BattleState::renderDeploymentGrabbedGhost(const Camera &renderCam)
+{
+    if (m_flowPhase != BattleFlowPhase::Deployment || !m_deploymentPhase.hasGrabbedUnit())
+        return;
+
+    const Vec2i cursorPos = m_cursor.getPosition();
+    if (!m_battleMap.isValid(cursorPos.x, cursorPos.y))
+        return;
+
+    const float s = static_cast<float>(m_scale) * renderCam.getZoom();
+    const float halfTW = static_cast<float>(m_mapData.tileWidth) * s * 0.5f;
+    const float halfTH = static_cast<float>(m_mapData.tileHeight) * s * 0.5f;
+    const float elevStep = static_cast<float>(m_mapData.tileHeight) * 0.5f * s;
+    const Vec2f iso = tileToIso(cursorPos, m_mapData.tileWidth, m_mapData.tileHeight);
+    const float ax = (iso.x - renderCam.getOffset().x) * s;
+    const float ay = (iso.y - renderCam.getOffset().y) * s;
+    const GameTile &gt = m_battleMap.at(cursorPos.x, cursorPos.y);
+    const float elev = static_cast<float>(gt.height) * elevStep;
+
+    const float cx = ax;
+    const float cy = ay - elev - halfTH - 6.0f * s;
+
+    const DeploymentEntry *grabbed = m_deploymentPhase.deployment().grabbedEntry();
+    std::string letter;
+    if (grabbed)
+    {
+        const std::string name = loadUnitDisplayName(grabbed->templatePath);
+        if (!name.empty())
+            letter = std::string(1, name[0]);
+    }
+    UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, halfTW * 1.2f, 0, letter, 120);
+}
+
+void BattleState::syncUnitPanelWindow()
+{
+    if (!m_unitPanelWindow || m_flowPhase == BattleFlowPhase::Deployment)
+        return;
+
+    Unit *active = nullptr;
+    if (m_flowPhase == BattleFlowPhase::Combat)
+        active = m_session.getCurrentUnit();
+    m_unitPanelWindow->setTurnInfo(active, 0);
+
+    if (m_pendingResolution != PendingResolution::None && m_pendingActor)
+    {
+        if (m_pendingTarget && !m_pendingTarget->isDead())
+            m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget, m_pendingTarget->getTeam() != 0);
+        else
+            m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam());
+        return;
+    }
+
+    if (m_playerControlMode == PlayerControlMode::Human &&
+        (m_humanTurnPhase == HumanTurnPhase::AttackTarget ||
+         m_humanTurnPhase == HumanTurnPhase::AttackConfirm))
+    {
+        Unit *target = nullptr;
+        if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm && !m_attackResolution.pendingAttack().targets().empty())
+            target = m_attackResolution.pendingAttack().focusedTarget();
+        else
+            target = m_hoveredUnit;
+
+        if (active && !active->isDead())
+        {
+            if (target && !target->isDead())
+                m_unitPanelWindow->setDuel(active, target, target->getTeam() != 0);
+            else
+                m_unitPanelWindow->setSingle(active, active->getTeam());
+        }
+        else
+            m_unitPanelWindow->clearPanels();
+        return;
+    }
+
+    if (m_hoveredUnit)
+        m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam());
+    else
+        m_unitPanelWindow->clearPanels();
+}
+
+void BattleState::renderDeploymentHud()
+{
+    if (m_flowPhase != BattleFlowPhase::Deployment)
+        return;
+
+    const Font *font = FontManager::instance().get(FontRole::Body);
+    if (!font)
+        return;
+
+    const std::string deploymentLabel = "Deployment Phase";
+    m_renderer->renderTextInRect(font,
+                                 deploymentLabel,
+                                 Rectf{0.0f, 12.0f, GameConstants::VIEW_W, 24.0f},
+                                 UITheme::SelectedText,
+                                 Renderer::HorizontalAlign::Center,
+                                 Renderer::VerticalAlign::Middle,
+                                 false,
+                                 false,
+                                 false);
+
+    char countBuf[32];
+    std::snprintf(countBuf, sizeof(countBuf), "%d/%d", m_deploymentPhase.deployment().placedCount(), m_deploymentPhase.deployment().maxUnits());
+    const std::string countLine = countBuf;
+    m_renderer->renderTextInRect(font,
+                                 countLine,
+                                 Rectf{0.0f, 34.0f, GameConstants::VIEW_W, 24.0f},
+                                 UITheme::Text,
+                                 Renderer::HorizontalAlign::Center,
+                                 Renderer::VerticalAlign::Middle,
+                                 false,
+                                 false,
+                                 false);
+
+    m_renderer->renderTextInRect(font,
+                                 "Q/E: select roster  Enter: grab/place  Esc: cancel/menu",
+                                 Rectf{0.0f, 56.0f, GameConstants::VIEW_W, 24.0f},
+                                 UITheme::Text,
+                                 Renderer::HorizontalAlign::Center,
+                                 Renderer::VerticalAlign::Middle,
+                                 false,
+                                 false,
+                                 false);
+}
+
+void BattleState::renderTopBattleText()
+{
+    if (m_topBattleText.empty())
+        return;
+
+    if (const Font *font = FontManager::instance().get(FontRole::Body))
+    {
+        m_renderer->renderTextInRect(font,
+                                     m_topBattleText,
+                                     Rectf{0.0f, 72.0f, GameConstants::VIEW_W, 24.0f},
+                                     UITheme::SelectedText,
+                                     Renderer::HorizontalAlign::Center,
+                                     Renderer::VerticalAlign::Middle,
+                                     false,
+                                     false,
+                                     false);
+    }
+}
+
+void BattleState::renderWorldEffects(const Camera &renderCam)
+{
     m_combatAnimations.render(m_renderer);
 
-    // ── Debug overlay ──
     if (m_debugRenderer)
         m_debugRenderer->flush(m_renderer, renderCam);
+}
 
+void BattleState::renderNativeEffects()
+{
+    m_damagePreview.render(m_renderer, FontManager::instance().get(FontRole::Body));
+}
+
+void BattleState::renderUIStack()
+{
     // UI is drawn last, on top of the battle scene, animations, and debug
     // overlay — otherwise unit sprites drawn after this point would paint
     // over any open menu (e.g. the Inspect window).
-    if (m_inspectWindow)
+    if (m_battleMenu.hasInspectWindowOpen())
     {
         // Dim everything behind the Inspect panel so it reads as a modal.
         m_renderer->setBlendMode(Renderer::BlendMode::Blend);
@@ -1852,73 +1182,71 @@ void BattleState::render(float alpha)
         m_renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});
     }
     m_uiManager.render(m_renderer);
+}
 
-    // ── Screen transition (fade) ──
+void BattleState::renderEndOverlay(bool victory)
+{
+    const Color bgColor = victory ? Color{22, 92, 40, 228} : Color{92, 22, 28, 228};
+    const Color borderColor = victory ? Color{120, 255, 150, 255} : Color{255, 120, 120, 255};
+    const Color labelColor = victory ? Color{210, 255, 210, 255} : Color{255, 210, 210, 255};
+    const std::string label = victory ? "VICTORY" : "DEFEAT";
+
+    const Rectf box{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f};
+
+    m_renderer->setBlendMode(Renderer::BlendMode::Blend);
+    m_renderer->setDrawColor(bgColor);
+    m_renderer->fillRect(box);
+    m_renderer->setDrawColor(borderColor);
+    m_renderer->drawRect(box);
+
+    if (const Font *font = FontManager::instance().get(FontRole::Body))
+    {
+        const float labelW = static_cast<float>(label.size()) * 8.0f;
+        m_renderer->renderText(font,
+                               label,
+                               Vec2f{(GameConstants::VIEW_W - labelW) * 0.5f, GameConstants::VIEW_H * 0.5f - 26.0f},
+                               labelColor,
+                               false,
+                               false,
+                               false);
+
+        const std::string hint = "Press Enter/Space/Esc";
+        const float hintW = static_cast<float>(hint.size()) * 8.0f;
+        m_renderer->renderText(font,
+                               hint,
+                               Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, GameConstants::VIEW_H * 0.5f + 24.0f},
+                               UITheme::Text,
+                               false,
+                               false,
+                               false);
+    }
+}
+
+void BattleState::render(float alpha)
+{
+    if (!m_renderer)
+        return;
+
+    const Camera renderCam = buildInterpolatedCamera(alpha);
+
+    m_renderer->beginWorldPass();
+    renderSceneAndOverlays(renderCam);
+    renderDeploymentGrabbedGhost(renderCam);
+    renderWorldEffects(renderCam);
+    m_renderer->endWorldPass();
+
+    syncUnitPanelWindow();
+    renderDeploymentHud();
+    renderTopBattleText();
+    renderNativeEffects();
+    renderUIStack();
+
     m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
 
     if (m_showDefeatOverlay)
-    {
-        m_renderer->setBlendMode(Renderer::BlendMode::Blend);
-        m_renderer->setDrawColor(Color{92, 22, 28, 228});
-        m_renderer->fillRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
-        m_renderer->setDrawColor(Color{255, 120, 120, 255});
-        m_renderer->drawRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
-
-        if (const Font *font = FontManager::instance().get(FontRole::Body))
-        {
-            const std::string defeat = "DEFEAT";
-            const float defeatW = static_cast<float>(defeat.size()) * 8.0f;
-            m_renderer->renderText(font,
-                                   defeat,
-                                   Vec2f{(GameConstants::VIEW_W - defeatW) * 0.5f, GameConstants::VIEW_H * 0.5f - 26.0f},
-                                   Color{255, 210, 210, 255},
-                                   false,
-                                   false,
-                                   false);
-
-            const std::string hint = "Press Enter/Space/Esc";
-            const float hintW = static_cast<float>(hint.size()) * 8.0f;
-            m_renderer->renderText(font,
-                                   hint,
-                                   Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, GameConstants::VIEW_H * 0.5f + 24.0f},
-                                   UITheme::Text,
-                                   false,
-                                   false,
-                                   false);
-        }
-    }
-
+        renderEndOverlay(false);
     if (m_showVictoryOverlay)
-    {
-        m_renderer->setBlendMode(Renderer::BlendMode::Blend);
-        m_renderer->setDrawColor(Color{22, 92, 40, 228});
-        m_renderer->fillRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
-        m_renderer->setDrawColor(Color{120, 255, 150, 255});
-        m_renderer->drawRect(Rectf{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f});
-
-        if (const Font *font = FontManager::instance().get(FontRole::Body))
-        {
-            const std::string victory = "VICTORY";
-            const float victoryW = static_cast<float>(victory.size()) * 8.0f;
-            m_renderer->renderText(font,
-                                   victory,
-                                   Vec2f{(GameConstants::VIEW_W - victoryW) * 0.5f, GameConstants::VIEW_H * 0.5f - 26.0f},
-                                   Color{210, 255, 210, 255},
-                                   false,
-                                   false,
-                                   false);
-
-            const std::string hint = "Press Enter/Space/Esc";
-            const float hintW = static_cast<float>(hint.size()) * 8.0f;
-            m_renderer->renderText(font,
-                                   hint,
-                                   Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, GameConstants::VIEW_H * 0.5f + 24.0f},
-                                   UITheme::Text,
-                                   false,
-                                   false,
-                                   false);
-        }
-    }
+        renderEndOverlay(true);
 }
 
 void BattleState::computeAttackRangeTiles()
@@ -1942,10 +1270,9 @@ void BattleState::computeAttackRangeTiles()
 
 Unit *BattleState::unitAt(Vec2i pos) const
 {
-    const std::vector<Unit *> &units =
-        (m_flowPhase == BattleFlowPhase::Deployment) ? m_deploymentPreviewUnits : m_session.getUnitPtrs();
-
-    for (Unit *u : units)
+    // Only ever called from update()'s Combat-only branch — deployment
+    // hover-testing is DeploymentPhaseController::previewUnitAt() now.
+    for (Unit *u : m_session.getUnitPtrs())
         if (u && !u->isDead() && u->getPosition() == pos)
             return u;
     return nullptr;
@@ -1973,35 +1300,4 @@ HitContext BattleState::makeHitContext(Unit *attacker, Unit *target, const Skill
     ctx.side = AttackSide::Side;
     ctx.tileEvasionBonus = 0;
     return ctx;
-}
-
-void BattleState::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
-{
-    if (!m_unitPanelWindow)
-        return;
-    if (!entry)
-    {
-        m_unitPanelWindow->clearPreview();
-        return;
-    }
-
-    const bool isPlaced = m_deployment.isUnitPlaced(entry->instanceId);
-
-    try
-    {
-        // Build the same effective stats a live Unit would have (race/gender
-        // bonuses applied) instead of showing the raw template numbers —
-        // otherwise the preview disagrees with what the unit actually has
-        // once placed (e.g. a race's MP bonus wouldn't show up here).
-        const UnitData templateData = UnitLoader::load(entry->templatePath);
-        const RaceData &raceData = getRaceData(templateData.race);
-        const GenderData &genderData = getGenderData(templateData.gender);
-        const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
-        const UnitData &data = previewUnit.getData();
-        m_unitPanelWindow->setPreview(data.name, data.level, data.maxHp, data.maxMp, false, isPlaced);
-    }
-    catch (...)
-    {
-        m_unitPanelWindow->setPreview("Unit " + std::to_string(entry->instanceId), 1, 1, 0, 0, isPlaced);
-    }
 }

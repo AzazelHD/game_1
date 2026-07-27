@@ -50,9 +50,8 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
         for (int col = 0; col < ctx.mapData.width; ++col)
         {
             const Vec2f iso = tileToIso(Vec2i{col, row}, ctx.mapData.tileWidth, ctx.mapData.tileHeight);
-            const float ax = offset.x + iso.x * m.s;
-            const float ay = offset.y + iso.y * m.s;
-
+            const float ax = (iso.x - offset.x) * m.s;
+            const float ay = (iso.y - offset.y) * m.s;
             drawTileLayersAt(row, col, ax, ay, m, tileLayers,
                              ctx.tileset, ctx.tilesPerRow, ctx.spriteH);
 

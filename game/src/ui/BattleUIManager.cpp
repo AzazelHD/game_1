@@ -1,5 +1,5 @@
 #include "config/GameConstants.h"
-#include "ui/BattleHud.h"
+#include "ui/BattleUIManager.h"
 #include "ui/UIManager.h"
 #include "ui/UIScale.h"
 #include "ui/windows/ButtonMenuWindow.h"
@@ -20,7 +20,7 @@ namespace
     }
 }
 
-void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
+void BattleUIManager::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
 {
     m_items = std::move(items);
 
@@ -36,12 +36,8 @@ void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
         m_menu->setVisible(true);
     }
 
-    if (combatPhase)
-    {
-        UIScale::refresh();
-        const float ui = UIScale::factor();
-        m_menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
-    }
+    m_menu->clearPanelPosition();
+    m_menu->centerHorizontally(false);
 
     std::vector<ButtonMenuWindow::Item> uiItems;
     uiItems.reserve(m_items.size());
@@ -61,7 +57,7 @@ void BattleHud::setItems(std::vector<BattleMenuItem> items, bool combatPhase)
     m_menu->setItems(std::move(uiItems));
 }
 
-void BattleHud::clear()
+void BattleUIManager::clear()
 {
     m_items.clear();
     // hideById, not popById: popById would destroy m_menu and leave our
@@ -71,7 +67,7 @@ void BattleHud::clear()
     m_uiManager.popById(WindowId::BattleActionConfirm);
 }
 
-bool BattleHud::isOpen() const
+bool BattleUIManager::isOpen() const
 {
     return (m_menu && m_menu->isVisible()) || m_uiManager.hasWindow(WindowId::BattleActionConfirm);
 }

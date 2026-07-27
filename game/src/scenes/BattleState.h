@@ -9,23 +9,23 @@
 #include "engine/input/KeyCode.h"
 #include "battle/HumanTurnController.h"
 #include "battle/AttackResolutionController.h"
+#include "battle/DeploymentPhaseController.h"
+#include "battle/PendingAttackController.h"
+#include "battle/BattleMenuController.h"
 #include "battle/Grid.h"
 #include "battle/BattleMap.h"
 #include "battle/BattleSession.h"
 #include "battle/MovementRange.h"
-#include "battle/PendingAttackController.h"
 #include "renderer/BattleRenderer.h"
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
-#include "systems/DeploymentSystem.h"
 #include "systems/CombatAnimationSystem.h"
 #include "ui/UIManager.h"
-#include "ui/BattleHud.h"
+#include "ui/BattleUIManager.h"
 #include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
 #include "ui/DamagePreview.h"
 #include "ui/FloatingTextSystem.h"
-#include "ui/windows/DeploymentWindow.h"
 #include "ui/windows/UnitPanelWindow.h"
 #include "data/SkillLoader.h"
 
@@ -89,9 +89,8 @@ public:
         TurnEnded
     };
 
-    // Public so AttackResolutionController (and any future controller) can
-    // drive it via AttackResolutionContext — same reasoning as HumanTurnPhase
-    // above. EnemyAction resolution (in update()) also drives this directly.
+    // Public so AttackResolutionController/DeploymentPhaseController can
+    // drive it via their Context structs — same reasoning as HumanTurnPhase.
     enum class TurnState
     {
         Idle,
@@ -99,14 +98,20 @@ public:
         WaitingForAnimation
     };
 
-    // Public for the same reason as TurnState — AttackResolutionController
-    // reads/writes this via AttackResolutionContext.
+    // Public for the same reason as TurnState.
     enum class PendingResolution
     {
         None,
         PlayerConfirmedAttack,
         ResolvingHits,
         EnemyAction,
+    };
+
+    // Public so DeploymentPhaseController can flip this via DeploymentContext.
+    enum class BattleFlowPhase
+    {
+        Deployment,
+        Combat,
     };
 
     // ── Human turn controller interface ───────────────────────────────────
@@ -140,15 +145,14 @@ public:
 
     // ── Attack resolution controller interface ─────────────────────────────
     // Bundles the shared turn-flow state AttackResolutionController needs to
-    // read/write. Mirrors HumanTurnContext above exactly — same pattern, one
-    // more controller. Extend this (not AttackResolutionController's own
-    // members) when a future feature needs another piece of BattleState's
-    // shared state during attack resolution.
+    // read/write. Extend this (not AttackResolutionController's own members)
+    // when a future feature needs another piece of BattleState's shared
+    // state during attack resolution.
     struct AttackResolutionContext
     {
         BattleSession &session;
         BattleEventSystem &eventSystem;
-        BattleHud &hud;
+        BattleUIManager &hud;
         DamagePreview &damagePreview;
         FloatingTextSystem &floatingText;
         const std::unordered_map<std::string, SkillData> &skillDB;
@@ -167,20 +171,79 @@ public:
 
     AttackResolutionContext makeAttackResolutionContext();
 
-    // Behaviors invoked by HumanTurnController / AttackResolutionController.
+    // ── Deployment phase controller interface ──────────────────────────────
+    // Mirrors HumanTurnContext/AttackResolutionContext — bundles the shared
+    // state DeploymentPhaseController needs to read/write. Extend this (not
+    // DeploymentPhaseController's own members) when a future feature needs
+    // another piece of BattleState's shared state during deployment.
+    struct DeploymentContext
+    {
+        BattleSession &session;
+        BattleEventSystem &eventSystem;
+        UIManager &uiManager;
+        Cursor &cursor;
+        Grid &grid;
+        BattleMap &battleMap;
+        const BattleDefinition *battleDefinition;
+        Unit *&hoveredUnit;
+        Unit *&inspectTargetUnit;
+        UnitPanelWindow *unitPanelWindow;
+        BattleFlowPhase &flowPhase;
+        TurnState &turnState;
+        PendingResolution &pendingResolution;
+        Unit *&pendingActor;
+        Unit *&pendingTarget;
+        std::string &pendingActionLabel;
+        std::string &topBattleText;
+        Camera &camera;
+        const TileMapData &mapData;
+    };
+
+    DeploymentContext makeDeploymentContext();
+
+    // ── Battle menu controller interface ────────────────────────────────
+    struct MenuContext
+    {
+        BattleSession &session;
+        Grid &grid;
+        BattleMap &battleMap;
+        Cursor &cursor;
+        std::unordered_set<Vec2i, Vec2iHash> &reachableTiles;
+        int &currentAttackRange;
+        UIManager &uiManager;
+        BattleUIManager &hud;
+        HumanTurnPhase &humanTurnPhase;
+        BattleFlowPhase &flowPhase;
+        TurnState &turnState;
+        const std::unordered_map<std::string, SkillData> &skillDB;
+        std::string &selectedSkillId;
+        Vec2i &moveStartPos;
+        int &moveStartPointsLeft;
+        bool &canUndoLastMove;
+        Unit *&inspectTargetUnit;
+        AttackResolutionController &attackResolution;
+        DeploymentPhaseController &deploymentPhase;
+        StateMachine<Scene> &sm;
+        Renderer *renderer;
+    };
+
+    MenuContext makeMenuContext();
+
+    void computeAttackRangeTiles();
+
+    // Behaviors invoked by HumanTurnController / AttackResolutionController /
+    // DeploymentPhaseController.
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
+    BattleMenuController &battleMenu() { return m_battleMenu; }
     bool canActiveUnitMove() const;
-    void showInspectWindow(Unit *unit);
-    void openUnitInspectMenu(Unit *unit);
     HitContext makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const;
     void preparePendingAttack(Unit *active,
                               Vec2i targetPos,
                               Unit *directTarget,
                               const SkillData *skill);
 
-    // Battle-end queries/trigger — public so AttackResolutionController (and
-    // the EnemyAction path already in this file) can call them. Same
-    // reasoning as openBattleMenu/canActiveUnitMove above.
+    // Battle-end queries/trigger — public so the controllers above (and the
+    // EnemyAction path already in this file) can call them.
     void startBattleEnd(bool playerWon);
     bool checkVictory() const;
     bool checkDefeat() const;
@@ -196,12 +259,6 @@ private:
         ExecuteAction
     };
 #endif
-
-    enum class BattleFlowPhase
-    {
-        Deployment,
-        Combat,
-    };
 
     // ── Core engine references ─────────────────────────────────────────────
     StateMachine<Scene> &m_sm;
@@ -221,11 +278,9 @@ private:
 
     // ── Gameplay systems ───────────────────────────────────────────────────
     Grid m_grid{};
-    BattleSession m_session;                      // owns all COMBAT units + the turn queue
-    std::vector<Unit *> m_deploymentPreviewUnits; // DEPLOYMENT ONLY
+    BattleSession m_session; // owns all COMBAT units + the turn queue
     std::unordered_map<std::string, SkillData> m_skillDB;
     const BattleDefinition *m_battleDefinition = nullptr;
-    DeploymentSystem m_deployment;
     BattleEventSystem m_eventSystem;
     int m_pendingRewardXp = 0;
 
@@ -285,45 +340,42 @@ private:
 
     // ── UI ─────────────────────────────────────────────────────────────────
     UIManager m_uiManager;
-    BattleHud m_hud{m_uiManager};
+    BattleUIManager m_hud{m_uiManager};
     HumanTurnController m_humanTurn{*this};
     AttackResolutionController m_attackResolution{*this};
+    DeploymentPhaseController m_deploymentPhase{*this};
+    BattleMenuController m_battleMenu{*this};
 
     UnitPanelWindow *m_unitPanelWindow = nullptr;
-    DeploymentWindow *m_deploymentWindow = nullptr;
-    class InspectWindow *m_inspectWindow = nullptr;
 
     DamagePreview m_damagePreview;
     Unit *m_hoveredUnit = nullptr;
     Unit *m_inspectTargetUnit = nullptr;
 
     std::string m_selectedSkillId;
-    std::vector<BattleMenuItem> m_skillMenuItems;
 
     CombatAnimationSystem m_combatAnimations;
 
     FloatingTextSystem m_floatingText;
 
-    // ── Battle flow helpers ────────────────────────────────────────────────
-    void computeAttackRangeTiles();
-
-    void showSkillMenu();
-    void showBattleMenu(bool canMove, bool canAttack, bool canWait);
-    void showSystemMenu();
-    void showStatusMenu(Unit *unit);
-    void showInspectWindowFromTemplate(const std::string &templatePath);
-
-    void syncCursorToSelection();
-    void openStatusMenu(Unit *unit);
     Unit *unitAt(Vec2i pos) const;
-    void setUnitPanelPreviewFromEntry(const DeploymentEntry *entry);
+
+    // ── Render sub-steps (Seam #4 split) ────────────────────────────────────
+    // Each does exactly what its old inline block in render() did — pure
+    // decomposition, no behavior changes except renderEndOverlay(), which
+    // now services both Defeat/Victory from one body (see .cpp).
+    Camera buildInterpolatedCamera(float alpha) const;
+    void renderSceneAndOverlays(const Camera &renderCam);
+    void renderDeploymentGrabbedGhost(const Camera &renderCam);
+    void syncUnitPanelWindow();
+    void renderDeploymentHud();
+    void renderTopBattleText();
+    void renderWorldEffects(const Camera &renderCam);
+    void renderNativeEffects();
+    void renderUIStack();
+    void renderEndOverlay(bool victory);
 
     void processUIEvents(Unit *active);
-
-    void initializeDeploymentPhase();
-    void syncDeploymentPreviewUnits();
-    void refreshDeploymentWindow();
-    void startCombatPhase();
 
     void showDialogueFromEvent(const std::string &text);
     void spawnEnemyFromEvent(const std::string &templatePath);

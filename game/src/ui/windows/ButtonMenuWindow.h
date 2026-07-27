@@ -41,6 +41,7 @@ public:
         m_useCustomPanelPos = false;
         m_anchorBottomRight = false;
     }
+
     // Keep the panel horizontally centered on screen while using m_panelPos.y
     // for its vertical placement. Lets the box grow width-wise (with the font)
     // and stay centered regardless of the resulting width.

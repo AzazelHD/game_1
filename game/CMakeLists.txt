@@ -28,6 +28,9 @@ set(GAME_SOURCES
     src/battle/PendingAttackController.cpp
     src/battle/HumanTurnController.cpp
     src/battle/BattleSession.cpp
+    src/battle/DeploymentPhaseController.cpp
+    src/battle/BattleMenuController.cpp
+    src/battle/DeploymentPhaseController.cpp
     
     src/ai/EnemyAI.cpp
     
@@ -52,14 +55,13 @@ set(GAME_SOURCES
     src/ui/DamagePreview.cpp
     src/ui/UIScale.cpp
     src/ui/UnitPortrait.cpp
-    src/ui/BattleHud.cpp  
+    src/ui/BattleUIManager.cpp  
     src/ui/FloatingTextSystem.cpp
     
     src/ui/windows/ButtonMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
     src/ui/windows/DeploymentWindow.cpp
-    src/ui/windows/InspectWindow.cpp
     src/ui/windows/PartyWindow.cpp
     src/ui/windows/SettingsRowWindow.cpp
     src/ui/windows/UnitPanelWindow.cpp
@@ -93,6 +95,9 @@ set(GAME_SOURCES
     src/battle/PendingAttackController.h
     src/battle/HumanTurnController.h
     src/battle/BattleSession.h
+    src/battle/DeploymentPhaseController.h
+    src/battle/BattleMenuController.h
+    src/battle/DeploymentPhaseController.h
     
     src/ai/EnemyAI.h
     
@@ -121,7 +126,7 @@ set(GAME_SOURCES
     src/ui/DamagePreview.h
     src/ui/UIScale.h
     src/ui/UnitPortrait.h
-    src/ui/BattleHud.h  
+    src/ui/BattleUIManager.h  
     src/ui/BattleMenuItem.h
     src/ui/FloatingTextSystem.h
     src/ui/UIUtils.h
@@ -130,7 +135,6 @@ set(GAME_SOURCES
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
     src/ui/windows/DeploymentWindow.h
-    src/ui/windows/InspectWindow.h
     src/ui/windows/PartyWindow.h
     src/ui/windows/SettingsRowWindow.h
     src/ui/windows/UnitPanelWindow.h

@@ -26,7 +26,7 @@ public:
     // Persistent-window support: a hidden window stays on the UIManager
     // stack (owned, alive, state preserved) but is skipped by handleInput/
     // render/hasBlockingWindow, and hasWindow(id) reports it as absent.
-    // Lets owners like BattleHud create a window once and toggle it instead
+    // Lets owners like BattleUIManager create a window once and toggle it instead
     // of push/pop-ing (and thereby destroying/reconstructing) it every time.
     bool isVisible() const { return m_visible; }
     void setVisible(bool visible) { m_visible = visible; }

@@ -45,6 +45,22 @@ void DeploymentSystem::initialize(int maxUnits,
             .critical = rule.isCritical,
         });
     }
+
+    // Land the initial selection on the first unplaced roster member —
+    // forced units (bosses, story-locked placements) are already deployed
+    // at this point, so starting the cursor there would be redundant; the
+    // player can still Q/E-cycle onto them to inspect, just not grab (see
+    // the .locked checks in grabUnit()/unplaceUnit()). Same "first unplaced
+    // in roster order" rule placeGrabbed() already applies after a normal
+    // placement — this just applies it once more, at startup.
+    for (std::size_t i = 0; i < m_partyEntries.size(); ++i)
+    {
+        if (!isUnitPlaced(m_partyEntries[i].instanceId))
+        {
+            m_selectedIndex = i;
+            break;
+        }
+    }
 }
 
 bool DeploymentSystem::isSpawnTile(Vec2i pos) const
