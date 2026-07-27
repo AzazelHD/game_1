@@ -1,35 +1,27 @@
+#pragma once
+
+#include "ui/BattleMenuItem.h"
+
+#include <vector>
+
+class UIManager;
+class ButtonMenuWindow;
+
 class BattleUIManager
 {
 public:
-    explicit BattleUIManager(UIManager &ui);
+    explicit BattleUIManager(UIManager &uiManager) : m_uiManager(uiManager) {}
 
-    // Action menu
-    void showActionMenu(std::vector<BattleMenuItem> items);
-    void hideActionMenu();
-    bool isActionMenuOpen() const;
-    const std::vector<BattleMenuItem> &actionMenuItems() const;
-
-    // Inspect
-    void showInspect(Unit *unit);
-    void hideInspect();
-
-    // Confirm
-    void showConfirm(const std::string &text);
-    void hideConfirm();
-
-    // Cleanup
+    void setItems(std::vector<BattleMenuItem> items, bool combatPhase);
     void clear();
+    bool isOpen() const;
+
+    const std::vector<BattleMenuItem> &items() const { return m_items; }
 
 private:
-    ButtonMenuWindow *ensureActionMenu();
-    UnitInspectWindow *ensureInspectWindow();
-    ConfirmWindow *ensureConfirmWindow();
-
-    UIManager &m_ui;
-
-    std::vector<BattleMenuItem> m_actionMenuItems;
-
-    ButtonMenuWindow *m_actionMenu = nullptr;
-    UnitInspectWindow *m_inspect = nullptr;
-    ConfirmWindow *m_confirm = nullptr;
+    UIManager &m_uiManager;
+    std::vector<BattleMenuItem> m_items;
+    // Created once on first setItems(), then only shown/hidden. Never
+    // popped, so this pointer stays valid for BattleUIManager's lifetime.
+    ButtonMenuWindow *m_menu = nullptr;
 };
