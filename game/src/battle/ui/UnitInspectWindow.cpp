@@ -1,4 +1,4 @@
-#include "ui/windows/UnitInspectWindow.h"
+#include "battle/ui/UnitInspectWindow.h"
 
 #include "battle/UnitData.h"
 #include "config/GameConstants.h"

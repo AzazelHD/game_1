@@ -11,7 +11,7 @@
 #include "engine/statemachine/StateMachine.h"
 #include "config/GameConstants.h"
 #include "scenes/MainMenuState.h"
-#include "scenes/SettingsState.h"
+#include "settings/SettingsState.h"
 #include "ui/windows/ButtonMenuWindow.h"
 #include "ui/ActionId.h"
 #include "ui/WindowId.h"

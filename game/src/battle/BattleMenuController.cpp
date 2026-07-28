@@ -14,9 +14,41 @@
 #include "scenes/BattleState.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
+#include "ui/UIManager.h"
+#include "ui/WindowId.h"
 #include "ui/windows/ButtonMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
-#include "ui/windows/UnitInspectWindow.h"
+#include "battle/ui/UnitInspectWindow.h"
+
+ButtonMenuWindow *BattleMenuController::pushButtonMenu(WindowId id,
+                                                       const ButtonMenuConfig &config,
+                                                       const std::vector<BattleMenuItem> &items)
+{
+    auto ctx = m_owner.makeMenuContext();
+
+    ctx.uiManager.popById(id);
+    auto *menu = ctx.uiManager.push<ButtonMenuWindow>(id);
+    menu->setFont(FontManager::instance().get(FontRole::Body));
+    menu->setTextAlign(config.textAlign);
+
+    if (config.anchorBottomRight)
+        menu->setAnchorBottomRight(config.bottomRightMargin);
+    else
+        menu->clearPanelPosition();
+
+    menu->centerHorizontally(config.centerHorizontally);
+
+    if (config.panelPosition)
+        menu->setPanelPosition(*config.panelPosition);
+
+    std::vector<ButtonMenuWindow::Item> uiItems;
+    uiItems.reserve(items.size());
+    for (const auto &item : items)
+        uiItems.push_back({.label = item.label, .enabled = item.enabled});
+    menu->setItems(std::move(uiItems));
+
+    return menu;
+}
 
 void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool canWait)
 {
@@ -41,7 +73,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
                 ctx.cursor.setPosition(active->getPosition());
             }
             ctx.humanTurnPhase = BattleState::HumanTurnPhase::MoveTarget;
-            ctx.battleUI.clear();
+            m_owner.battleMenu().closeAllMenus();
         }});
 
     items.push_back(BattleMenuItem{
@@ -59,7 +91,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
                 ctx.cursor.setPosition(active->getPosition());
             }
             ctx.humanTurnPhase = BattleState::HumanTurnPhase::AttackTarget;
-            ctx.battleUI.clear();
+            m_owner.battleMenu().closeAllMenus();
         }});
 
     Unit *active = ctx.session.getCurrentUnit();
@@ -81,7 +113,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
             Unit *active = ctx.session.getCurrentUnit();
             if (active)
                 active->setMajorAction(MajorAction::Defend);
-            ctx.battleUI.clear();
+            m_owner.battleMenu().closeAllMenus();
             m_owner.advanceToNextUnit();
             ctx.turnState = BattleState::TurnState::Idle;
         }});
@@ -92,12 +124,18 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
         .onSelect = [this]()
         {
             auto ctx = m_owner.makeMenuContext();
-            ctx.battleUI.clear();
+            m_owner.battleMenu().closeAllMenus();
             m_owner.advanceToNextUnit();
             ctx.turnState = BattleState::TurnState::Idle;
         }});
 
-    ctx.battleUI.showActionMenu(std::move(items));
+    m_actionMenuItems = std::move(items);
+
+    ButtonMenuConfig config;
+    config.textAlign = ButtonMenuWindow::TextAlign::Left;
+    config.anchorBottomRight = true;
+    config.bottomRightMargin = Vec2f{16.0f, 16.0f};
+    pushButtonMenu(WindowId::BattleActionMenu, config, m_actionMenuItems);
 }
 
 void BattleMenuController::showSkillMenu()
@@ -136,39 +174,15 @@ void BattleMenuController::showSkillMenu()
                     ctx.cursor.setPosition(active->getPosition());
                 ctx.humanTurnPhase = BattleState::HumanTurnPhase::AttackTarget;
                 ctx.uiManager.popById(WindowId::BattleSkillMenu);
-                ctx.battleUI.clear();
+                m_owner.battleMenu().closeAllMenus();
+                ;
             }});
     }
 
-    // A real push onto the UI stack — a second, distinct level above
-    // battle.actionmenu, which stays untouched underneath. Back pops just
-    // this window and battle.actionmenu is revealed exactly as it was, the
-    // same way any other stacked window already behaves.
-    // ctx.uiManager.popById(WindowId::BattleSkillMenu);
-    // auto *menu = ctx.uiManager.push<ButtonMenuWindow>(WindowId::BattleSkillMenu);
-    // menu->setFont(FontManager::instance().get(FontRole::Body));
-    // if (ctx.flowPhase == BattleState::BattleFlowPhase::Combat)
-    // {
-    //     UIScale::refresh();
-    //     const float ui = UIScale::factor();
-    //     menu->setPanelPosition(Vec2f{GameConstants::VIEW_W - 280.0f * ui, GameConstants::VIEW_H - 240.0f * ui});
-    // }
-
-    ctx.uiManager.popById(WindowId::BattleSkillMenu);
-    auto *menu = ctx.uiManager.push<ButtonMenuWindow>(WindowId::BattleSkillMenu);
-    menu->setFont(FontManager::instance().get(FontRole::Body));
-    menu->clearPanelPosition();
-
-    std::vector<ButtonMenuWindow::Item> uiItems;
-    uiItems.reserve(m_skillMenuItems.size());
-    for (int i = 0; i < static_cast<int>(m_skillMenuItems.size()); ++i)
-    {
-        uiItems.push_back(ButtonMenuWindow::Item{
-            .label = m_skillMenuItems[i].label,
-            .enabled = m_skillMenuItems[i].enabled,
-        });
-    }
-    menu->setItems(std::move(uiItems));
+    ButtonMenuConfig config;
+    config.textAlign = ButtonMenuWindow::TextAlign::Left;
+    config.anchorBottomRight = true;
+    pushButtonMenu(WindowId::BattleSkillMenu, config, m_skillMenuItems);
 }
 
 void BattleMenuController::showSystemMenu()
@@ -197,7 +211,7 @@ void BattleMenuController::showSystemMenu()
             .label = "Resume",
             .enabled = true,
             .onSelect = [this]()
-            { m_owner.makeMenuContext().battleUI.clear(); }};
+            { m_owner.battleMenu().closeAllMenus(); }};
     }
 
     BattleMenuItem quitItem{
@@ -209,7 +223,10 @@ void BattleMenuController::showSystemMenu()
             ctx.sm.replace(std::make_unique<MainMenuState>(ctx.sm, ctx.renderer));
         }};
 
-    ctx.battleUI.showSystemMenu({std::move(firstItem), std::move(quitItem)});
+    m_systemMenuItems = {std::move(firstItem), std::move(quitItem)};
+
+    ButtonMenuConfig config; // all defaults → dead center, both axes, matches actual computed size
+    pushButtonMenu(WindowId::BattleSystemMenu, config, m_systemMenuItems);
 }
 
 void BattleMenuController::showInspectWindow(Unit *unit)
@@ -286,6 +303,7 @@ void BattleMenuController::openUnitInspectMenu(Unit *unit)
     ctx.uiManager.popById(WindowId::BattleInspectMenu);
     auto *menu = ctx.uiManager.push<ButtonMenuWindow>(WindowId::BattleInspectMenu);
     menu->setFont(FontManager::instance().get(FontRole::Body));
+    menu->setTextAlign(ButtonMenuWindow::TextAlign::Left);
     menu->setAnchorBottomRight();
     menu->setItems({
         ButtonMenuWindow::Item{.id = ActionId::Inspect, .label = "Inspect", .enabled = true},
@@ -319,21 +337,18 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
         if (event.type == UIEventType::ActionSelected)
         {
             const int index = event.index;
-            if (index < 0 || index >= static_cast<int>(ctx.battleUI.actionMenuItems().size()))
+            if (index < 0 || index >= static_cast<int>(m_systemMenuItems.size()))
                 return true;
 
-            BattleMenuItem item = ctx.battleUI.actionMenuItems()[index];
-            // hideById, not popById: BattleUIManager owns this persistent window and
-            // caches its pointer. Popping it would destroy the window while leaving the
-            // cached pointer dangling.
-            ctx.uiManager.hideById(WindowId::BattleSystemMenu);
+            BattleMenuItem item = m_systemMenuItems[index];
+            ctx.uiManager.popById(WindowId::BattleSystemMenu);
             if (item.enabled && item.onSelect)
                 item.onSelect();
             return true;
         }
         if (event.type == UIEventType::ActionCanceled)
         {
-            ctx.battleUI.clear();
+            closeAllMenus();
             return true;
         }
     }
@@ -351,11 +366,10 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
     if (event.windowId == WindowId::BattleActionMenu && event.type == UIEventType::ActionSelected)
     {
         const int index = event.index;
-        if (index < 0 || index >= static_cast<int>(ctx.battleUI.actionMenuItems().size()))
+        if (index < 0 || index >= static_cast<int>(m_actionMenuItems.size()))
             return true;
-
-        BattleMenuItem item = ctx.battleUI.actionMenuItems()[index];
-        ctx.uiManager.hideById(WindowId::BattleActionMenu);
+        BattleMenuItem item = m_actionMenuItems[index];
+        ctx.uiManager.popById(WindowId::BattleActionMenu);
         if (item.enabled && item.onSelect)
             item.onSelect();
         // The Accept press that selected this menu item is still "live" for
@@ -397,7 +411,7 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
 
         if (!active)
         {
-            ctx.battleUI.clear();
+            closeAllMenus();
             return true;
         }
 
@@ -417,7 +431,7 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
         }
         else if (!active->hasMoved() && !active->hasActed())
         {
-            ctx.battleUI.clear();
+            m_owner.battleMenu().closeAllMenus();
             ctx.humanTurnPhase = BattleState::HumanTurnPhase::FreeCursor;
             ctx.cursor.setPosition(active->getPosition());
         }
@@ -425,4 +439,14 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
     }
 
     return false;
+}
+
+void BattleMenuController::closeAllMenus()
+{
+    auto ctx = m_owner.makeMenuContext();
+    ctx.uiManager.popById(WindowId::BattleActionMenu);
+    ctx.uiManager.popById(WindowId::BattleSystemMenu);
+    ctx.uiManager.popById(WindowId::BattleActionConfirm);
+    ctx.uiManager.popById(WindowId::BattleInspect);
+    m_inspectWindow = nullptr;
 }

@@ -185,7 +185,7 @@ void BattleState::onEnter()
     deploymentWindow->setFont(FontManager::instance().get(FontRole::Body));
     m_deploymentPhase.setDeploymentWindow(deploymentWindow);
 
-    m_battleUI.clear();
+    m_battleMenu.closeAllMenus();
 
     m_deploymentPhase.initializeDeploymentPhase();
 
@@ -222,7 +222,6 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
 {
     return HumanTurnContext{
         .controlMode = m_playerControlMode,
-        .battleUIOpen = m_battleUI.hasBlockingWindow(),
         .phase = m_humanTurnPhase,
         .cursor = m_cursor,
         .session = m_session,
@@ -248,7 +247,6 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
     return AttackResolutionContext{
         .session = m_session,
         .eventSystem = m_eventSystem,
-        .battleUI = m_battleUI,
         .damagePreview = m_damagePreview,
         .floatingText = m_floatingText,
         .skillDB = m_skillDB,
@@ -301,7 +299,6 @@ BattleState::MenuContext BattleState::makeMenuContext()
         .reachableTiles = m_reachableTiles,
         .currentAttackRange = m_currentAttackRange,
         .uiManager = m_uiManager,
-        .battleUI = m_battleUI,
         .humanTurnPhase = m_humanTurnPhase,
         .flowPhase = m_flowPhase,
         .turnState = m_turnState,
@@ -564,7 +561,7 @@ void BattleState::handleInput()
             Unit *active = m_session.getCurrentUnit();
             if (active && active->getTeam() == 0 && !active->isDead())
             {
-                m_battleUI.clear();
+                m_battleMenu.closeAllMenus();
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
                 EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
                 m_session.checkResult();
@@ -801,7 +798,7 @@ void BattleState::startBattleEnd(bool playerWon)
         return;
 
     m_playerWon = playerWon;
-    m_battleUI.clear();
+    m_battleMenu.closeAllMenus();
     m_uiManager.popById(WindowId::BattleActionConfirm);
     m_uiManager.popById(WindowId::BattleDialog);
 

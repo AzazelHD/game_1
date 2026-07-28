@@ -10,9 +10,6 @@ set(GAME_SOURCES
     src/scenes/BattleState.cpp
     src/scenes/ResultState.cpp
     src/scenes/BattleLoader.cpp   
-    src/scenes/SettingsState.cpp
-    src/scenes/AudioSettings.cpp
-    src/scenes/GraphicsSettings.cpp
     src/scenes/WorldMapState.cpp
     
     src/battle/Grid.cpp
@@ -31,6 +28,12 @@ set(GAME_SOURCES
     src/battle/DeploymentPhaseController.cpp
     src/battle/BattleMenuController.cpp
     src/battle/DeploymentPhaseController.cpp
+    src/battle/DeploymentSystem.cpp
+    src/battle/BattleParticipantsBuilder.cpp
+    src/battle/CombatAnimationSystem.cpp
+    src/battle/ui/UnitPanelWindow.cpp
+    src/battle/ui/UnitInspectWindow.cpp
+    src/battle/ui/DeploymentWindow.cpp
     
     src/ai/EnemyAI.cpp
     
@@ -45,28 +48,26 @@ set(GAME_SOURCES
     src/systems/RosterSystem.cpp
     src/systems/PartySystem.cpp
     src/systems/PartyContext.cpp
-    src/systems/DeploymentSystem.cpp
-    src/systems/BattleParticipantsBuilder.cpp
-    src/systems/CombatAnimationSystem.cpp
+    
     src/events/BattleEventSystem.cpp
+
+    src/settings/SettingsState.cpp
+    src/settings/AudioSettings.cpp
+    src/settings/GraphicsSettings.cpp
+    src/settings/ui/SettingsRowWindow.cpp
     
     src/ui/Cursor.cpp
     src/ui/UIManager.cpp
     src/ui/DamagePreview.cpp
     src/ui/UIScale.cpp
     src/ui/UnitPortrait.cpp
-    src/ui/BattleUIManager.cpp  
     src/ui/FloatingTextSystem.cpp
     
     src/ui/windows/ButtonMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
-    src/ui/windows/DeploymentWindow.cpp
     src/ui/windows/PartyWindow.cpp
-    src/ui/windows/SettingsRowWindow.cpp
-    src/ui/windows/UnitPanelWindow.cpp
     src/ui/windows/ButtonMenuWindow.cpp
-    src/ui/windows/UnitInspectWindow.cpp
     
     )
     
@@ -75,9 +76,6 @@ set(GAME_SOURCES
     src/scenes/MainMenuState.h
     src/scenes/BattleState.h
     src/scenes/ResultState.h
-    src/scenes/SettingsState.h
-    src/scenes/AudioSettings.h
-    src/scenes/GraphicsSettings.h
     src/scenes/WorldMapState.h
     
     src/battle/Grid.h
@@ -98,6 +96,12 @@ set(GAME_SOURCES
     src/battle/DeploymentPhaseController.h
     src/battle/BattleMenuController.h
     src/battle/DeploymentPhaseController.h
+    src/battle/DeploymentSystem.h
+    src/battle/BattleParticipantsBuilder.h
+    src/battle/CombatAnimationSystem.h
+    src/battle/ui/UnitPanelWindow.h
+    src/battle/ui/UnitInspectWindow.h
+    src/battle/ui/DeploymentWindow.h
     
     src/ai/EnemyAI.h
     
@@ -107,15 +111,18 @@ set(GAME_SOURCES
     src/data/UnitLoader.h
     src/data/SkillLoader.h
     src/data/SettingsManager.h
-
+    
     src/config/BattleCatalog.h
     
     src/systems/RosterSystem.h
     src/systems/PartySystem.h
     src/systems/PartyContext.h
-    src/systems/DeploymentSystem.h
-    src/systems/BattleParticipantsBuilder.h
-    src/systems/CombatAnimationSystem.h
+    
+    src/settings/SettingsState.h
+    src/settings/AudioSettings.h
+    src/settings/GraphicsSettings.h
+    src/settings/ui/SettingsRowWindow.h
+    
     src/events/BattleEventSystem.h
     
     src/ui/Cursor.h
@@ -126,7 +133,6 @@ set(GAME_SOURCES
     src/ui/DamagePreview.h
     src/ui/UIScale.h
     src/ui/UnitPortrait.h
-    src/ui/BattleUIManager.h  
     src/ui/BattleMenuItem.h
     src/ui/FloatingTextSystem.h
     src/ui/UIUtils.h
@@ -134,12 +140,8 @@ set(GAME_SOURCES
     src/ui/windows/ButtonMenuWindow.h
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
-    src/ui/windows/DeploymentWindow.h
     src/ui/windows/PartyWindow.h
-    src/ui/windows/SettingsRowWindow.h
-    src/ui/windows/UnitPanelWindow.h
     src/ui/windows/ButtonMenuWindow.h
-    src/ui/windows/UnitInspectWindow.h
     
     src/world/WorldGraph.h
     src/world/WorldPathfinding.h

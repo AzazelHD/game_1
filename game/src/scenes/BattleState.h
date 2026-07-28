@@ -19,14 +19,13 @@
 #include "renderer/BattleRenderer.h"
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
-#include "systems/CombatAnimationSystem.h"
+#include "battle/CombatAnimationSystem.h"
 #include "ui/UIManager.h"
-#include "ui/BattleUIManager.h"
 #include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
 #include "ui/DamagePreview.h"
 #include "ui/FloatingTextSystem.h"
-#include "ui/windows/UnitPanelWindow.h"
+#include "battle/ui/UnitPanelWindow.h"
 #include "data/SkillLoader.h"
 
 #include <functional>
@@ -121,7 +120,6 @@ public:
     struct HumanTurnContext
     {
         PlayerControlMode controlMode;
-        bool battleUIOpen;
         HumanTurnPhase &phase;
         Cursor &cursor;
         BattleSession &session;
@@ -152,7 +150,6 @@ public:
     {
         BattleSession &session;
         BattleEventSystem &eventSystem;
-        BattleUIManager &battleUI;
         DamagePreview &damagePreview;
         FloatingTextSystem &floatingText;
         const std::unordered_map<std::string, SkillData> &skillDB;
@@ -211,7 +208,6 @@ public:
         std::unordered_set<Vec2i, Vec2iHash> &reachableTiles;
         int &currentAttackRange;
         UIManager &uiManager;
-        BattleUIManager &battleUI;
         HumanTurnPhase &humanTurnPhase;
         BattleFlowPhase &flowPhase;
         TurnState &turnState;
@@ -340,7 +336,6 @@ private:
 
     // ── UI ─────────────────────────────────────────────────────────────────
     UIManager m_uiManager;
-    BattleUIManager m_battleUI{m_uiManager};
     HumanTurnController m_humanTurn{*this};
     AttackResolutionController m_attackResolution{*this};
     DeploymentPhaseController m_deploymentPhase{*this};

@@ -9,14 +9,14 @@
 #include "engine/ui/ButtonControl.h"
 #include "config/GameConstants.h"
 #include "data/SettingsManager.h"
-#include "scenes/AudioSettings.h"
+#include "settings/AudioSettings.h"
 #include "ui/ActionId.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
 #include "ui/WindowId.h"
 #include "ui/UIUtils.h"
 #include "ui/windows/ConfirmWindow.h"
-#include "ui/windows/SettingsRowWindow.h"
+#include "settings/ui/SettingsRowWindow.h"
 
 #include <cmath>
 

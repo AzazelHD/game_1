@@ -1,6 +1,6 @@
 #include "config/BattleCatalog.h"
 #include "battle/BattleMap.h"
-#include "systems/BattleParticipantsBuilder.h"
+#include "battle/BattleParticipantsBuilder.h"
 
 std::vector<UnitSpawn> BattleParticipantsBuilder::build(const BattleDefinition &definition,
                                                         const BattleMap &battleMap,

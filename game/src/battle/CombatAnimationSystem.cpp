@@ -1,4 +1,4 @@
-#include "systems/CombatAnimationSystem.h"
+#include "battle/CombatAnimationSystem.h"
 
 #include "engine/renderer/Renderer.h"
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "systems/DeploymentSystem.h"
-#include "ui/windows/DeploymentWindow.h"
+#include "battle/DeploymentSystem.h"
+#include "battle/ui/DeploymentWindow.h"
 #include "engine/math/Vec2.h"
 
 #include <vector>

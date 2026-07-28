@@ -116,13 +116,16 @@ void ButtonMenuWindow::render(Renderer *renderer) const
     const float fontH = renderer->measureText(m_font, "Ag").y;
     const float itemH = std::max(kItemH * ui, fontH + 6.0f * ui);
 
-    // Width from the widest label + selection markers + padding, never below
-    // the default width.
+    // Width from the widest label + selection markers + padding. No large
+    // fixed floor — short labels (Move/Attack) should get a small box;
+    // long ones (future skill names) grow it naturally. Small floor only
+    // to avoid a degenerate sliver for 1-2 character labels.
+    constexpr float kMinMenuW = 80.0f;
     const float markerW = renderer->measureText(m_font, ">").x;
     float maxTextW = 0.0f;
     for (const Item &item : m_items)
         maxTextW = std::max(maxTextW, renderer->measureText(m_font, clipLabel(item.label)).x);
-    const float menuW = std::max(kMenuW * ui,
+    const float menuW = std::max(kMinMenuW * ui,
                                  maxTextW + 2.0f * (markerW + markerGap) + 2.0f * pad);
 
     const int count = static_cast<int>(m_items.size());
@@ -161,10 +164,15 @@ void ButtonMenuWindow::render(Renderer *renderer) const
 
         const std::string clipped = clipLabel(item.label);
         const Vec2f textSize = renderer->measureText(m_font, clipped);
+
+        // Reserve marker-gutter space on BOTH sides regardless of alignment
+        // — Left/Right align still show "> label <" markers when selected,
+        // so both sides need room even though the text itself hugs one side.
+        const float markerSpace = markerW + markerGap;
         const Rectf textRect =
             (m_textAlign == TextAlign::Center)
                 ? Rectf{panelX, y, menuW, itemH}
-                : Rectf{panelX + pad, y, menuW - 2.0f * pad, itemH};
+                : Rectf{panelX + pad + markerSpace, y, menuW - 2.0f * pad - 2.0f * markerSpace, itemH};
 
         HorizontalAlign align;
 

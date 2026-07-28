@@ -10,7 +10,7 @@
 #include "config/GameConstants.h"
 #include "data/UnitLoader.h"
 #include "engine/renderer/FontManager.h"
-#include "systems/BattleParticipantsBuilder.h"
+#include "battle/BattleParticipantsBuilder.h"
 #include "systems/PartyContext.h"
 #include "ui/ActionId.h"
 #include "ui/UIEvent.h"

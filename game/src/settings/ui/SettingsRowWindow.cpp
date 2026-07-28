@@ -1,4 +1,4 @@
-#include "ui/windows/SettingsRowWindow.h"
+#include "settings/ui/SettingsRowWindow.h"
 
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"

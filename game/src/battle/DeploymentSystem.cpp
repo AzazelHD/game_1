@@ -1,5 +1,5 @@
 #include "config/BattleCatalog.h"
-#include "systems/DeploymentSystem.h"
+#include "battle/DeploymentSystem.h"
 #include "systems/RosterSystem.h"
 
 #include <algorithm>
