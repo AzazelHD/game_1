@@ -22,7 +22,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
     if (!active || active->getTeam() != 0)
         return;
 
-    if (ctx.hudOpen)
+    if (ctx.battleUIOpen)
         return;
 
     if (ctx.phase == BattleState::HumanTurnPhase::FreeCursor)

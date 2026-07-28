@@ -5,6 +5,7 @@
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
@@ -139,8 +140,8 @@ void PartyWindow::render(Renderer *renderer) const
                                "Party",
                                Rectf{x, y + 14.0f, kPanelW, 24.0f},
                                UITheme::SelectedText,
-                               Renderer::HorizontalAlign::Center,
-                               Renderer::VerticalAlign::Middle,
+                               HorizontalAlign::Center,
+                               VerticalAlign::Middle,
                                false,
                                false,
                                false);
@@ -181,8 +182,8 @@ void PartyWindow::render(Renderer *renderer) const
                                    label,
                                    Rectf{x, rowY, kPanelW, kRowH},
                                    textColor,
-                                   Renderer::HorizontalAlign::Center,
-                                   Renderer::VerticalAlign::Middle,
+                                   HorizontalAlign::Center,
+                                   VerticalAlign::Middle,
                                    false,
                                    false,
                                    false);
@@ -193,8 +194,8 @@ void PartyWindow::render(Renderer *renderer) const
                                "Party",
                                Rectf{x, y + kPanelH - 30.0f, kPanelW, 24.0f},
                                UITheme::Info,
-                               Renderer::HorizontalAlign::Center,
-                               Renderer::VerticalAlign::Middle,
+                               HorizontalAlign::Center,
+                               VerticalAlign::Middle,
                                false,
                                false,
                                false);

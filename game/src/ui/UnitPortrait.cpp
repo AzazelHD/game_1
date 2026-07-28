@@ -1,5 +1,6 @@
 #include "battle/Unit.h"
 #include "engine/math/Rect.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
@@ -44,9 +45,9 @@ namespace
                     const std::string &text,
                     Rectf rect,
                     Color color,
-                    Renderer::HorizontalAlign hAlign)
+                    HorizontalAlign hAlign)
     {
-        renderer->renderTextInRect(font, text, rect, color, hAlign, Renderer::VerticalAlign::Middle,
+        renderer->renderTextInRect(font, text, rect, color, hAlign, VerticalAlign::Middle,
                                    false, false, false);
     }
 }
@@ -213,52 +214,52 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
         renderText(renderer, font, name,
                    Rectf{textRect.x + pad, textRect.y + nameY, textRect.w - 2.0f * pad - 76.0f * scale - markerW, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Left);
+                   HorizontalAlign::Left);
         if (style.showPlacedMarker)
         {
             renderText(renderer, font, "X",
                        Rectf{textRect.x + textRect.w - 76.0f * scale - pad - markerW, textRect.y + nameY, markerW, lineH},
                        Color{220, 60, 60, 255},
-                       Renderer::HorizontalAlign::Center);
+                       HorizontalAlign::Center);
         }
         renderText(renderer, font, levelBuf,
                    Rectf{textRect.x + textRect.w - 72.0f * scale - pad, textRect.y + nameY, 72.0f * scale, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Right);
+                   HorizontalAlign::Right);
         renderText(renderer, font, hpBuf,
                    Rectf{textRect.x + pad, textRect.y + hpY, textRect.w - 2.0f * pad, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Left);
+                   HorizontalAlign::Left);
         renderText(renderer, font, mpBuf,
                    Rectf{textRect.x + pad, textRect.y + mpY, textRect.w - 2.0f * pad, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Left);
+                   HorizontalAlign::Left);
     }
     else
     {
         renderText(renderer, font, levelBuf,
                    Rectf{textRect.x + pad, textRect.y + nameY, 72.0f * scale, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Left);
+                   HorizontalAlign::Left);
         if (style.showPlacedMarker)
         {
             renderText(renderer, font, "X",
                        Rectf{textRect.x + 76.0f * scale + pad, textRect.y + nameY, markerW, lineH},
                        Color{220, 60, 60, 255},
-                       Renderer::HorizontalAlign::Center);
+                       HorizontalAlign::Center);
         }
         renderText(renderer, font, name,
                    Rectf{textRect.x + 76.0f * scale + pad + markerW, textRect.y + nameY, textRect.w - 2.0f * pad - 76.0f * scale - markerW, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Right);
+                   HorizontalAlign::Right);
         renderText(renderer, font, hpBuf,
                    Rectf{textRect.x + pad, textRect.y + hpY, textRect.w - 2.0f * pad, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Right);
+                   HorizontalAlign::Right);
         renderText(renderer, font, mpBuf,
                    Rectf{textRect.x + pad, textRect.y + mpY, textRect.w - 2.0f * pad, lineH},
                    UITheme::Text,
-                   Renderer::HorizontalAlign::Right);
+                   HorizontalAlign::Right);
     }
 
     return box;

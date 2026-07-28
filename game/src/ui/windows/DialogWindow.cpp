@@ -5,6 +5,7 @@
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
@@ -97,8 +98,8 @@ void DialogWindow::render(Renderer *renderer) const
                                    line.speaker,
                                    Rectf{x, y + 10.0f, w, 20.0f},
                                    UITheme::Cursor,
-                                   Renderer::HorizontalAlign::Center,
-                                   Renderer::VerticalAlign::Middle,
+                                   HorizontalAlign::Center,
+                                   VerticalAlign::Middle,
                                    false,
                                    false,
                                    false);
@@ -109,8 +110,8 @@ void DialogWindow::render(Renderer *renderer) const
                                visible,
                                Rectf{x, y + 40.0f, w, 24.0f},
                                UITheme::Text,
-                               Renderer::HorizontalAlign::Center,
-                               Renderer::VerticalAlign::Middle,
+                               HorizontalAlign::Center,
+                               VerticalAlign::Middle,
                                false,
                                false,
                                false);

@@ -1,5 +1,6 @@
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
@@ -57,8 +58,8 @@ void SettingsState::render(float /*alpha*/)
                                  title,
                                  Rectf{0.0f, 130.0f, GameConstants::VIEW_W, 64.0f},
                                  Color{240, 245, 255, 255},
-                                 Renderer::HorizontalAlign::Center,
-                                 Renderer::VerticalAlign::Middle,
+                                 HorizontalAlign::Center,
+                                 VerticalAlign::Middle,
                                  false, false, false);
 
     m_uiManager.render(m_renderer);

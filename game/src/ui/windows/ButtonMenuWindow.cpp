@@ -3,6 +3,7 @@
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/UIScale.h"
@@ -160,11 +161,34 @@ void ButtonMenuWindow::render(Renderer *renderer) const
 
         const std::string clipped = clipLabel(item.label);
         const Vec2f textSize = renderer->measureText(m_font, clipped);
-        Vec2f aligned = renderer->alignInRect(Rectf{panelX, y, menuW, itemH},
-                                              textSize,
-                                              Renderer::HorizontalAlign::Center,
-                                              Renderer::VerticalAlign::Middle);
-        aligned.x += opticalBias;
+        const Rectf textRect =
+            (m_textAlign == TextAlign::Center)
+                ? Rectf{panelX, y, menuW, itemH}
+                : Rectf{panelX + pad, y, menuW - 2.0f * pad, itemH};
+
+        HorizontalAlign align;
+
+        switch (m_textAlign)
+        {
+        case TextAlign::Left:
+            align = HorizontalAlign::Left;
+            break;
+        case TextAlign::Right:
+            align = HorizontalAlign::Right;
+            break;
+        default:
+            align = HorizontalAlign::Center;
+            break;
+        }
+
+        Vec2f aligned = renderer->alignInRect(
+            textRect,
+            textSize,
+            align,
+            VerticalAlign::Middle);
+
+        if (m_textAlign == TextAlign::Center)
+            aligned.x += opticalBias;
 
         const float baseX = aligned.x;
         const float baseW = textSize.x;

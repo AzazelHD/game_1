@@ -5,6 +5,7 @@
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/ui/HorizontalLayout.h"
@@ -179,8 +180,8 @@ void ConfirmWindow::render(Renderer *renderer) const
                                    line,
                                    Rectf{x, lineY, w, lineH},
                                    UITheme::Text,
-                                   Renderer::HorizontalAlign::Center,
-                                   Renderer::VerticalAlign::Middle,
+                                   HorizontalAlign::Center,
+                                   VerticalAlign::Middle,
                                    false, false, false);
         lineY += lineH + kLineSpacing * ui;
     }

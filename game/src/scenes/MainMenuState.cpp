@@ -3,6 +3,7 @@
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/MathUtils.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Color.h"
@@ -89,8 +90,8 @@ void MainMenuState::render(float alpha)
                                  title,
                                  Rectf{0.0f, 130.0f, GameConstants::VIEW_W, 64.0f},
                                  Color{235, 240, 250, 255},
-                                 Renderer::HorizontalAlign::Center,
-                                 Renderer::VerticalAlign::Middle,
+                                 HorizontalAlign::Center,
+                                 VerticalAlign::Middle,
                                  false,
                                  false,
                                  false);

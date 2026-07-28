@@ -196,7 +196,7 @@ void AttackResolutionController::finishResolution()
         return;
     }
 
-    ctx.hud.clear();
+    ctx.battleUI.clear();
     ctx.humanTurnPhase = BattleState::HumanTurnPhase::ActionMenu;
     if (active)
         m_owner.openBattleMenu(m_owner.canActiveUnitMove(), false, true, KeyCode::Accept);
@@ -210,6 +210,6 @@ void AttackResolutionController::cancel()
     m_pendingSkillId.clear();
     ctx.damagePreview.hide();
     ctx.topBattleText.clear();
-    ctx.hud.clear();
+    ctx.battleUI.clear();
     ctx.humanTurnPhase = BattleState::HumanTurnPhase::AttackTarget;
 }

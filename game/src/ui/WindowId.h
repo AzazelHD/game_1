@@ -7,6 +7,7 @@ enum class WindowId
     // Battle windows
     BattleActionConfirm,
     BattleActionMenu,
+    BattleSystemMenu,
     BattleDeployment,
     BattleDeploymentConfirm,
     BattleDialog,

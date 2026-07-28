@@ -7,6 +7,7 @@
 #include "engine/core/App.h"
 #include "engine/core/Log.h"
 #include "engine/core/Window.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Camera.h"
 #include "engine/renderer/Texture.h"
 #include "engine/renderer/Renderer.h"
@@ -184,7 +185,7 @@ void BattleState::onEnter()
     deploymentWindow->setFont(FontManager::instance().get(FontRole::Body));
     m_deploymentPhase.setDeploymentWindow(deploymentWindow);
 
-    m_hud.clear();
+    m_battleUI.clear();
 
     m_deploymentPhase.initializeDeploymentPhase();
 
@@ -221,7 +222,7 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
 {
     return HumanTurnContext{
         .controlMode = m_playerControlMode,
-        .hudOpen = m_hud.isOpen(),
+        .battleUIOpen = m_battleUI.hasBlockingWindow(),
         .phase = m_humanTurnPhase,
         .cursor = m_cursor,
         .session = m_session,
@@ -247,7 +248,7 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
     return AttackResolutionContext{
         .session = m_session,
         .eventSystem = m_eventSystem,
-        .hud = m_hud,
+        .battleUI = m_battleUI,
         .damagePreview = m_damagePreview,
         .floatingText = m_floatingText,
         .skillDB = m_skillDB,
@@ -300,7 +301,7 @@ BattleState::MenuContext BattleState::makeMenuContext()
         .reachableTiles = m_reachableTiles,
         .currentAttackRange = m_currentAttackRange,
         .uiManager = m_uiManager,
-        .hud = m_hud,
+        .battleUI = m_battleUI,
         .humanTurnPhase = m_humanTurnPhase,
         .flowPhase = m_flowPhase,
         .turnState = m_turnState,
@@ -563,7 +564,7 @@ void BattleState::handleInput()
             Unit *active = m_session.getCurrentUnit();
             if (active && active->getTeam() == 0 && !active->isDead())
             {
-                m_hud.clear();
+                m_battleUI.clear();
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
                 EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
                 m_session.checkResult();
@@ -800,7 +801,7 @@ void BattleState::startBattleEnd(bool playerWon)
         return;
 
     m_playerWon = playerWon;
-    m_hud.clear();
+    m_battleUI.clear();
     m_uiManager.popById(WindowId::BattleActionConfirm);
     m_uiManager.popById(WindowId::BattleDialog);
 
@@ -1107,8 +1108,8 @@ void BattleState::renderDeploymentHud()
                                  deploymentLabel,
                                  Rectf{0.0f, 12.0f, GameConstants::VIEW_W, 24.0f},
                                  UITheme::SelectedText,
-                                 Renderer::HorizontalAlign::Center,
-                                 Renderer::VerticalAlign::Middle,
+                                 HorizontalAlign::Center,
+                                 VerticalAlign::Middle,
                                  false,
                                  false,
                                  false);
@@ -1120,8 +1121,8 @@ void BattleState::renderDeploymentHud()
                                  countLine,
                                  Rectf{0.0f, 34.0f, GameConstants::VIEW_W, 24.0f},
                                  UITheme::Text,
-                                 Renderer::HorizontalAlign::Center,
-                                 Renderer::VerticalAlign::Middle,
+                                 HorizontalAlign::Center,
+                                 VerticalAlign::Middle,
                                  false,
                                  false,
                                  false);
@@ -1130,8 +1131,8 @@ void BattleState::renderDeploymentHud()
                                  "Q/E: select roster  Enter: grab/place  Esc: cancel/menu",
                                  Rectf{0.0f, 56.0f, GameConstants::VIEW_W, 24.0f},
                                  UITheme::Text,
-                                 Renderer::HorizontalAlign::Center,
-                                 Renderer::VerticalAlign::Middle,
+                                 HorizontalAlign::Center,
+                                 VerticalAlign::Middle,
                                  false,
                                  false,
                                  false);
@@ -1148,8 +1149,8 @@ void BattleState::renderTopBattleText()
                                      m_topBattleText,
                                      Rectf{0.0f, 72.0f, GameConstants::VIEW_W, 24.0f},
                                      UITheme::SelectedText,
-                                     Renderer::HorizontalAlign::Center,
-                                     Renderer::VerticalAlign::Middle,
+                                     HorizontalAlign::Center,
+                                     VerticalAlign::Middle,
                                      false,
                                      false,
                                      false);

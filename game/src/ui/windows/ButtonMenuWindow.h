@@ -20,9 +20,17 @@ public:
         bool enabled = true;
     };
 
+    enum class TextAlign
+    {
+        Left,
+        Center,
+        Right,
+    };
+
     explicit ButtonMenuWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
+    void setTextAlign(TextAlign align) { m_textAlign = align; }
     void setItems(std::vector<Item> items);
     void setPanelPosition(Vec2f topLeft)
     {
@@ -63,4 +71,5 @@ private:
     Vec2f m_bottomRightMargin{16.0f, 16.0f};
     bool m_centerX = false;
     const Font *m_font = nullptr;
+    TextAlign m_textAlign = TextAlign::Center;
 };

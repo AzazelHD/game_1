@@ -5,6 +5,7 @@
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
 #include "ui/UITheme.h"
@@ -93,16 +94,16 @@ void UnitInspectWindow::render(Renderer *renderer) const
     renderer->renderTextInRect(m_font, m_name,
                                Rectf{x, lineY, kPanelW, 24.0f},
                                UITheme::SelectedText,
-                               Renderer::HorizontalAlign::Center,
-                               Renderer::VerticalAlign::Middle,
+                               HorizontalAlign::Center,
+                               VerticalAlign::Middle,
                                false, false, false);
     lineY += 26.0f;
 
     renderer->renderTextInRect(m_font, m_job,
                                Rectf{x, lineY, kPanelW, 20.0f},
                                UITheme::Info,
-                               Renderer::HorizontalAlign::Center,
-                               Renderer::VerticalAlign::Middle,
+                               HorizontalAlign::Center,
+                               VerticalAlign::Middle,
                                false, false, false);
     lineY += 34.0f;
 
@@ -113,8 +114,8 @@ void UnitInspectWindow::render(Renderer *renderer) const
             renderer->renderTextInRect(m_font, section.title,
                                        Rectf{x + 20.0f, lineY, kPanelW - 40.0f, 20.0f},
                                        UITheme::SelectedText,
-                                       Renderer::HorizontalAlign::Left,
-                                       Renderer::VerticalAlign::Middle,
+                                       HorizontalAlign::Left,
+                                       VerticalAlign::Middle,
                                        false, false, false);
             lineY += 26.0f;
         }
@@ -124,14 +125,14 @@ void UnitInspectWindow::render(Renderer *renderer) const
             renderer->renderTextInRect(m_font, line.label,
                                        Rectf{x + 32.0f, lineY, (kPanelW - 64.0f) * 0.5f, 20.0f},
                                        UITheme::Text,
-                                       Renderer::HorizontalAlign::Left,
-                                       Renderer::VerticalAlign::Middle,
+                                       HorizontalAlign::Left,
+                                       VerticalAlign::Middle,
                                        false, false, false);
             renderer->renderTextInRect(m_font, line.value,
                                        Rectf{x + kPanelW * 0.5f, lineY, kPanelW * 0.5f - 32.0f, 20.0f},
                                        UITheme::Text,
-                                       Renderer::HorizontalAlign::Right,
-                                       Renderer::VerticalAlign::Middle,
+                                       HorizontalAlign::Right,
+                                       VerticalAlign::Middle,
                                        false, false, false);
             lineY += 22.0f;
         }

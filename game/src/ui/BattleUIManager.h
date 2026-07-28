@@ -2,26 +2,51 @@
 
 #include "ui/BattleMenuItem.h"
 
+#include <string>
 #include <vector>
 
 class UIManager;
 class ButtonMenuWindow;
+class ConfirmWindow;
+class UnitInspectWindow;
+class Unit;
 
 class BattleUIManager
 {
 public:
-    explicit BattleUIManager(UIManager &uiManager) : m_uiManager(uiManager) {}
+    explicit BattleUIManager(UIManager &ui);
 
-    void setItems(std::vector<BattleMenuItem> items, bool combatPhase);
+    // Action menu
+    void showActionMenu(std::vector<BattleMenuItem> items);
+    void hideActionMenu();
+    const std::vector<BattleMenuItem> &actionMenuItems() const;
+    void showSystemMenu(std::vector<BattleMenuItem> items);
+    void hideSystemMenu();
+
+    // Inspect
+    void showInspect(Unit *unit);
+    void hideInspect();
+
+    // Confirm
+    void showConfirm(const std::string &text);
+    void hideConfirm();
+
+    // Cleanup
+    bool hasBlockingWindow() const;
     void clear();
-    bool isOpen() const;
-
-    const std::vector<BattleMenuItem> &items() const { return m_items; }
 
 private:
-    UIManager &m_uiManager;
-    std::vector<BattleMenuItem> m_items;
-    // Created once on first setItems(), then only shown/hidden. Never
-    // popped, so this pointer stays valid for BattleUIManager's lifetime.
-    ButtonMenuWindow *m_menu = nullptr;
+    ButtonMenuWindow *ensureActionMenu();
+    ButtonMenuWindow *ensureSystemMenu();
+    UnitInspectWindow *ensureInspectWindow();
+    ConfirmWindow *ensureConfirmWindow();
+
+    UIManager &m_ui;
+
+    std::vector<BattleMenuItem> m_actionMenuItems;
+
+    ButtonMenuWindow *m_actionMenu = nullptr;
+    ButtonMenuWindow *m_systemMenu = nullptr;
+    UnitInspectWindow *m_inspect = nullptr;
+    ConfirmWindow *m_confirm = nullptr;
 };

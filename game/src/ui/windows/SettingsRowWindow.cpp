@@ -4,6 +4,7 @@
 #include "engine/input/KeyCode.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
@@ -268,8 +269,8 @@ void SettingsRowWindow::render(Renderer *renderer) const
                 row.label,
                 layout.labelRect,
                 focused ? UITheme::SelectedText : UITheme::Text,
-                Renderer::HorizontalAlign::Left,
-                Renderer::VerticalAlign::Middle,
+                HorizontalAlign::Left,
+                VerticalAlign::Middle,
                 false, false, false);
         }
 
