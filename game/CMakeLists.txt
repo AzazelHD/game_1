@@ -12,25 +12,25 @@ set(GAME_SOURCES
     src/scenes/BattleLoader.cpp   
     src/scenes/WorldMapState.cpp
     
-    src/battle/Grid.cpp
-    src/battle/Unit.cpp
-    src/battle/UnitProgression.cpp
-    src/battle/TurnQueue.cpp
-    src/battle/CombatSystem.cpp
-    src/battle/Pathfinder.cpp
-    src/battle/MovementRange.cpp
-    src/battle/BattleMap.cpp
-    src/battle/UnitFactory.cpp
-    src/battle/AttackResolutionController.cpp
-    src/battle/PendingAttackController.cpp
-    src/battle/HumanTurnController.cpp
+    src/battle/map/Grid.cpp
+    src/battle/unit/Unit.cpp
+    src/battle/unit/UnitProgression.cpp
+    src/battle/combat/TurnQueue.cpp
+    src/battle/combat/CombatSystem.cpp
+    src/battle/map/Pathfinder.cpp
+    src/battle/map/MovementRange.cpp
+    src/battle/map/BattleMap.cpp
+    src/battle/unit/UnitFactory.cpp
+    src/battle/controllers/AttackResolutionController.cpp
+    src/battle/combat/PendingAttackController.cpp
+    src/battle/controllers/HumanTurnController.cpp
     src/battle/BattleSession.cpp
-    src/battle/DeploymentPhaseController.cpp
-    src/battle/BattleMenuController.cpp
-    src/battle/DeploymentPhaseController.cpp
-    src/battle/DeploymentSystem.cpp
-    src/battle/BattleParticipantsBuilder.cpp
-    src/battle/CombatAnimationSystem.cpp
+    src/battle/controllers/DeploymentPhaseController.cpp
+    src/battle/controllers/BattleMenuController.cpp
+    src/battle/controllers/DeploymentPhaseController.cpp
+    src/battle/systems/DeploymentSystem.cpp
+    src/battle/systems/BattleParticipantsBuilder.cpp
+    src/battle/systems/CombatAnimationSystem.cpp
     src/battle/ui/UnitPanelWindow.cpp
     src/battle/ui/UnitInspectWindow.cpp
     src/battle/ui/DeploymentWindow.cpp
@@ -78,27 +78,27 @@ set(GAME_SOURCES
     src/scenes/ResultState.h
     src/scenes/WorldMapState.h
     
-    src/battle/Grid.h
-    src/battle/Unit.h
-    src/battle/UnitData.h
-    src/battle/UnitProgression.h
-    src/battle/TurnQueue.h
-    src/battle/CombatSystem.h
-    src/battle/Pathfinder.h
-    src/battle/MovementRange.h
-    src/battle/GameTile.h
-    src/battle/BattleMap.h
-    src/battle/UnitFactory.h
-    src/battle/AttackResolutionController.h
-    src/battle/PendingAttackController.h
-    src/battle/HumanTurnController.h
+    src/battle/map/Grid.h
+    src/battle/unit/Unit.h
+    src/battle/unit/UnitData.h
+    src/battle/unit/UnitProgression.h
+    src/battle/combat/TurnQueue.h
+    src/battle/combat/CombatSystem.h
+    src/battle/map/Pathfinder.h
+    src/battle/map/MovementRange.h
+    src/battle/map/GameTile.h
+    src/battle/map/BattleMap.h
+    src/battle/unit/UnitFactory.h
+    src/battle/controllers/AttackResolutionController.h
+    src/battle/combat/PendingAttackController.h
+    src/battle/controllers/HumanTurnController.h
     src/battle/BattleSession.h
-    src/battle/DeploymentPhaseController.h
-    src/battle/BattleMenuController.h
-    src/battle/DeploymentPhaseController.h
-    src/battle/DeploymentSystem.h
-    src/battle/BattleParticipantsBuilder.h
-    src/battle/CombatAnimationSystem.h
+    src/battle/controllers/DeploymentPhaseController.h
+    src/battle/controllers/BattleMenuController.h
+    src/battle/controllers/DeploymentPhaseController.h
+    src/battle/systems/DeploymentSystem.h
+    src/battle/systems/BattleParticipantsBuilder.h
+    src/battle/systems/CombatAnimationSystem.h
     src/battle/ui/UnitPanelWindow.h
     src/battle/ui/UnitInspectWindow.h
     src/battle/ui/DeploymentWindow.h

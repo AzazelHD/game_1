@@ -19,13 +19,13 @@
 #include "scenes/BattleState.h"
 #include "scenes/BattleLoader.h"
 #include "scenes/MainMenuState.h"
-#include "battle/Unit.h"
-#include "battle/UnitFactory.h"
-#include "battle/UnitProgression.h"
-#include "battle/AttackResolutionController.h"
-#include "battle/DeploymentPhaseController.h"
-#include "battle/MovementRange.h"
-#include "battle/CombatSystem.h"
+#include "battle/unit/Unit.h"
+#include "battle/unit/UnitFactory.h"
+#include "battle/unit/UnitProgression.h"
+#include "battle/controllers/AttackResolutionController.h"
+#include "battle/controllers/DeploymentPhaseController.h"
+#include "battle/map/MovementRange.h"
+#include "battle/combat/CombatSystem.h"
 #include "renderer/BattleRendererContext.h"
 #include "ai/EnemyAI.h"
 #include "ui/Cursor.h"
@@ -226,6 +226,7 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
         .cursor = m_cursor,
         .session = m_session,
         .reachableTiles = m_reachableTiles,
+        .reachableCosts = m_reachableCosts,
         .moveStartPos = m_moveStartPos,
         .moveStartPointsLeft = m_moveStartPointsLeft,
         .grid = m_grid,
@@ -249,6 +250,7 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
         .eventSystem = m_eventSystem,
         .damagePreview = m_damagePreview,
         .floatingText = m_floatingText,
+        .cursor = m_cursor,
         .skillDB = m_skillDB,
         .selectedSkillId = m_selectedSkillId,
         .topBattleText = m_topBattleText,
@@ -297,6 +299,7 @@ BattleState::MenuContext BattleState::makeMenuContext()
         .battleMap = m_battleMap,
         .cursor = m_cursor,
         .reachableTiles = m_reachableTiles,
+        .reachableCosts = m_reachableCosts,
         .currentAttackRange = m_currentAttackRange,
         .uiManager = m_uiManager,
         .humanTurnPhase = m_humanTurnPhase,

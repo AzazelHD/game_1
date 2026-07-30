@@ -21,6 +21,10 @@ void BootState::onEnter()
     // FontManager::instance().get(role) from here on — no per-state loading.
     FontManager::instance().loadAll(m_renderer);
 
+    // Apply saved graphics settings (window mode, resolution) to the actual
+    // window now that it exists — SettingsManager::instance() lazily loads
+    // settings.json on first access, but loading alone never touches the
+    // real Window; applyGraphics() is what actually does that.
     m_readyToTransition = true;
 }
 

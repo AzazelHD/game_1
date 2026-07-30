@@ -1,6 +1,6 @@
 #include "battle/ui/UnitInspectWindow.h"
 
-#include "battle/UnitData.h"
+#include "battle/unit/UnitData.h"
 #include "config/GameConstants.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"

@@ -9,8 +9,8 @@
 #include "engine/renderer/Camera.h"
 #include "config/GameConstants.h"
 #include "renderer/BattleRenderer.h"
-#include "battle/BattleMap.h"
-#include "battle/Unit.h"
+#include "battle/map/BattleMap.h"
+#include "battle/unit/Unit.h"
 #include "ui/Cursor.h"
 #include "ui/UnitPortrait.h"
 

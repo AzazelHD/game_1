@@ -1,6 +1,6 @@
 #include "ui/DamagePreview.h"
-#include "battle/Unit.h"
-#include "battle/CombatSystem.h"
+#include "battle/unit/Unit.h"
+#include "battle/combat/CombatSystem.h"
 #include "data/SkillLoader.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/Font.h"

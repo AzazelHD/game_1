@@ -22,12 +22,12 @@ class SettingsManager
 public:
     struct Settings
     {
+        int resolutionIndex = 0;
         std::vector<Resolution> resolutions = {
             {1280, 720},
             {1366, 768},
             {1600, 900},
             {1920, 1080}};
-        int resolutionIndex = 0;
 
         WindowMode windowMode = WindowMode::Windowed;
 
@@ -41,6 +41,10 @@ public:
         float appliedMasterVolume = 1.0f;
         float appliedMusicVolume = 1.0f;
     };
+
+    // Adds 2560x1440 and/or 3840x2160 to the resolution list if the
+    // primary monitor’s native resolution is at least that high.
+    void detectHighResolutionOptions();
 
     static SettingsManager &instance();
 

@@ -3,8 +3,8 @@
 #include "engine/math/Vec2.h"
 #include "engine/renderer/Texture.h"
 #include "engine/data/TileMapData.h"
-#include "battle/BattleMap.h"
-#include "battle/Grid.h"
+#include "battle/map/BattleMap.h"
+#include "battle/map/Grid.h"
 
 class Renderer;
 

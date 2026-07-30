@@ -1,9 +1,9 @@
 #pragma once
 
 #include "config/BattleCatalog.h"
-#include "battle/Unit.h"
-#include "battle/TurnQueue.h"
-#include "battle/CombatSystem.h"
+#include "battle/unit/Unit.h"
+#include "battle/combat/TurnQueue.h"
+#include "battle/combat/CombatSystem.h"
 
 #include <vector>
 #include <string>

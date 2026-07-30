@@ -1,8 +1,8 @@
 #include "engine/core/App.h"
 #include "engine/scene/Scene.h"
+#include "data/SettingsManager.h"
 #include "config/GameConstants.h"
 #include "scenes/BootState.h"
-#include <SDL3/SDL.h>
 
 #include <exception>
 #include <stdexcept>
@@ -26,6 +26,16 @@ int main(int argc, char *argv[])
 
     try
     {
+        auto &settings = SettingsManager::instance().data();
+        WindowStartupConfig windowConfig;
+        windowConfig.borderless = (settings.windowMode == WindowMode::Borderless);
+        if (!windowConfig.borderless)
+        {
+            const Resolution &res = settings.resolutions[settings.resolutionIndex];
+            windowConfig.width = res.width;
+            windowConfig.height = res.height;
+        }
+
         App app("TRPG", GameConstants::VIEW_W, GameConstants::VIEW_H, []
                 {
                     auto *sceneStack = App::getSceneStack();
@@ -37,13 +47,13 @@ int main(int argc, char *argv[])
                     }
 
                     return std::unique_ptr<Scene>(
-                        std::make_unique<BootState>(*sceneStack, renderer)); });
+                        std::make_unique<BootState>(*sceneStack, renderer)); }, App::kDefaultFixedStepSeconds, App::kDefaultFrameRatePreset, windowConfig);
         app.run();
         return 0;
     }
     catch (const std::exception &e)
     {
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fatal Error", e.what(), nullptr);
+        App::showErrorDialog("Fatal Error", e.what());
         return 1;
     }
 }

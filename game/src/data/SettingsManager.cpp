@@ -8,6 +8,30 @@
 #include <algorithm>
 #include <nlohmann/json.hpp>
 
+void SettingsManager::detectHighResolutionOptions()
+{
+    DisplayResolution native = Window::GetPrimaryDesktopResolution();
+    if (native.width <= 0 || native.height <= 0)
+        return;
+
+    // Helper to add a resolution if not already in the list.
+    auto addIfMissing = [this](int w, int h)
+    {
+        for (auto &res : m_settings.resolutions)
+            if (res.width == w && res.height == h)
+                return;
+        m_settings.resolutions.push_back({w, h});
+    };
+
+    // Add 2560x1440 if the monitor is at least 1440p-class.
+    if (native.width >= 2560 && native.height >= 1440)
+        addIfMissing(2560, 1440);
+
+    // Add 3840x2160 if the monitor is at least 4K.
+    if (native.width >= 3840 && native.height >= 2160)
+        addIfMissing(3840, 2160);
+}
+
 SettingsManager &SettingsManager::instance()
 {
     static SettingsManager s;
@@ -21,6 +45,8 @@ SettingsManager &SettingsManager::instance()
 
 void SettingsManager::loadFromFile()
 {
+    detectHighResolutionOptions();
+
     using json = nlohmann::json;
     std::ifstream file("settings.json");
     if (!file.is_open())

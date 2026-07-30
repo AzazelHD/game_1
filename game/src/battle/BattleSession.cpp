@@ -1,6 +1,6 @@
 #include "battle/BattleSession.h"
 #include "data/UnitLoader.h"
-#include "battle/UnitProgression.h"
+#include "battle/unit/UnitProgression.h"
 #include <algorithm>
 #include <cassert>
 

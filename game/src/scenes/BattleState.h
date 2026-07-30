@@ -7,19 +7,19 @@
 #include "engine/renderer/Camera.h"
 #include "engine/statemachine/StateMachine.h"
 #include "engine/input/KeyCode.h"
-#include "battle/HumanTurnController.h"
-#include "battle/AttackResolutionController.h"
-#include "battle/DeploymentPhaseController.h"
-#include "battle/PendingAttackController.h"
-#include "battle/BattleMenuController.h"
-#include "battle/Grid.h"
-#include "battle/BattleMap.h"
+#include "battle/controllers/HumanTurnController.h"
+#include "battle/controllers/AttackResolutionController.h"
+#include "battle/controllers/DeploymentPhaseController.h"
+#include "battle/combat/PendingAttackController.h"
+#include "battle/controllers/BattleMenuController.h"
+#include "battle/map/Grid.h"
+#include "battle/map/BattleMap.h"
 #include "battle/BattleSession.h"
-#include "battle/MovementRange.h"
+#include "battle/map/MovementRange.h"
 #include "renderer/BattleRenderer.h"
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
-#include "battle/CombatAnimationSystem.h"
+#include "battle/systems/CombatAnimationSystem.h"
 #include "ui/UIManager.h"
 #include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
@@ -124,6 +124,7 @@ public:
         Cursor &cursor;
         BattleSession &session;
         std::unordered_set<Vec2i, Vec2iHash> &reachableTiles;
+        std::unordered_map<Vec2i, int, Vec2iHash> &reachableCosts;
         Vec2i &moveStartPos;
         int &moveStartPointsLeft;
         Grid &grid;
@@ -152,6 +153,7 @@ public:
         BattleEventSystem &eventSystem;
         DamagePreview &damagePreview;
         FloatingTextSystem &floatingText;
+        Cursor &cursor;
         const std::unordered_map<std::string, SkillData> &skillDB;
         std::string &selectedSkillId;
         std::string &topBattleText;
@@ -206,6 +208,7 @@ public:
         BattleMap &battleMap;
         Cursor &cursor;
         std::unordered_set<Vec2i, Vec2iHash> &reachableTiles;
+        std::unordered_map<Vec2i, int, Vec2iHash> &reachableCosts;
         int &currentAttackRange;
         UIManager &uiManager;
         HumanTurnPhase &humanTurnPhase;
@@ -286,6 +289,7 @@ private:
     bool m_canUndoLastMove = false;
 
     std::unordered_set<Vec2i, Vec2iHash> m_reachableTiles;
+    std::unordered_map<Vec2i, int, Vec2iHash> m_reachableCosts;
     std::unordered_set<Vec2i, Vec2iHash> m_attackRangeTiles;
     int m_currentAttackRange = 1;
 

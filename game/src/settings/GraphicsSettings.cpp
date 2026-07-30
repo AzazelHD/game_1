@@ -97,6 +97,8 @@ void GraphicsSettings::onEnter()
             },
             [this]()
             {
+                LOG_INFO("Settings", "Back clicked, hasChanges=%d mode=%d",
+                         hasGraphicsChanges(), (int)SettingsManager::instance().data().windowMode);
                 if (hasGraphicsChanges())
                     applyAndSaveGraphics();
                 m_sm.pop();

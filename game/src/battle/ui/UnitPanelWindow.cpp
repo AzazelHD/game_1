@@ -1,6 +1,6 @@
 #include "battle/ui/UnitPanelWindow.h"
 
-#include "battle/Unit.h"
+#include "battle/unit/Unit.h"
 #include "config/GameConstants.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"

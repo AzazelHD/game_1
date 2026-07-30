@@ -2,7 +2,7 @@
 
 #include "engine/data/TileMapData.h"
 #include "engine/math/Vec2.h"
-#include "battle/MovementRange.h"
+#include "battle/map/MovementRange.h"
 
 #include <vector>
 #include <string>
