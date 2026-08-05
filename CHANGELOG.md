@@ -9,7 +9,7 @@ All notable completed milestones for the TRPG game project.
 ### Added
 
 - World / native render pass split: Renderer now owns a logical target texture, replacing SDL’s automatic logical presentation.
-- `beginWorldPass()` / `endWorldPass()` to manually control letterbox stretching with configurable scale mode.
+- `beginLogicalPass()` / `endLogicalPass()` to manually control letterbox stretching with configurable scale mode.
 - Native‑pass coordinate conversion (`toNativeRect`, `toNativePos`) so all UI windows draw in physical pixels without code changes.
 - Crisp text: `renderText` temporarily scales font point size to match native pixel density, rasterising at real resolution.
 - Move‑only `Renderer` with proper Rule‑of‑5.

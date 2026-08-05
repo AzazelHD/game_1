@@ -46,6 +46,8 @@ public:
     // primary monitor’s native resolution is at least that high.
     void detectHighResolutionOptions();
 
+    int nativeResolutionIndex() const { return m_nativeResolutionIndex; }
+
     static SettingsManager &instance();
 
     // Mutable access for settings pages
@@ -62,4 +64,5 @@ private:
 
     Settings m_settings;
     bool m_loaded = false;
+    int m_nativeResolutionIndex = -1;
 };

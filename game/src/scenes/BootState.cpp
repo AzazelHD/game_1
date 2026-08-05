@@ -5,6 +5,7 @@
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
+#include "data/SettingsManager.h"
 #include "scenes/BootState.h"
 #include "scenes/MainMenuState.h"
 
@@ -21,10 +22,16 @@ void BootState::onEnter()
     // FontManager::instance().get(role) from here on — no per-state loading.
     FontManager::instance().loadAll(m_renderer);
 
-    // Apply saved graphics settings (window mode, resolution) to the actual
-    // window now that it exists — SettingsManager::instance() lazily loads
-    // settings.json on first access, but loading alone never touches the
-    // real Window; applyGraphics() is what actually does that.
+    // The Window's initial size/border were already set from settings.json
+    // once, before this scene existed (see App's WindowConfigFactory in
+    // main.cpp) — that's what gets something correct on screen as early as
+    // possible. Calling applyGraphics() here makes SettingsManager the
+    // single source of truth going forward: it re-applies (or corrects, if
+    // the two ever drift) window state using the exact same code path that
+    // runs whenever the player changes settings later, instead of trusting
+    // the constructor-time config to have matched perfectly.
+    SettingsManager::instance().applyGraphics();
+
     m_readyToTransition = true;
 }
 

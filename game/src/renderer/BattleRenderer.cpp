@@ -78,9 +78,11 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
             drawUnitAt(row, col, ax, ay, m,
                        unitRender,
                        ctx.battleMap,
-                       ctx.debugRenderer);
+                       ctx.debugRenderer,
+                       ctx.movementAnimation);
         }
     }
+    drawAnimatingUnit(ctx, m, unitRender);
 }
 
 void BattleRenderer::drawBackground(FColor top, FColor bottom) const
@@ -179,7 +181,7 @@ std::vector<UnitRenderProxy> BattleRenderer::buildUnitRenderList(const std::vect
             continue;
         const std::string &name = u->getName();
         const std::string label = name.empty() ? std::string() : std::string(1, name[0]);
-        out.push_back({u->getPosition(), u->getTeam(), !u->isDead(), label});
+        out.push_back({u, u->getPosition(), u->getTeam(), !u->isDead(), label});
     }
 
     return out;
@@ -189,16 +191,27 @@ void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
                                 const IsoMetrics &m,
                                 const std::vector<UnitRenderProxy> &units,
                                 const BattleMap &battleMap,
-                                DebugRenderer *debugRenderer) const
+                                DebugRenderer *debugRenderer,
+                                const MovementAnimationController *movementAnimation) const
 {
     if (!debugRenderer)
         return;
+
+    const Unit *animatingUnit = (movementAnimation && movementAnimation->isAnimating())
+                                    ? movementAnimation->animatingUnit()
+                                    : nullptr;
 
     const UnitRenderProxy *unit = nullptr;
 
     for (const auto &u : units)
     {
-        if (u.alive && u.pos.x == col && u.pos.y == row)
+        if (!u.alive)
+            continue;
+        // The animating unit is skipped at its LOGICAL tile — it's drawn
+        // once, separately, at its interpolated position below instead.
+        if (u.unit == animatingUnit)
+            continue;
+        if (u.pos.x == col && u.pos.y == row)
         {
             unit = &u;
             break;
@@ -231,6 +244,57 @@ void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
     float radius = m.halfTW * 0.6f;
 
     UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, radius * 2.0f, unit->team, unit->debugLabel);
+}
+
+void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx, const IsoMetrics &m,
+                                       const std::vector<UnitRenderProxy> &units) const
+{
+    if (!ctx.debugRenderer || !ctx.movementAnimation || !ctx.movementAnimation->isAnimating())
+        return;
+
+    const Unit *animatingUnit = ctx.movementAnimation->animatingUnit();
+    const UnitRenderProxy *proxy = nullptr;
+    for (const auto &u : units)
+    {
+        if (u.unit == animatingUnit)
+        {
+            proxy = &u;
+            break;
+        }
+    }
+    if (!proxy)
+        return;
+
+    const Vec2f visualTile = ctx.movementAnimation->getVisualTilePos();
+    const Vec2f iso = tileToIso(visualTile, ctx.mapData.tileWidth, ctx.mapData.tileHeight);
+    const float ax = (iso.x - ctx.camera.getOffset().x) * m.s;
+    const float ay = (iso.y - ctx.camera.getOffset().y) * m.s;
+
+    const float elev = ctx.movementAnimation->getVisualHeight() * m.elevStep;
+
+    Color color;
+    switch (proxy->team)
+    {
+    case 0:
+        color = {64, 128, 255, 220};
+        break;
+    case 1:
+        color = {64, 255, 64, 220};
+        break;
+    default:
+        color = {255, 64, 64, 220};
+        break;
+    }
+
+    const float floatOffset = 6.0f * m.s;
+    const float cx = ax;
+    const float cy = ay - elev - m.halfTH - floatOffset;
+    const float radius = m.halfTW * 0.6f;
+
+    // TODO: swap placeholder circle for a real walk-cycle/jump sprite once
+    // art exists — pick facing/frame from the segment's direction of
+    // travel, and a distinct airborne pose for a hop's non-paused portion.
+    UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, radius * 2.0f, proxy->team, proxy->debugLabel);
 }
 
 // ── Cursor rendering (using passed parameters) ──────────────────────────────

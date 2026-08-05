@@ -22,6 +22,7 @@ set(GAME_SOURCES
     src/battle/map/BattleMap.cpp
     src/battle/unit/UnitFactory.cpp
     src/battle/controllers/AttackResolutionController.cpp
+    src/battle/controllers/MovementAnimationController.cpp
     src/battle/combat/PendingAttackController.cpp
     src/battle/controllers/HumanTurnController.cpp
     src/battle/BattleSession.cpp
@@ -90,6 +91,7 @@ set(GAME_SOURCES
     src/battle/map/BattleMap.h
     src/battle/unit/UnitFactory.h
     src/battle/controllers/AttackResolutionController.h
+    src/battle/controllers/MovementAnimationController.h
     src/battle/combat/PendingAttackController.h
     src/battle/controllers/HumanTurnController.h
     src/battle/BattleSession.h

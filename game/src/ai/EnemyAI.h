@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include "engine/math/Vec2.h"
 
 class Unit;
 class Grid;
@@ -8,29 +9,31 @@ class TurnQueue;
 class BattleMap;
 
 // EnemyAI decides and executes one enemy unit's turn.
-// It drives the same systems as player input — no special back-door access.
-//
-// [x]: Implement:
-//     void takeTurn(Unit& unit, Grid& grid, std::vector<Unit*>& allUnits)
-//     Heuristic decision tree:
-//       1. Score all living enemy units (evaluateTarget): distance, HP%,
-//          kill potential, and ally focus. Pick the highest-scoring target.
-//       2. If not yet moved this turn: compute movement range
-//          (MovementRange::compute), pick the reachable, unblocked tile
-//          closest to the target, and move there (or stay put if no tile
-//          improves position).
-//       3. If not yet acted and the target is within attack range,
-//          resolve combat (CombatSystem::resolve).
-//       4. Mark unit.hasMoved = true, unit.hasActed = true as each
-//          action completes.
-//
-// Design: EnemyAI is stateless — all data comes in via parameters. No member variables.
-// This makes it easy to test and to swap in a smarter AI later without changing the interface.
 class EnemyAI
 {
 public:
+    // Pure decision, no mutation — lets the caller (BattleState) drive the
+    // actual move via its own animated-movement path, then resolve the
+    // attack once arrival completes.
+    struct EnemyTurnPlan
+    {
+        Unit *target = nullptr;
+        bool wantsToMove = false;
+        Vec2i destination{};
+    };
+
+    static EnemyTurnPlan planTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits);
+
+    // Resolves the attack-if-in-range step only (no movement) — called once
+    // the unit has arrived at its planned destination (or immediately, if
+    // the plan never wanted to move).
+    static void resolveAttack(Unit &unit, Unit *target);
+
+    // Synchronous, instant, unanimated — still used by debug-only paths
+    // (immediate AI takeover, autoplay). Internally now just calls
+    // planTurn()+resolveAttack() back to back.
     static void takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits);
-    static int chooseAction(const Unit &unit, const Grid &grid,
-                            std::vector<Unit *> &allUnits);
+
+    static int chooseAction(const Unit &unit, const Grid &grid, std::vector<Unit *> &allUnits);
     static Unit *chooseTarget(const Unit &unit, std::vector<Unit *> &allUnits);
 };

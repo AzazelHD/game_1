@@ -22,6 +22,13 @@ public:
     void setFont(const Font *font) { m_font = font; }
     void start(std::vector<Line> lines);
 
+    // Which line is currently showing (typing or fully revealed). Lets an
+    // external sequencer (e.g. DialogueController) keep a parallel array —
+    // aligned by index to the Lines passed into start() — for data this
+    // generic window doesn't and shouldn't know about (e.g. a speaking
+    // Unit's position for camera tracking).
+    [[nodiscard]] int currentLineIndex() const { return m_lineIndex; }
+
     void handleInput(const Input &input) override;
     void update(float dt) override;
     void render(Renderer *renderer) const override;

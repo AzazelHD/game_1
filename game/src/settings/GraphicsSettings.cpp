@@ -42,8 +42,9 @@ void GraphicsSettings::onEnter()
         [&s]() -> std::string
         {
             const Resolution &res = s.resolutions[s.resolutionIndex];
-            char buf[64];
-            std::snprintf(buf, sizeof(buf), "%d x %d", res.width, res.height);
+            const bool isNative = (s.resolutionIndex == SettingsManager::instance().nativeResolutionIndex());
+            char buf[80];
+            std::snprintf(buf, sizeof(buf), "%d x %d%s", res.width, res.height, isNative ? " (Native)" : "");
             return std::string("< ") + buf + " >";
         },
         [&s](bool forward)

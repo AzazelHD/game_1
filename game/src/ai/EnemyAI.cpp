@@ -140,37 +140,20 @@ namespace
     }
 } // namespace
 
-// ---------------------------------------------------------------------------
-// EnemyAI::takeTurn
-// ---------------------------------------------------------------------------
-//
-// NOTE: The AI deliberately uses the simple "move once, then act once" turn
-// shape rather than the full player turn-grammar (multi-segment movement,
-// undo, etc). It still goes through the same Unit API (spendMovePoints /
-// exhaustMovement / setMajorAction) so Unit's turn-state stays consistent
-// regardless of which controller (human or AI) drove the turn.
-
-void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
+EnemyAI::EnemyTurnPlan EnemyAI::planTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
 {
-    // Already spent both budgets somehow — nothing to do.
+    EnemyTurnPlan plan;
+
     if (unit.hasMoved() && unit.hasActed())
-        return;
+        return plan;
 
-    // ── 1. Find the best enemy target using scoring system ──────────────────
-    Unit *target = findBestTarget(unit, allUnits);
-
-    if (!target)
+    plan.target = findBestTarget(unit, allUnits);
+    if (!plan.target)
     {
-        // No enemies alive — this is a genuine Wait, not a major action.
-        // Waiting is cheaper (BASE_WAIT_COST) than acting, and the AI
-        // shouldn't be charged a major-action's CT cost for doing nothing.
-        // BattleState is the one that calls advanceToNextUnit() and derives
-        // CT cost from hasMoved()/hasActed(), so leave both false here.
         LOG_INFO("EnemyAI", "%s has no target – waiting", unit.getName().c_str());
-        return;
+        return plan;
     }
 
-    // ── 2. Compute movement range (only if this unit hasn't moved yet) ──────
     if (!unit.hasMoved())
     {
         const Vec2i startPos = unit.getPosition();
@@ -179,91 +162,103 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::
         auto reachable = MovementRange::compute(grid, battleMap, startPos, moveRange,
                                                 unit.getTeam(), allUnits, unit.getJump());
 
-        // ── 3. Pick the reachable tile closest to the target ─────────────────
-        const Vec2i destPos = bestTileToward(unit, reachable, target->getPosition(),
+        const Vec2i destPos = bestTileToward(unit, reachable.reachable, plan.target->getPosition(),
                                              grid, allUnits);
 
-        // ── 4. Move there (if destination is valid and not blocked) ──────────
-        if (destPos != startPos)
+        bool destinationBlocked = false;
+        for (const Unit *u : allUnits)
         {
-            // Check if destination is occupied by another unit
-            bool destinationBlocked = false;
-            for (const Unit *u : allUnits)
+            if (u && !u->isDead() && u != &unit && u->getPosition() == destPos)
             {
-                if (u && !u->isDead() && u != &unit && u->getPosition() == destPos)
-                {
-                    destinationBlocked = true;
-                    break;
-                }
-            }
-
-            if (!destinationBlocked)
-            {
-                grid.getTile(startPos).occupied = false;
-                unit.setPosition(destPos);
-                grid.getTile(destPos).occupied = true;
-                LOG_INFO("EnemyAI", "%s moves from (%d,%d) to (%d,%d)",
-                         unit.getName().c_str(), startPos.x, startPos.y,
-                         destPos.x, destPos.y);
-            }
-            else
-            {
-                LOG_INFO("EnemyAI", "%s wants to move to (%d,%d) but it's blocked – staying",
-                         unit.getName().c_str(), destPos.x, destPos.y);
+                destinationBlocked = true;
+                break;
             }
         }
-        // AI doesn't do multi-segment movement, so it simply spends its
-        // whole pool in one shot regardless of the actual path cost.
-        unit.exhaustMovement();
+
+        if (destPos != startPos && !destinationBlocked)
+        {
+            plan.wantsToMove = true;
+            plan.destination = destPos;
+        }
     }
 
-    // ── 5. Attack if the target is now within attack range ──────────────────
-    if (!unit.hasActed())
-    {
-        const int distToTarget = manhattanDistance(unit.getPosition(), target->getPosition());
-        if (distToTarget <= unit.getAtkRange())
-        {
-            HitContext ctx = makeAttackContext(unit, *target);
-            CombatResult result = CombatSystem::resolve(ctx);
+    return plan;
+}
 
-            // TODO: trigger attack animation (unit -> target) here once the
-            // engine has an animation system; apply damage/log on completion
-            // instead of immediately, to let the visual play out.
-            if (result.hit)
-            {
-                target->takeDamage(result.damage);
-                LOG_INFO("EnemyAI", "%s attacks %s for %d damage! (HP: %d/%d)",
-                         unit.getName().c_str(), target->getName().c_str(),
-                         result.damage, target->getCurrentHp(), target->getMaxHp());
-            }
-            else
-            {
-                LOG_INFO("EnemyAI", "%s misses %s", unit.getName().c_str(), target->getName().c_str());
-            }
+void EnemyAI::resolveAttack(Unit &unit, Unit *target)
+{
+    if (unit.hasActed())
+        return;
+
+    if (!target || target->isDead())
+    {
+        unit.setMajorAction(MajorAction::Attack);
+        return;
+    }
+
+    const int distToTarget = manhattanDistance(unit.getPosition(), target->getPosition());
+    if (distToTarget <= unit.getAtkRange())
+    {
+        HitContext ctx = makeAttackContext(unit, *target);
+        CombatResult result = CombatSystem::resolve(ctx);
+
+        // TODO: trigger attack animation (unit -> target) here once the
+        // engine has an animation system; apply damage/log on completion
+        // instead of immediately, to let the visual play out.
+        if (result.hit)
+        {
+            target->takeDamage(result.damage);
+            LOG_INFO("EnemyAI", "%s attacks %s for %d damage! (HP: %d/%d)",
+                     unit.getName().c_str(), target->getName().c_str(),
+                     result.damage, target->getCurrentHp(), target->getMaxHp());
         }
         else
         {
-            LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (dist %d > range %d)",
-                     unit.getName().c_str(), target->getName().c_str(), distToTarget, unit.getAtkRange());
+            LOG_INFO("EnemyAI", "%s misses %s", unit.getName().c_str(), target->getName().c_str());
         }
-        unit.setMajorAction(MajorAction::Attack);
     }
+    else
+    {
+        LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (dist %d > range %d)",
+                 unit.getName().c_str(), target->getName().c_str(), distToTarget, unit.getAtkRange());
+    }
+    unit.setMajorAction(MajorAction::Attack);
 }
 
-int EnemyAI::chooseAction(const Unit &unit, const Grid &grid,
-                          std::vector<Unit *> &allUnits)
+void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
+{
+    if (unit.hasMoved() && unit.hasActed())
+        return;
+
+    EnemyTurnPlan plan = planTurn(unit, grid, battleMap, allUnits);
+    if (!plan.target)
+        return;
+
+    if (!unit.hasMoved())
+    {
+        if (plan.wantsToMove)
+        {
+            grid.getTile(unit.getPosition()).occupied = false;
+            unit.setPosition(plan.destination);
+            grid.getTile(plan.destination).occupied = true;
+            LOG_INFO("EnemyAI", "%s moves to (%d,%d)", unit.getName().c_str(), plan.destination.x, plan.destination.y);
+        }
+        unit.exhaustMovement();
+    }
+
+    resolveAttack(unit, plan.target);
+}
+
+int EnemyAI::chooseAction(const Unit &unit, const Grid &grid, std::vector<Unit *> &allUnits)
 {
     Unit *target = findBestTarget(unit, allUnits);
     if (!target)
-        return 2; // Wait
-
+        return 2;
     if (manhattanDistance(unit.getPosition(), target->getPosition()) <= unit.getAtkRange())
-        return 1; // Attack
-
+        return 1;
     if (!unit.hasMoved())
-        return 0; // Move
-
-    return 2; // Wait
+        return 0;
+    return 2;
 }
 
 Unit *EnemyAI::chooseTarget(const Unit &unit, std::vector<Unit *> &allUnits)

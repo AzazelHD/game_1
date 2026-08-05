@@ -30,6 +30,23 @@ void SettingsManager::detectHighResolutionOptions()
     // Add 3840x2160 if the monitor is at least 4K.
     if (native.width >= 3840 && native.height >= 2160)
         addIfMissing(3840, 2160);
+
+    // Always add the monitor's own native resolution, whatever it is —
+    // needed so "Borderless + this resolution" can always reach a true
+    // fullscreen borderless window, even on non-standard/ultrawide displays
+    // the thresholds above don't cover.
+    addIfMissing(native.width, native.height);
+
+    m_nativeResolutionIndex = -1;
+    for (int i = 0; i < static_cast<int>(m_settings.resolutions.size()); ++i)
+    {
+        if (m_settings.resolutions[i].width == native.width &&
+            m_settings.resolutions[i].height == native.height)
+        {
+            m_nativeResolutionIndex = i;
+            break;
+        }
+    }
 }
 
 SettingsManager &SettingsManager::instance()
@@ -109,19 +126,15 @@ void SettingsManager::applyGraphics()
              m_settings.windowMode == WindowMode::Borderless ? "Borderless" : "Windowed",
              m_settings.resolutionIndex);
 
-    if (m_settings.windowMode == WindowMode::Borderless)
-    {
-        LOG_INFO("Settings", "Calling setBorderlessWindowed(true)");
-        window->setBorderlessWindowed(true);
-        window->getRenderer().setPresentationMode(Renderer::PresentationMode::Stretch);
-    }
-    else
-    {
-        LOG_INFO("Settings", "Calling setBorderlessWindowed(false), setSize");
-        window->setBorderlessWindowed(false);
-        const Resolution &res = m_settings.resolutions[m_settings.resolutionIndex];
-        window->setSize(res.width, res.height);
-        window->getRenderer().setPresentationMode(Renderer::PresentationMode::Letterbox);
-    }
+    const Resolution &res = m_settings.resolutions[m_settings.resolutionIndex];
+    const bool borderless = (m_settings.windowMode == WindowMode::Borderless);
+
+    LOG_INFO("Settings", "Calling setBorderless(%d), setSize(%d,%d)",
+             borderless, res.width, res.height);
+
+    window->setBorderless(borderless);
+    window->setSize(res.width, res.height);
+    window->getRenderer().setPresentationMode(Renderer::PresentationMode::Letterbox);
+
     UIScale::refresh();
 }

@@ -67,7 +67,11 @@ public:
                     const IsoMetrics &m,
                     const std::vector<UnitRenderProxy> &units,
                     const BattleMap &battleMap,
-                    DebugRenderer *debugRenderer) const;
+                    DebugRenderer *debugRenderer,
+                    const MovementAnimationController *movementAnimation) const;
+
+    void drawAnimatingUnit(const BattleRendererContext &ctx, const IsoMetrics &m,
+                           const std::vector<UnitRenderProxy> &units) const;
 
     std::vector<UnitRenderProxy> buildUnitRenderList(const std::vector<Unit *> &units) const;
 

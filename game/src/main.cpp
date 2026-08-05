@@ -26,16 +26,6 @@ int main(int argc, char *argv[])
 
     try
     {
-        auto &settings = SettingsManager::instance().data();
-        WindowStartupConfig windowConfig;
-        windowConfig.borderless = (settings.windowMode == WindowMode::Borderless);
-        if (!windowConfig.borderless)
-        {
-            const Resolution &res = settings.resolutions[settings.resolutionIndex];
-            windowConfig.width = res.width;
-            windowConfig.height = res.height;
-        }
-
         App app("TRPG", GameConstants::VIEW_W, GameConstants::VIEW_H, []
                 {
                     auto *sceneStack = App::getSceneStack();
@@ -47,7 +37,20 @@ int main(int argc, char *argv[])
                     }
 
                     return std::unique_ptr<Scene>(
-                        std::make_unique<BootState>(*sceneStack, renderer)); }, App::kDefaultFixedStepSeconds, App::kDefaultFrameRatePreset, windowConfig);
+                        std::make_unique<BootState>(*sceneStack, renderer)); }, App::kDefaultFixedStepSeconds, App::kDefaultFrameRatePreset, []() -> WindowStartupConfig
+                {
+                    // Runs inside App's constructor, after SDL_Init succeeds —
+                    // safe here to query display info (native resolution) and
+                    // touch SettingsManager, which wasn't true if this ran in
+                    // main() before App/SDL existed.
+                    auto &settings = SettingsManager::instance().data();
+                    const Resolution &res = settings.resolutions[settings.resolutionIndex];
+
+                    WindowStartupConfig windowConfig;
+                    windowConfig.width = res.width;
+                    windowConfig.height = res.height;
+                    windowConfig.borderless = (settings.windowMode == WindowMode::Borderless);
+                    return windowConfig; });
         app.run();
         return 0;
     }

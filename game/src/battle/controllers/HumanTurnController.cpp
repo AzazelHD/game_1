@@ -1,12 +1,12 @@
 #include "engine/core/App.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
-#include "engine/math/MathUtils.h"
 #include "engine/renderer/FontManager.h"
+#include "engine/math/MathUtils.h"
 #include "battle/controllers/HumanTurnController.h"
-#include "scenes/BattleState.h"
 #include "battle/unit/Unit.h"
 #include "battle/combat/CombatSystem.h"
+#include "scenes/BattleState.h"
 #include "ui/windows/ConfirmWindow.h"
 
 #include <cstdio>
@@ -23,6 +23,9 @@ void HumanTurnController::handleActiveTurn(const Input &input)
         return;
 
     if (ctx.uiManager.hasBlockingWindow())
+        return;
+
+    if (m_state.movementAnimation().isAnimating())
         return;
 
     if (ctx.phase == BattleState::HumanTurnPhase::FreeCursor)
@@ -85,21 +88,14 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             ctx.moveStartPos = active->getPosition();
             ctx.moveStartPointsLeft = active->getMoveRangeLeft();
 
-            // Real BFS-accumulated cost, computed once by MovementRange when
-            // the move menu was opened — never re-derive this via
-            // manhattanDistance, which ignores obstacles/detours.
+            // Real BFS-accumulated cost from MovementRange — never re-derive
+            // via manhattanDistance.
             const int pathCost = ctx.reachableCosts.at(dest);
 
-            Vec2i start = active->getPosition();
-            ctx.grid.getTile(start).occupied = false;
-            active->setPosition(dest);
-            ctx.grid.getTile(dest).occupied = true;
-            active->spendMovePoints(pathCost);
-            ctx.canUndoLastMove = true;
-            ctx.eventSystem.emit(BattleTriggerType::OnTileEnter);
-
             ctx.phase = BattleState::HumanTurnPhase::ActionMenu;
-            m_state.openBattleMenu(m_state.canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept);
+            m_state.beginUnitWalk(active, dest, pathCost,
+                                  [this, active]()
+                                  { m_state.openBattleMenu(m_state.canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept); });
         }
         else if (input.isKeyPressed(KeyCode::Back, false))
         {

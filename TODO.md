@@ -2,15 +2,15 @@
 
 ## Active Bugs
 
-- [ ] **Movement cost**  
+- [x] **Movement cost**  
        Movement points are spent based on Manhattan distance instead of actual path length from pathfinder.  
        _Files: `battle/map/MovementRange`, `battle/map/Pathfinder`_
 
-- [ ] **Cursor position after combat**  
+- [x] **Cursor position after combat**  
        Cursor remains on target tile after attack/spell. Add cursor to `AttackResolutionContext` and reset to active unit when battle menu reopens.  
        _Files: `BattleState`, `AttackResolutionController`_
 
-- [ ] **Borderless graphics**  
+- [x] **Borderless graphics**  
        Intermittent graphics application when changing WindowMode. Investigate and fix if still reproducible.  
        _Files: `SettingsRowWindow`, `ValueControl`, input timing_
 
@@ -22,7 +22,7 @@
 
 ## Render Pass Integration (refactor/renderer-passes branch)
 
-- [ ] Update `BattleState::render()` to use `beginWorldPass()` / `endWorldPass()`
+- [x] Update `BattleState::render()` to use `beginLogicalPass()` / `endLogicalPass()`
 - [ ] Split `renderEffects()`: `DamagePreview` → native pass, `CombatAnimationSystem::render` + `DebugRenderer::flush` → world pass
 - [ ] Confirm no visual regressions (text crisp, correct coordinate spaces)
 

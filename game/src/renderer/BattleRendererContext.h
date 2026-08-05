@@ -3,6 +3,7 @@
 #include "engine/data/TileMapData.h"
 #include "engine/math/Vec2.h"
 #include "battle/map/MovementRange.h"
+#include "battle/controllers/MovementAnimationController.h"
 
 #include <vector>
 #include <string>
@@ -46,6 +47,7 @@ struct TileLayerRef
 
 struct UnitRenderProxy
 {
+    const Unit *unit; // identity, needed to match against the animating unit
     Vec2i pos;
     int team;
     bool alive;
@@ -69,6 +71,7 @@ struct BattleRendererContext
 
     const std::vector<Unit *> &units;
     DebugRenderer *debugRenderer;
+    const MovementAnimationController *movementAnimation = nullptr;
     bool showSpawnOverlays = false;
 
     BattleOverlayMode overlayMode;

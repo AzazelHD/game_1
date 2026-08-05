@@ -10,12 +10,15 @@
 #include "battle/controllers/HumanTurnController.h"
 #include "battle/controllers/AttackResolutionController.h"
 #include "battle/controllers/DeploymentPhaseController.h"
+#include "battle/controllers/DialogueController.h"
+#include "battle/controllers/MovementAnimationController.h"
 #include "battle/combat/PendingAttackController.h"
 #include "battle/controllers/BattleMenuController.h"
 #include "battle/map/Grid.h"
 #include "battle/map/BattleMap.h"
 #include "battle/BattleSession.h"
 #include "battle/map/MovementRange.h"
+#include "battle/map/Pathfinder.h"
 #include "renderer/BattleRenderer.h"
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
@@ -128,6 +131,7 @@ public:
         Vec2i &moveStartPos;
         int &moveStartPointsLeft;
         Grid &grid;
+        BattleMap &battleMap;
         bool &canUndoLastMove;
         BattleEventSystem &eventSystem;
         int currentAttackRange;
@@ -234,6 +238,8 @@ public:
     // DeploymentPhaseController.
     void openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger);
     BattleMenuController &battleMenu() { return m_battleMenu; }
+    void beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::function<void()> onComplete);
+    MovementAnimationController &movementAnimation() { return m_movementAnimation; }
     bool canActiveUnitMove() const;
     HitContext makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const;
     void preparePendingAttack(Unit *active,
@@ -344,6 +350,8 @@ private:
     AttackResolutionController m_attackResolution{*this};
     DeploymentPhaseController m_deploymentPhase{*this};
     BattleMenuController m_battleMenu{*this};
+    DialogueController m_dialogueController{*this};
+    MovementAnimationController m_movementAnimation;
 
     UnitPanelWindow *m_unitPanelWindow = nullptr;
 
@@ -378,4 +386,13 @@ private:
 
     void showDialogueFromEvent(const std::string &text);
     void spawnEnemyFromEvent(const std::string &templatePath);
+
+    // Starts a multi-beat scripted sequence with per-beat camera retargeting
+    // (see DialogueController). Distinct from showDialogueFromEvent(), which
+    // stays the single-line system-message path used by existing
+    // BattleEventSystem triggers. Called from BattleEventSystem::Callbacks
+    // lambdas set up in onEnter(), same as showDialogueFromEvent.
+    void startStoryDialogue(std::vector<DialogueBeat> beats, std::function<void()> onComplete = {});
+
+    void finishEnemyAction();
 };
