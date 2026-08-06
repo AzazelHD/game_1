@@ -25,6 +25,7 @@ set(GAME_SOURCES
     src/battle/controllers/MovementAnimationController.cpp
     src/battle/combat/PendingAttackController.cpp
     src/battle/controllers/HumanTurnController.cpp
+    src/battle/controllers/DialogueController.cpp
     src/battle/BattleSession.cpp
     src/battle/controllers/DeploymentPhaseController.cpp
     src/battle/controllers/BattleMenuController.cpp
@@ -94,6 +95,7 @@ set(GAME_SOURCES
     src/battle/controllers/MovementAnimationController.h
     src/battle/combat/PendingAttackController.h
     src/battle/controllers/HumanTurnController.h
+    src/battle/controllers/DialogueController.h
     src/battle/BattleSession.h
     src/battle/controllers/DeploymentPhaseController.h
     src/battle/controllers/BattleMenuController.h
