@@ -225,10 +225,12 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
         return;
 
     const Vec2i start = unit->getPosition();
+    const bool teleporting = unit->hasGearSpecialEffect(GearSpecialEffect::TeleportMovement);
 
     // Same walkability rules MovementRange used (height/jump restriction,
     // enemy-blocks/ally-passes-through occupancy) so Pathfinder reconstructs
-    // the SAME path MovementRange already found reachable.
+    // the SAME path MovementRange already found reachable. Teleporting units
+    // skip path reconstruction and visual walking after committing the move.
     std::unordered_map<Vec2i, int, Vec2iHash> unitTeamAt;
     for (Unit *u : m_session.getUnitPtrs())
         if (u && !u->isDead())
@@ -239,33 +241,37 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
     Grid *gridPtr = &m_grid;
     BattleMap *battleMapPtr = &m_battleMap;
 
-    PathRules rules;
-    rules.getNeighbors = [gridPtr, battleMapPtr, jump, team, unitTeamAt](Vec2i from) -> std::vector<Vec2i>
+    std::vector<Vec2i> path;
+    if (!teleporting)
     {
-        static const Vec2i dirs[4] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        std::vector<Vec2i> out;
-        for (const Vec2i &d : dirs)
+        PathRules rules;
+        rules.getNeighbors = [gridPtr, battleMapPtr, jump, team, unitTeamAt](Vec2i from) -> std::vector<Vec2i>
         {
-            Vec2i to{from.x + d.x, from.y + d.y};
-            if (!gridPtr->isValid(to))
-                continue;
-            if (std::abs(battleMapPtr->at(to.x, to.y).height - battleMapPtr->at(from.x, from.y).height) > jump)
-                continue;
-            auto it = unitTeamAt.find(to);
-            if (it != unitTeamAt.end() && it->second != team)
-                continue; // enemy fully blocks
-            out.push_back(to);
-        }
-        return out;
-    };
-    rules.moveCost = [gridPtr](Vec2i from, Vec2i to) -> int
-    {
-        return gridPtr->getMoveCost(from, to);
-    };
+            static const Vec2i dirs[4] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            std::vector<Vec2i> out;
+            for (const Vec2i &d : dirs)
+            {
+                Vec2i to{from.x + d.x, from.y + d.y};
+                if (!gridPtr->isValid(to))
+                    continue;
+                if (std::abs(battleMapPtr->at(to.x, to.y).height - battleMapPtr->at(from.x, from.y).height) > jump)
+                    continue;
+                auto it = unitTeamAt.find(to);
+                if (it != unitTeamAt.end() && it->second != team)
+                    continue; // enemy fully blocks
+                out.push_back(to);
+            }
+            return out;
+        };
+        rules.moveCost = [gridPtr](Vec2i from, Vec2i to) -> int
+        {
+            return gridPtr->getMoveCost(from, to);
+        };
 
-    std::vector<Vec2i> path = Pathfinder::findPath(m_grid, PathRequest{start, dest}, rules);
-    if (path.empty())
-        path = {start, dest}; // defensive fallback — dest was already validated reachable
+        path = Pathfinder::findPath(m_grid, PathRequest{start, dest}, rules);
+        if (path.empty())
+            path = {start, dest}; // defensive fallback — dest was already validated reachable
+    }
 
     // Commit the logical move NOW, instantly (grid occupancy, points spent)
     // — only the VISUAL playback is deferred. Undo (Back) reads this same
@@ -278,6 +284,13 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
     m_eventSystem.emit(BattleTriggerType::OnTileEnter);
 
     m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+
+    if (teleporting)
+    {
+        if (onComplete)
+            onComplete();
+        return;
+    }
 
     std::vector<int> heights;
     heights.reserve(path.size());
@@ -459,6 +472,17 @@ void BattleState::processUIEvents(Unit *active)
             m_turnTimer = 0.5f;
             m_turnState = TurnState::WaitingForAnimation;
             continue;
+        }
+
+        if (event.type == UIEventType::ActionCanceled)
+        {
+            if (event.windowId == WindowId::BattleInspect ||
+                event.windowId == WindowId::Equipment ||
+                event.windowId == WindowId::PartyDetail)
+            {
+                m_uiManager.popById(event.windowId);
+                continue;
+            }
         }
     }
 }

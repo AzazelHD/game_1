@@ -1,0 +1,17 @@
+{
+  "id": "placeholder_knight_guard",
+  "name": "Placeholder Guard",
+  "description": "PLACEHOLDER: Knight defensive passive; balance later.",
+  "basePower": 0,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 100,
+  "range": 0,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["buff"],
+  "progressionCategory": "passive",
+  "requiredPromotion": "Knight",
+  "autoGranted": true,
+  "placeholder": true
+}

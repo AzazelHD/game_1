@@ -1,0 +1,17 @@
+{
+  "id": "placeholder_paladin_rebuke",
+  "name": "Placeholder Rebuke",
+  "description": "PLACEHOLDER: Paladin reaction skill; balance later.",
+  "basePower": 5,
+  "isMagical": false,
+  "element": "holy",
+  "skillAccuracy": 100,
+  "range": 1,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["damage"],
+  "progressionCategory": "reaction",
+  "requiredPromotion": "Paladin",
+  "autoGranted": true,
+  "placeholder": true
+}

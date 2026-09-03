@@ -10,13 +10,13 @@
 #include "engine/renderer/Renderer.h"
 #include "engine/ui/HorizontalLayout.h"
 #include "engine/ui/Insets.h"
+#include "engine/ui/TextWrap.h"
 #include "ui/WindowId.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
 #include "ui/UIUtils.h"
 
 #include <algorithm>
-#include <sstream>
 #include <vector>
 
 namespace
@@ -30,46 +30,6 @@ namespace
     constexpr float kLineSpacing = 4.0f;    // vertical spacing between lines of text
     constexpr float kButtonsGap = 56.0f;    // gap between last text line and the buttons row
     constexpr float kButtonSpacing = 40.0f; // gap between Cancel and Confirm
-
-    std::vector<std::string> wrapText(Renderer *renderer, const Font *font,
-                                      const std::string &text, float maxWidth)
-    {
-        std::vector<std::string> lines;
-        if (!renderer || !font || text.empty())
-            return lines;
-
-        // Split on manual line breaks first, then word-wrap each paragraph
-        // independently — so an explicit \n always starts a new line, and
-        // long paragraphs still wrap automatically within maxWidth.
-        std::istringstream paragraphStream(text);
-        std::string paragraph;
-
-        while (std::getline(paragraphStream, paragraph, '\n'))
-        {
-            std::istringstream wordStream(paragraph);
-            std::string word;
-            std::string currentLine;
-
-            while (wordStream >> word)
-            {
-                const std::string candidate = currentLine.empty() ? word : currentLine + " " + word;
-                const float candidateWidth = renderer->measureText(font, candidate).x;
-                if (candidateWidth <= maxWidth || currentLine.empty())
-                    currentLine = candidate;
-                else
-                {
-                    lines.push_back(currentLine);
-                    currentLine = word;
-                }
-            }
-
-            // Push whatever's left, even if the paragraph was empty (keeps a
-            // blank line for consecutive \n\n, instead of silently dropping it).
-            lines.push_back(currentLine);
-        }
-
-        return lines;
-    }
 
 } // anonymous namespace
 
@@ -145,7 +105,7 @@ void ConfirmWindow::render(Renderer *renderer) const
     const float maxBoxW = kMaxW * ui;
     const float innerMaxTextW = maxBoxW - kHorizontalPad * ui;
 
-    const std::vector<std::string> lines = wrapText(renderer, m_font, m_prompt, innerMaxTextW);
+    const std::vector<std::string> lines = TextWrap::wrap(renderer, m_font, m_prompt, innerMaxTextW);
 
     float widestLineW = 0.0f;
     for (const std::string &line : lines)

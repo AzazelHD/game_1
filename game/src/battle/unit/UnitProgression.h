@@ -54,6 +54,23 @@ struct RaceGrowth
     float evasionPerLevel = 0.0f;
 };
 
+// Placeholder specialization growth adjustments. The design specifies that
+// promotion changes growth but does not provide balance values yet.
+struct ClassGrowth
+{
+    BaseClass baseClass = BaseClass::Soldier;
+    PromotionClass promotion = PromotionClass::None;
+    float hpPerLevel = 0.0f;
+    float mpPerLevel = 0.0f;
+    float attackPerLevel = 0.0f;
+    float defensePerLevel = 0.0f;
+    float magicPerLevel = 0.0f;
+    float magicDefPerLevel = 0.0f;
+    float speedPerLevel = 0.0f;
+    float evasionPerLevel = 0.0f;
+};
+
 const RaceData &getRaceData(Race race);
 const GenderData &getGenderData(Gender gender);
 const RaceGrowth &getRaceGrowth(Race race);
+const ClassGrowth &getClassGrowth(BaseClass baseClass, PromotionClass promotion);

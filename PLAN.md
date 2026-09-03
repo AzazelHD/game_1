@@ -1,121 +1,95 @@
-# TRPG Game (game_1) — Development Plan
+# TRPG Game (game_1) - Development Plan
 
 ## Mission
 
-Build a tactical RPG (inspired by Final Fantasy Tactics Advance / Tactics Ogre) on top of a reusable engine. Focus on architecture correctness, maintainability, and a stable playable vertical slice.
+Deliver a stable tactical RPG vertical slice on top of the shared engine while keeping gameplay systems modular and testable.
 
----
+## Current Vertical Slice Status
 
-## Current Status
+The core path is implemented in code:
 
-The project has a complete playable tactical battle loop:
+- App boot and scene flow (`BootState` -> `MainMenuState` -> `WorldMapState` -> `BattleState`)
+- Deployment phase with roster selection and forced/critical unit handling
+- Combat phase with turn queue, movement, attack/skill targeting, confirm, and resolution
+- Event hooks (`BattleEventSystem`) for dialogue/reward/spawn/end-battle actions
+- Tactical UI stack (action, skill, system, inspect, confirm, unit panel, damage preview)
+- Settings flow (graphics/audio) with persisted settings
+- Battle rendering split into world logical pass and native UI/effects pass
 
-- Boot → Main Menu → World Map → Battle flow
-- Deployment phase
-- Turn-based combat (turn queue, move/attack/wait)
-- Combat resolution (hit/crit/damage/KO)
-- Enemy AI (heuristic movement + targeting)
-- Tactical UI (action menu, skill menu, unit panel, damage preview, inspect)
-- JSON content loading (maps, units, skill skeleton)
-- Persistent settings (audio, graphics, window mode)
-- Battle renderer (camera tracking, borderless/windowed support)
-- World/UI render pass separation (crisp text, native‑coordinate UI) – committed, pending final integration
-- World map skeleton
+## Architecture Ownership
 
----
+### Scene layer (`scenes/`)
 
-## Immediate Priorities
+- `BootState`: startup handoff and first scene transition
+- `MainMenuState`: entry menu and navigation to world map/settings
+- `WorldMapState`: node graph travel and battle request construction
+- `BattleState`: battle orchestration shell (delegates behavior through context objects)
+- `ResultState`: battle result presentation and return flow
 
-1. **Stabilise the vertical slice**
-   - Fix remaining bugs (movement cost, cursor after combat, borderless settings glitch)
-   - Complete the render‑pass integration in `BattleState::render()`
-   - Run full smoke test and camera regression
+### Battle domain (`battle/`)
 
-2. **Finish dialog system**
-   - DialogSystem wrapper, input blocking, sample pre‑battle dialogue
+- `BattleSession`: runtime unit ownership, turn queue integration, victory/defeat evaluation
+- `controllers/`:
+  - `HumanTurnController`: human input state machine for move/attack/confirm phases
+  - `BattleMenuController`: action/skill/system/inspect menu flows
+  - `AttackResolutionController`: pending-target set, preview, hit resolution sequencing
+  - `DeploymentPhaseController`: deployment-specific interaction and transition into combat
+  - `MovementAnimationController`: visual walk playback independent of logical move commit
+  - `DialogueController`: dialogue sequencing bridge for battle cut-in lines
+- `combat/`: hit formulas, turn queue, and area target selection support
+- `map/`: movement range, pathfinding, occupancy, and tile metadata usage
+- `systems/`: deployment model and combat animation queue hooks
+- `ui/`: battle-specific windows (deployment, inspect, panel)
 
-3. **Complete skill data pipeline**
-   - SkillLoader, skill JSON files, feed skills into combat
+### Support systems
 
-4. **Documentation**
-   - JSON schemas (map, unit, skill)
+- `ai/EnemyAI`: enemy plan/act logic
+- `config/BattleCatalog`: map->battle definition catalog and static event rules
+- `data/`:
+  - `SettingsManager`: settings load/save/apply
+  - `UnitLoader`: unit template JSON parser
+  - `SkillLoader`: skill JSON parser and bulk-load database source
+- `events/BattleEventSystem`: trigger/action dispatcher abstraction
+- `renderer/BattleRenderer`: battle drawing pipeline and overlays
+- `ui/`: window stack manager, generic UI events, shared visual helpers
+- `systems/PartySystem` and `systems/RosterSystem`: world/battle party composition data
+- `world/`: graph and pathfinding for world navigation
 
-5. **Polish (visual / audio)**
-   - Sprites, animations, SFX, BGM, screen shake
+## What Is Done vs Pending
 
-All new systems (unit progression, recruitment UI, etc.) are **deferred** until the vertical slice is rock‑solid and explicitly requested.
+### Done
 
----
+1. Movement cost now uses real path cost from reachable cost map.
+2. Cursor resets after combat resolution and action menu re-entry.
+3. Graphics mode application path is implemented with borderless/windowed settings updates.
+4. Render pass separation is implemented in `BattleState::render()`.
+5. Skill loading and skill menu-to-combat wiring are implemented with multiple skill JSON files.
 
-## Architecture Rules
+### Pending validation and completion
 
-### Engine / Game Separation
+1. Full uninterrupted smoke run through all major scenes.
+2. Camera and menu alignment regression checks across display modes.
+3. Final visual verification for pass separation on all battle UI overlays.
+4. Add explicit pre-battle scripted dialogue sequence usage.
 
-- Game code only consumes **public engine headers**.
-- Gameplay logic never belongs inside the engine.
-- Engine never depends on game types.
-- `main.cpp` is the translation point.
+## Engineering Rules
 
-Examples:
+- Game code uses engine public headers only.
+- Gameplay logic stays in `game/src/`, never in engine.
+- `UIManager` is the single source of truth for modal/input-blocking UI behavior.
+- New behavior should be introduced in focused controllers/systems before extending `BattleState` directly.
+- Keep at least one map fully playable at all times.
 
-| Engine                 | Game                               |
-| ---------------------- | ---------------------------------- |
-| Renderer, Input, Audio | BattleState, Unit, Skills, AI      |
-| Window, Scene stack    | Party, SettingsManager, WindowMode |
+## Documentation Map
 
-### Folder Organisation
+- Engine architecture: `engine/ARCHITECTURE.md`
+- Game architecture and ownership: `game_1/ARCHITECTURE.md`
+- Data schema reference: `game_1/DATA_SCHEMAS.md`
+- Task tracking: `game_1/TODO.md`
 
-Folders are grouped by **kind**, not feature.  
-Feature‑specific UI gets its own folder under the feature directory (e.g. `battle/ui/`).  
-Generic reusable windows stay in
-ui/windows/
-game/src/
-ai/ EnemyAI
-battle/ BattleState, controllers, systems, combat, map, unit, ui
-config/ BattleCatalog, GameConstants
-data/ SettingsManager, SkillLoader, UnitLoader
-events/ BattleEventSystem
-renderer/ BattleRenderer, BattleRendererContext
-scenes/ BootState, MainMenuState, ResultState, WorldMapState
-settings/ SettingsState, AudioSettings, GraphicsSettings, ui/
-systems/ PartyContext, PartySystem, RosterSystem
-ui/ Cursor, DamagePreview, FloatingTextSystem, UIManager, UIScale, UITheme, ...
-world/ WorldGraph, WorldPathfinding
+## Deferred Until Vertical Slice Is Fully Stable
 
-### Include Rules
-
-- All includes are rooted from `game/src/`.
-- Format: `#include "battle/BattleState.h"`
-- Never use `"game_1/src/..."`
-
-### Development Workflow
-
-- Keep one map fully playable at all times.
-- Compile after every change.
-- Small commits.
-- Zero warnings where practical.
-
----
-
-## Ownership Model
-
-- **BattleState** orchestrates the battle scene, not a god class.
-- **BattleSession** owns runtime battle state (units, queue).
-- **Controllers** (AttackResolution, BattleMenu, Deployment, HumanTurn) each operate on a context provided by BattleState.
-- **UIManager** is the single owner of every window. No caching layer, no separate BattleUIManager. Controllers create/destroy windows directly.
-- Input blocking uses only `UIManager::hasBlockingWindow()`.
-
----
-
-## Deferred Features
-
-These are intentionally postponed; do **not** start unless explicitly chosen:
-
-- Unit progression / class system redesign (see `UNIT_DESIGN.md`)
-- Portrait emotion system
-- Battle sprite emotions
-- Turn queue UI widget
-- Recruitment / dismissal UI
-- World‑map cities, nodes, NPCs
-- Multi‑cast skills
-- Real animations (blocked on assets)
+1. Unit/class progression redesign (`UNIT_DESIGN.md`).
+2. Expanded world simulation (cities, NPC interactions, recruitment UX).
+3. Full combat animation and VFX package.
+4. Advanced skill meta systems (multi-cast chains, status pipelines).

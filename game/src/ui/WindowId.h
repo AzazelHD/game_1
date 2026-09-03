@@ -22,6 +22,9 @@ enum class WindowId
     // Party
     PartyMenu,
     PartyInspect,
+    PartyDetail,
+    Equipment,
+    Inventory,
 
     // Settings
     SettingsAudio,

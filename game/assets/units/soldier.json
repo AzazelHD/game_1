@@ -1,5 +1,7 @@
 {
   "name": "Soldier",
+  "className": "Soldier",
+  "baseClass": "Soldier",
   "race": "Human",
   "gender": "Male",
   "level": 1,

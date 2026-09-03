@@ -1,6 +1,21 @@
 #pragma once
+#include "inventory/EquipRules.h"
+
+#include <array>
+#include <optional>
 #include <string>
 #include <vector>
+
+class GearCatalog;
+class Inventory;
+
+// Persistent campaign equipment references. IDs are removed from the shared
+// Inventory while equipped, so they cannot be equipped by another roster unit.
+struct EquippedGearIds
+{
+    std::array<std::optional<ItemId>, kGearSlotCount> slots{};
+    std::array<std::optional<ItemId>, kAccessorySlotCount> accessories{};
+};
 
 struct RosterUnit
 {
@@ -8,6 +23,8 @@ struct RosterUnit
     std::string templatePath; // which class/job this is — e.g. "assets/units/soldier.json"
     std::string customName;   // empty = use the template's default name; set for named uniques (Marche, Montblanc) or renamed generics
     bool recruited = true;
+    int exp = 0;
+    EquippedGearIds equippedGear;
 };
 
 class RosterSystem
@@ -28,7 +45,17 @@ public:
 
     const std::vector<RosterUnit> &units() const { return m_units; }
     const RosterUnit *findById(int instanceId) const;
+    RosterUnit *findById(int instanceId);
     const RosterUnit *findByRef(const std::string &unitRef) const;
+
+    EquipmentLoadout resolveLoadout(const RosterUnit &unit, const GearCatalog &catalog) const;
+
+    // Inventory ownership moves atomically: equipped gear is absent from the
+    // shared inventory, and displaced gear is returned in the same operation.
+    bool equip(int instanceId, GearSlot slot, int accessoryIndex, ItemId itemId,
+               Inventory &inventory, const GearCatalog &catalog, Race race);
+    bool unequip(int instanceId, GearSlot slot, int accessoryIndex,
+                 Inventory &inventory, const GearCatalog &catalog);
 
 private:
     std::vector<RosterUnit> m_units;

@@ -1,0 +1,17 @@
+{
+  "id": "placeholder_templar_aegis",
+  "name": "Placeholder Aegis",
+  "description": "PLACEHOLDER: Templar defensive passive; balance later.",
+  "basePower": 0,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 100,
+  "range": 0,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["buff"],
+  "progressionCategory": "passive",
+  "requiredPromotion": "Templar",
+  "autoGranted": true,
+  "placeholder": true
+}

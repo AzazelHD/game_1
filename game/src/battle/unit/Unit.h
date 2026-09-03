@@ -3,6 +3,9 @@
 #include "engine/math/Vec2.h"
 #include "battle/unit/UnitData.h"
 #include "battle/unit/UnitProgression.h"
+#include "battle/unit/SkillProgression.h"
+#include "battle/unit/RecruitmentRules.h"
+#include "inventory/EquipRules.h"
 #include <algorithm>
 
 // A unit's turn is built from two independent budgets:
@@ -65,29 +68,33 @@ public:
     // Getters (progression)
     int getLevel() const { return m_data.level; }
     int getExp() const { return m_exp; }
+    int getMaxLevel() const { return m_data.promotion == PromotionClass::None ? 40 : 50; }
+    int getSkillPoints() const { return m_skillPoints; }
     int getWaitTime() const { return m_waitTime; }
 
     // Getters (resources)
     int getCurrentHp() const { return m_currentHp; }
     int getCurrentMp() const { return m_currentMp; }
-    int getMaxHp() const { return m_data.maxHp + m_bonuses.maxHp; }
-    int getMaxMp() const { return m_data.maxMp + m_bonuses.maxMp; }
+    int getMaxHp() const { return m_data.maxHp + m_bonuses.maxHp + gearModifiers().maxHp; }
+    int getMaxMp() const { return m_data.maxMp + m_bonuses.maxMp + gearModifiers().maxMp; }
 
     // Getters (stats)
-    int getSpeed() const { return m_data.speed + m_bonuses.speed; }
-    int getAttack() const { return m_data.attack + m_bonuses.attack; }
-    int getDefense() const { return m_data.defense + m_bonuses.defense; }
-    int getMagic() const { return m_data.magic + m_bonuses.magic; }
-    int getMagicDefense() const { return m_data.magicDefense + m_bonuses.magicDef; }
-    int getEvasion() const { return m_data.evasion + m_bonuses.evasion; }
-    int getJump() const { return m_data.jump; }
-    int getMoveRange() const { return m_data.moveRange + m_bonuses.moveRange; }
+    int getSpeed() const { return m_data.speed + m_bonuses.speed + gearModifiers().speed; }
+    int getAttack() const { return m_data.attack + m_bonuses.attack + gearModifiers().attack; }
+    int getDefense() const { return m_data.defense + m_bonuses.defense + gearModifiers().defense; }
+    int getMagic() const { return m_data.magic + m_bonuses.magic + gearModifiers().magic; }
+    int getMagicDefense() const { return m_data.magicDefense + m_bonuses.magicDef + gearModifiers().magicDefense; }
+    int getEvasion() const { return m_data.evasion + m_bonuses.evasion + gearModifiers().evasion; }
+    int getJump() const { return m_data.jump + gearModifiers().jump; }
+    int getMoveRange() const { return m_data.moveRange + m_bonuses.moveRange + gearModifiers().moveRange; }
     int getAtkRange() const { return m_data.atkRange + m_bonuses.atkRange; }
 
     // Getters (identity — read only, never change at runtime)
     const std::string &getName() const { return m_data.name; }
     Race getRace() const { return m_data.race; }
     Gender getGender() const { return m_data.gender; }
+    BaseClass getBaseClass() const { return m_data.baseClass; }
+    PromotionClass getPromotion() const { return m_data.promotion; }
     const std::vector<ElementAffinity> &getAffinities() const { return m_data.affinities; }
     int getTeam() const { return m_data.team; }
 
@@ -96,6 +103,15 @@ public:
     const std::vector<SkillType> &getSkills() const { return m_skills; }
     const std::vector<std::string> &getSkillIds() const { return m_data.skillIds; }
     const UnitData &getData() const { return m_data; }
+    const SkillProgression &getSkillProgression() const { return m_skillProgression; }
+    SkillProgression &getSkillProgression() { return m_skillProgression; }
+
+    bool promote(PromotionClass promotion);
+    bool learnOrUpgradeSkill(const std::string &skillId);
+    void bindEquipmentLoadout(const EquipmentLoadout *loadout) { m_equipmentLoadout = loadout; }
+    void setResolvedEquipmentLoadout(EquipmentLoadout loadout);
+    const EquipmentLoadout *equipmentLoadout() const { return m_equipmentLoadout; }
+    bool hasGearSpecialEffect(GearSpecialEffect effect) const;
 
     // Setters
     void setPosition(Vec2i pos) { m_position = pos; }
@@ -137,6 +153,7 @@ private:
 
     // Progression
     int m_exp = 0;
+    int m_skillPoints = 0;
     float m_hpGrowthAcc = 0.f;
     float m_mpGrowthAcc = 0.f;
     float m_attackGrowthAcc = 0.f;
@@ -156,7 +173,11 @@ private:
     // Actions
     std::vector<ActionType> m_actions;
     std::vector<SkillType> m_skills;
+    SkillProgression m_skillProgression;
+    EquipmentLoadout m_ownedEquipmentLoadout{};
+    const EquipmentLoadout *m_equipmentLoadout = nullptr; // non-owning external campaign/loadout state
 
     // Internal
     void levelUp();
+    GearStatModifiers gearModifiers() const;
 };

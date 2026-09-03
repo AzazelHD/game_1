@@ -4,7 +4,8 @@
 
 // ── Constructor ──────────────────────────────────────────────────────────────
 Unit::Unit(const UnitData &data, const RaceData &raceData, const GenderData &genderData, Vec2i startPos)
-    : m_data(data), m_raceData(raceData), m_genderData(genderData), m_position(startPos)
+    : m_data(data), m_raceData(raceData), m_genderData(genderData),
+      m_position(startPos), m_skillProgression(data.baseClass, data.promotion)
 {
     // Apply bonuses once so m_data always represents effective unit stats.
     m_data.maxHp += raceData.bonusMaxHp + genderData.bonusMaxHp;
@@ -31,6 +32,9 @@ Unit::Unit(const UnitData &data, const RaceData &raceData, const GenderData &gen
         break;
     case Race::Elf:
         m_skills.push_back(SkillType::Foo_Elf);
+        break;
+    case Race::Elin:
+        m_skills.push_back(SkillType::Foo_Elin);
         break;
     case Race::Undead:
         m_skills.push_back(SkillType::Foo_Undead);
@@ -76,7 +80,7 @@ void Unit::resetTurn()
 
 void Unit::gainExp(int amount)
 {
-    if (m_data.level >= 20)
+    if (m_data.level >= getMaxLevel())
         return;
     m_exp += amount;
     while (m_exp >= expToNextLevel())
@@ -84,7 +88,7 @@ void Unit::gainExp(int amount)
         m_exp -= expToNextLevel();
         levelUp();
     }
-    if (m_data.level >= 20)
+    if (m_data.level >= getMaxLevel())
         m_exp = 0;
 }
 
@@ -96,12 +100,14 @@ int Unit::expToNextLevel() const
 void Unit::levelUp()
 {
     // Max level
-    if (m_data.level >= 20)
+    if (m_data.level >= getMaxLevel())
         return;
 
     m_data.level++;
+    ++m_skillPoints;
 
     const RaceGrowth &growth = getRaceGrowth(m_data.race);
+    const ClassGrowth &classGrowth = getClassGrowth(m_data.baseClass, m_data.promotion);
 
     auto applyGrowth = [](int &stat, float &acc, float perLevel) -> int
     {
@@ -113,16 +119,72 @@ void Unit::levelUp()
         return gain;
     };
 
-    const int hpGain = applyGrowth(m_data.maxHp, m_hpGrowthAcc, growth.hpPerLevel);
-    const int mpGain = applyGrowth(m_data.maxMp, m_mpGrowthAcc, growth.mpPerLevel);
-    applyGrowth(m_data.attack, m_attackGrowthAcc, growth.attackPerLevel);
-    applyGrowth(m_data.defense, m_defenseGrowthAcc, growth.defensePerLevel);
-    applyGrowth(m_data.magic, m_magicGrowthAcc, growth.magicPerLevel);
-    applyGrowth(m_data.magicDefense, m_magicDefGrowthAcc, growth.magicDefPerLevel);
-    applyGrowth(m_data.speed, m_speedGrowthAcc, growth.speedPerLevel);
-    applyGrowth(m_data.evasion, m_evasionGrowthAcc, growth.evasionPerLevel);
+    const int hpGain = applyGrowth(m_data.maxHp, m_hpGrowthAcc, growth.hpPerLevel + classGrowth.hpPerLevel);
+    const int mpGain = applyGrowth(m_data.maxMp, m_mpGrowthAcc, growth.mpPerLevel + classGrowth.mpPerLevel);
+    applyGrowth(m_data.attack, m_attackGrowthAcc, growth.attackPerLevel + classGrowth.attackPerLevel);
+    applyGrowth(m_data.defense, m_defenseGrowthAcc, growth.defensePerLevel + classGrowth.defensePerLevel);
+    applyGrowth(m_data.magic, m_magicGrowthAcc, growth.magicPerLevel + classGrowth.magicPerLevel);
+    applyGrowth(m_data.magicDefense, m_magicDefGrowthAcc, growth.magicDefPerLevel + classGrowth.magicDefPerLevel);
+    applyGrowth(m_data.speed, m_speedGrowthAcc, growth.speedPerLevel + classGrowth.speedPerLevel);
+    applyGrowth(m_data.evasion, m_evasionGrowthAcc, growth.evasionPerLevel + classGrowth.evasionPerLevel);
 
     // Keep gains meaningful immediately after leveling while clamping to new max.
     m_currentHp = std::min(m_data.maxHp, m_currentHp + hpGain);
     m_currentMp = std::min(m_data.maxMp, m_currentMp + mpGain);
+}
+
+bool Unit::promote(PromotionClass promotion)
+{
+    if (m_data.promotion != PromotionClass::None || !canPromote(m_data.baseClass, promotion))
+        return false;
+
+    m_data.promotion = promotion;
+    m_skillProgression.setClass(m_data.baseClass, promotion);
+    return true;
+}
+
+bool Unit::learnOrUpgradeSkill(const std::string &skillId)
+{
+    return m_skillProgression.learnOrUpgrade(skillId, m_skillPoints);
+}
+
+GearStatModifiers Unit::gearModifiers() const
+{
+    GearStatModifiers total;
+    if (!m_equipmentLoadout)
+        return total;
+
+    const auto add = [&total](const Gear *gear)
+    {
+        if (!gear)
+            return;
+        const GearStatModifiers &modifiers = gear->statModifiers();
+        total.maxHp += modifiers.maxHp;
+        total.maxMp += modifiers.maxMp;
+        total.attack += modifiers.attack;
+        total.defense += modifiers.defense;
+        total.magic += modifiers.magic;
+        total.magicDefense += modifiers.magicDefense;
+        total.evasion += modifiers.evasion;
+        total.speed += modifiers.speed;
+        total.moveRange += modifiers.moveRange;
+        total.jump += modifiers.jump;
+    };
+
+    for (const Gear *gear : m_equipmentLoadout->slots)
+        add(gear);
+    for (const Gear *gear : m_equipmentLoadout->accessories)
+        add(gear);
+    return total;
+}
+
+bool Unit::hasGearSpecialEffect(GearSpecialEffect effect) const
+{
+    return m_equipmentLoadout && EquipRules::hasSpecialEffect(*m_equipmentLoadout, effect);
+}
+
+void Unit::setResolvedEquipmentLoadout(EquipmentLoadout loadout)
+{
+    m_ownedEquipmentLoadout = std::move(loadout);
+    m_equipmentLoadout = &m_ownedEquipmentLoadout;
 }

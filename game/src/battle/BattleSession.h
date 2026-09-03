@@ -21,6 +21,7 @@ struct UnitSpawn
     std::string unitFilePath; // path to unit JSON
     Vec2i startPos;
     int team = 0;
+    int rosterInstanceId = -1;     // player roster identity; -1 for non-roster spawns
     bool isCritical = false;       // defeat if this unit dies
     bool isBoss = false;           // victory if this unit dies
     bool disappearOnDeath = false; // if true, slot is freed and can be reused

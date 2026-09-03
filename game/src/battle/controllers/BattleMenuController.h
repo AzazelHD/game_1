@@ -62,7 +62,7 @@ private:
                                      const std::vector<BattleMenuItem> &items);
 
     BattleState &m_owner;
-    class UnitInspectWindow *m_inspectWindow = nullptr;
+    class UIWindow *m_inspectWindow = nullptr;
 
     std::vector<BattleMenuItem> m_skillMenuItems;
     std::vector<BattleMenuItem> m_actionMenuItems;

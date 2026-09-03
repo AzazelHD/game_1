@@ -14,6 +14,8 @@ static Race parseRace(const std::string &str)
         return Race::Human;
     if (str == "Elf")
         return Race::Elf;
+    if (str == "Elin")
+        return Race::Elin;
     if (str == "Undead")
         return Race::Undead;
     throw std::runtime_error("Unknown race: " + str);
@@ -28,6 +30,56 @@ static Gender parseGender(const std::string &str)
     if (str == "None")
         return Gender::None;
     throw std::runtime_error("Unknown gender: " + str);
+}
+
+static BaseClass parseBaseClass(const std::string &str)
+{
+    if (str == "Soldier")
+        return BaseClass::Soldier;
+    if (str == "Archer")
+        return BaseClass::Archer;
+    if (str == "Mage")
+        return BaseClass::Mage;
+    if (str == "Scout")
+        return BaseClass::Scout;
+    if (str == "Duelist")
+        return BaseClass::Duelist;
+    return BaseClass::Soldier;
+}
+
+static PromotionClass parsePromotion(const std::string &str)
+{
+    if (str == "Templar")
+        return PromotionClass::Templar;
+    if (str == "Knight")
+        return PromotionClass::Knight;
+    if (str == "Paladin")
+        return PromotionClass::Paladin;
+    if (str == "Sharpshooter")
+        return PromotionClass::Sharpshooter;
+    if (str == "Ranger")
+        return PromotionClass::Ranger;
+    if (str == "Windrunner")
+        return PromotionClass::Windrunner;
+    if (str == "Elementalist")
+        return PromotionClass::Elementalist;
+    if (str == "Enchanter")
+        return PromotionClass::Enchanter;
+    if (str == "Warden")
+        return PromotionClass::Warden;
+    if (str == "Infiltrator")
+        return PromotionClass::Infiltrator;
+    if (str == "Trapper")
+        return PromotionClass::Trapper;
+    if (str == "Pathfinder")
+        return PromotionClass::Pathfinder;
+    if (str == "Blade Dancer")
+        return PromotionClass::BladeDancer;
+    if (str == "Assassin")
+        return PromotionClass::Assassin;
+    if (str == "Fencer")
+        return PromotionClass::Fencer;
+    return PromotionClass::None;
 }
 
 // ── Load single file ──────────────────────────────────────────────────────────
@@ -59,6 +111,9 @@ UnitData UnitLoader::load(const std::string &filePath)
     data.jump = j.value("jump", 1);
     data.speed = j.value("speed", 25);
     data.team = j.value("team", 0);
+    const std::string className = data.className;
+    data.baseClass = parseBaseClass(j.value("baseClass", className));
+    data.promotion = parsePromotion(j.value("promotion", className));
     if (j.contains("skills") && j["skills"].is_array())
     {
         for (const auto &s : j["skills"])

@@ -66,7 +66,8 @@ private:
     world::WorldGraph m_graph;
     std::unordered_map<int, Vec2i> m_nodeGridPos;
     std::unordered_map<int, NodeMeta> m_nodeMeta;
-    std::vector<std::string> m_partyEntryTemplatePaths;
+    std::vector<int> m_partyEntryInstanceIds;
+    int m_activePartyDetailInstanceId = -1;
 
     int m_playerNodeId = 4;
     int m_hoveredNodeId = -1;

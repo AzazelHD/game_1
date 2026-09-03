@@ -25,6 +25,7 @@ enum class ActionId
     CycleNext,
     CyclePrev,
     Details,
+    Equip,
     Inspect,
 
     // Main menu
@@ -51,10 +52,12 @@ enum class ActionId
 
     // World map — node hub (city-type nodes)
     OpenInn,
+    OpenInventory,
     OpenPartyMenu,
     OpenPrison,
     OpenShop,
     OpenTavern,
+    SaveGame,
 
     // World map — node interaction
     EnterBattle,

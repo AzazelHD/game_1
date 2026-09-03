@@ -1,0 +1,17 @@
+{
+  "id": "placeholder_knight_strike",
+  "name": "Placeholder Strike",
+  "description": "PLACEHOLDER: Knight active skill; balance later.",
+  "basePower": 5,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 100,
+  "range": 1,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["damage"],
+  "progressionCategory": "active",
+  "requiredPromotion": "Knight",
+  "autoGranted": true,
+  "placeholder": true
+}

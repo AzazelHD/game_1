@@ -1,0 +1,17 @@
+{
+  "id": "placeholder_paladin_grace",
+  "name": "Placeholder Grace",
+  "description": "PLACEHOLDER: Paladin support passive; balance later.",
+  "basePower": 0,
+  "isMagical": true,
+  "element": "holy",
+  "skillAccuracy": 100,
+  "range": 0,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["buff"],
+  "progressionCategory": "passive",
+  "requiredPromotion": "Paladin",
+  "autoGranted": true,
+  "placeholder": true
+}

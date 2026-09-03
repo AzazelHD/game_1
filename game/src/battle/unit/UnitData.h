@@ -14,7 +14,37 @@ enum class Race
 {
     Human,
     Elf,
+    Elin,
     Undead
+};
+
+enum class BaseClass
+{
+    Soldier,
+    Archer,
+    Mage,
+    Scout,
+    Duelist,
+};
+
+enum class PromotionClass
+{
+    None,
+    Templar,
+    Knight,
+    Paladin,
+    Sharpshooter,
+    Ranger,
+    Windrunner,
+    Elementalist,
+    Enchanter,
+    Warden,
+    Infiltrator,
+    Trapper,
+    Pathfinder,
+    BladeDancer,
+    Assassin,
+    Fencer,
 };
 
 enum class Element
@@ -65,6 +95,10 @@ struct UnitData
     int team = 0;
     std::vector<ElementAffinity> affinities;
     std::vector<std::string> skillIds;
+    // Additive typed progression metadata. Existing className/skillIds fields
+    // remain supported for compatibility with current templates and callers.
+    BaseClass baseClass = BaseClass::Soldier;
+    PromotionClass promotion = PromotionClass::None;
 };
 
 struct StatBonuses
@@ -94,6 +128,7 @@ enum class SkillType
 {
     Foo_Human,
     Foo_Elf,
+    Foo_Elin,
     Foo_Undead,
 };
 
@@ -115,6 +150,8 @@ inline const char *toString(Race race)
         return "Human";
     case Race::Elf:
         return "Elf";
+    case Race::Elin:
+        return "Elin";
     case Race::Undead:
         return "Undead";
     }
@@ -131,6 +168,64 @@ inline const char *toString(Gender gender)
         return "Female";
     case Gender::None:
         return "None";
+    }
+    return "Unknown";
+}
+
+inline const char *toString(BaseClass baseClass)
+{
+    switch (baseClass)
+    {
+    case BaseClass::Soldier:
+        return "Soldier";
+    case BaseClass::Archer:
+        return "Archer";
+    case BaseClass::Mage:
+        return "Mage";
+    case BaseClass::Scout:
+        return "Scout";
+    case BaseClass::Duelist:
+        return "Duelist";
+    }
+    return "Unknown";
+}
+
+inline const char *toString(PromotionClass promotion)
+{
+    switch (promotion)
+    {
+    case PromotionClass::None:
+        return "None";
+    case PromotionClass::Templar:
+        return "Templar";
+    case PromotionClass::Knight:
+        return "Knight";
+    case PromotionClass::Paladin:
+        return "Paladin";
+    case PromotionClass::Sharpshooter:
+        return "Sharpshooter";
+    case PromotionClass::Ranger:
+        return "Ranger";
+    case PromotionClass::Windrunner:
+        return "Windrunner";
+    case PromotionClass::Elementalist:
+        return "Elementalist";
+    case PromotionClass::Enchanter:
+        return "Enchanter";
+    case PromotionClass::Warden:
+        return "Warden";
+    case PromotionClass::Infiltrator:
+        return "Infiltrator";
+    case PromotionClass::Trapper:
+        return "Trapper";
+    case PromotionClass::Pathfinder:
+        return "Pathfinder";
+    case PromotionClass::BladeDancer:
+        return "Blade Dancer";
+    case PromotionClass::Assassin:
+        return "Assassin";
+    case PromotionClass::Fencer:
+        return "Fencer";
     }
     return "Unknown";
 }

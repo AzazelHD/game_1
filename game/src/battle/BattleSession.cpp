@@ -1,6 +1,7 @@
 #include "battle/BattleSession.h"
 #include "data/UnitLoader.h"
 #include "battle/unit/UnitProgression.h"
+#include "systems/PartyContext.h"
 #include <algorithm>
 #include <cassert>
 
@@ -44,7 +45,15 @@ Unit BattleSession::makeUnit(const UnitSpawn &spawn)
     const RaceData &raceData = getRaceData(data.race);
     const GenderData &genderData = getGenderData(data.gender);
 
-    return Unit(data, raceData, genderData, spawn.startPos);
+    Unit unit(data, raceData, genderData, spawn.startPos);
+    if (spawn.rosterInstanceId >= 0)
+    {
+        PartyContext &partyContext = PartyContext::instance();
+        partyContext.ensureInitialized();
+        if (const RosterUnit *rosterUnit = partyContext.roster().findById(spawn.rosterInstanceId))
+            unit.setResolvedEquipmentLoadout(partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+    }
+    return unit;
 }
 
 void BattleSession::spawnUnit(const UnitSpawn &spawn)
@@ -135,6 +144,13 @@ Unit &BattleSession::buildUnit(const UnitSpawn &spawn)
     const GenderData &genderData = getGenderData(data.gender);
 
     m_units.emplace_back(data, raceData, genderData, spawn.startPos);
+    if (spawn.rosterInstanceId >= 0)
+    {
+        PartyContext &partyContext = PartyContext::instance();
+        partyContext.ensureInitialized();
+        if (const RosterUnit *rosterUnit = partyContext.roster().findById(spawn.rosterInstanceId))
+            m_units.back().setResolvedEquipmentLoadout(partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+    }
     return m_units.back();
 }
 

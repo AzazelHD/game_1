@@ -1,0 +1,20 @@
+{
+  "name": "Elf Archer",
+  "className": "Archer",
+  "baseClass": "Archer",
+  "race": "Elf",
+  "gender": "Female",
+  "level": 1,
+  "maxHp": 24,
+  "maxMp": 12,
+  "attack": 9,
+  "defense": 4,
+  "magic": 10,
+  "magicDefense": 8,
+  "moveRange": 5,
+  "atkRange": 2,
+  "evasion": 16,
+  "jump": 2,
+  "speed": 27,
+  "skills": []
+}

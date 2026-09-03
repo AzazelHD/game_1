@@ -15,6 +15,13 @@ set(GAME_SOURCES
     src/battle/map/Grid.cpp
     src/battle/unit/Unit.cpp
     src/battle/unit/UnitProgression.cpp
+    src/battle/unit/SkillProgression.cpp
+    src/battle/unit/RecruitmentRules.cpp
+    src/inventory/Item.cpp
+    src/inventory/Inventory.cpp
+    src/inventory/Gear.cpp
+    src/inventory/EquipRules.cpp
+    src/inventory/GearCatalog.cpp
     src/battle/combat/TurnQueue.cpp
     src/battle/combat/CombatSystem.cpp
     src/battle/map/Pathfinder.cpp
@@ -68,8 +75,9 @@ set(GAME_SOURCES
     src/ui/windows/ButtonMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
+    src/ui/windows/InventoryWindow.cpp
     src/ui/windows/PartyWindow.cpp
-    src/ui/windows/ButtonMenuWindow.cpp
+    src/ui/windows/UnitDetailWindow.cpp
     
     )
     
@@ -84,6 +92,13 @@ set(GAME_SOURCES
     src/battle/unit/Unit.h
     src/battle/unit/UnitData.h
     src/battle/unit/UnitProgression.h
+    src/battle/unit/SkillProgression.h
+    src/battle/unit/RecruitmentRules.h
+    src/inventory/Item.h
+    src/inventory/Inventory.h
+    src/inventory/Gear.h
+    src/inventory/EquipRules.h
+    src/inventory/GearCatalog.h
     src/battle/combat/TurnQueue.h
     src/battle/combat/CombatSystem.h
     src/battle/map/Pathfinder.h
@@ -144,8 +159,9 @@ set(GAME_SOURCES
     src/ui/windows/ButtonMenuWindow.h
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
+    src/ui/windows/InventoryWindow.h
     src/ui/windows/PartyWindow.h
-    src/ui/windows/ButtonMenuWindow.h
+    src/ui/windows/UnitDetailWindow.h
     
     src/world/WorldGraph.h
     src/world/WorldPathfinding.h

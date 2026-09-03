@@ -1,5 +1,7 @@
 {
     "name": "Aria",
+    "className": "Mage",
+    "baseClass": "Mage",
     "race": "Elf",
     "gender": "Female",
     "level": 1,

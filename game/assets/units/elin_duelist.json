@@ -1,0 +1,20 @@
+{
+  "name": "Elin Duelist",
+  "className": "Duelist",
+  "baseClass": "Duelist",
+  "race": "Elin",
+  "gender": "Female",
+  "level": 1,
+  "maxHp": 20,
+  "maxMp": 12,
+  "attack": 10,
+  "defense": 3,
+  "magic": 9,
+  "magicDefense": 7,
+  "moveRange": 5,
+  "atkRange": 1,
+  "evasion": 19,
+  "jump": 2,
+  "speed": 30,
+  "skills": []
+}

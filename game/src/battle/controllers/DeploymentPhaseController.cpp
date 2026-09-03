@@ -16,6 +16,7 @@
 #include "ui/UIEvent.h"
 #include "ui/WindowId.h"
 #include "ui/windows/ConfirmWindow.h"
+#include "ui/windows/UnitDetailWindow.h"
 
 #include <unordered_set>
 
@@ -296,6 +297,12 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
 {
     BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
 
+    if (event.windowId == WindowId::Equipment && event.type == UIEventType::ActionCanceled)
+    {
+        ctx.uiManager.popById(WindowId::Equipment);
+        return true;
+    }
+
     if (event.windowId == WindowId::BattleDeploymentConfirm && event.type == UIEventType::ConfirmResult)
     {
         ctx.uiManager.popById(WindowId::BattleDeploymentConfirm);
@@ -404,20 +411,38 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
     }
     if (event.actionId == ActionId::Details)
     {
-        if (const DeploymentEntry *grabbed = m_deployment.grabbedEntry())
-        {
-            m_owner.battleMenu().showInspectWindowFromTemplate(grabbed->templatePath);
-            return true;
-        }
+        PartyContext &partyContext = PartyContext::instance();
+        partyContext.ensureInitialized();
 
-        if (ctx.hoveredUnit && !ctx.hoveredUnit->isDead())
+        const DeploymentEntry *target = m_deployment.grabbedEntry();
+        if (!target)
         {
-            m_owner.battleMenu().showInspectWindow(ctx.hoveredUnit);
-            return true;
+            if (ctx.hoveredUnit && !ctx.hoveredUnit->isDead())
+            {
+                const DeploymentEntry *hoverEntry = m_deployment.deployedEntryAt(ctx.hoveredUnit->getPosition());
+                if (hoverEntry)
+                    target = hoverEntry;
+            }
         }
+        if (!target)
+            target = m_deployment.selectedEntry();
+        if (!target)
+            return true;
 
-        if (const DeploymentEntry *selected = m_deployment.selectedEntry())
-            m_owner.battleMenu().showInspectWindowFromTemplate(selected->templatePath);
+        const RosterUnit *rosterUnit = partyContext.roster().findById(target->instanceId);
+        if (!rosterUnit)
+            return true;
+
+        try
+        {
+            auto *details = ctx.uiManager.push<UnitDetailWindow>(
+                WindowId::Equipment, *rosterUnit, partyContext.roster(),
+                partyContext.inventory(), partyContext.gearCatalog());
+            details->setFont(FontManager::instance().get(FontRole::Body));
+        }
+        catch (...)
+        {
+        }
         return true;
     }
     if (event.actionId == ActionId::Back)

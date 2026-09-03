@@ -160,7 +160,8 @@ EnemyAI::EnemyTurnPlan EnemyAI::planTurn(Unit &unit, Grid &grid, const BattleMap
         const int moveRange = unit.getMoveRangeLeft();
 
         auto reachable = MovementRange::compute(grid, battleMap, startPos, moveRange,
-                                                unit.getTeam(), allUnits, unit.getJump());
+                                                unit.getTeam(), allUnits, unit.getJump(),
+                                                MovementRangeOptions{.ignoreUnitCollisionAlongPath = unit.hasGearSpecialEffect(GearSpecialEffect::TeleportMovement)});
 
         const Vec2i destPos = bestTileToward(unit, reachable.reachable, plan.target->getPosition(),
                                              grid, allUnits);

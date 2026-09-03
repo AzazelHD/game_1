@@ -1,0 +1,17 @@
+{
+  "id": "placeholder_templar_smite",
+  "name": "Placeholder Smite",
+  "description": "PLACEHOLDER: Templar active skill; balance later.",
+  "basePower": 5,
+  "isMagical": true,
+  "element": "holy",
+  "skillAccuracy": 100,
+  "range": 1,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["damage"],
+  "progressionCategory": "active",
+  "requiredPromotion": "Templar",
+  "autoGranted": true,
+  "placeholder": true
+}

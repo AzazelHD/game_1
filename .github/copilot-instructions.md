@@ -24,3 +24,13 @@ Rules:
 - Do not run VsDevCmd directly from PowerShell expecting environment persistence.
 - Prefer CMD-based invocation for build/configure commands.
 - If needed, use ../engine/tools/vsenv.bat as a wrapper.
+
+## Repository Command Policy
+
+- Use `cmd.exe` for all repository commands, builds, tests, CMake, MSVC, Git, and native toolchain setup.
+- Do not invoke PowerShell for repository work, even when the host terminal is PowerShell.
+- Prefer the repository wrappers when available:
+  - `engine/tools/vsenv.bat`
+  - `game_1/tools/build_debug.bat`
+  - `game_1/tools/build_release.bat`
+- If a tool internally selects PowerShell, report that limitation and use a CMD-capable tool for the command instead.

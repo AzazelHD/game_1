@@ -18,6 +18,8 @@
 #include "ui/WindowId.h"
 #include "ui/windows/ButtonMenuWindow.h"
 #include "ui/windows/ConfirmWindow.h"
+#include "ui/windows/UnitDetailWindow.h"
+#include "systems/PartyContext.h"
 #include "battle/ui/UnitInspectWindow.h"
 
 ButtonMenuWindow *BattleMenuController::pushButtonMenu(WindowId id,
@@ -67,7 +69,8 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
                 MovementRange::Result range = MovementRange::compute(
                     ctx.grid, ctx.battleMap, active->getPosition(),
                     active->getMoveRangeLeft(), active->getTeam(),
-                    ctx.session.getUnitPtrs(), active->getJump());
+                    ctx.session.getUnitPtrs(), active->getJump(),
+                    MovementRangeOptions{.ignoreUnitCollisionAlongPath = active->hasGearSpecialEffect(GearSpecialEffect::TeleportMovement)});
                 ctx.reachableTiles = std::move(range.reachable);
                 ctx.reachableCosts = std::move(range.costs);
                 ctx.cursor.setPosition(active->getPosition());
@@ -104,6 +107,9 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
             { showSkillMenu(); }});
     }
 
+    // Future design: add a dedicated Equip action here for broken/stolen gear
+    // during active combat, after a separate turn-economy decision (free action
+    // vs full action, AP cost, etc.) is defined.
     items.push_back(BattleMenuItem{
         .label = "Defend",
         .enabled = canAttack,
@@ -236,18 +242,9 @@ void BattleMenuController::showInspectWindow(Unit *unit)
 
     auto ctx = m_owner.makeMenuContext();
     ctx.uiManager.popById(WindowId::BattleInspect);
-    auto *inspect = ctx.uiManager.push<UnitInspectWindow>(WindowId::BattleInspect);
+    auto *inspect = ctx.uiManager.push<UnitDetailWindow>(
+        WindowId::BattleInspect, *unit, PartyContext::instance().gearCatalog());
     inspect->setFont(FontManager::instance().get(FontRole::Body));
-    const int team = unit->getTeam();
-    if (team == 0)
-        inspect->setRelation(UnitInspectWindow::Relation::Player);
-    else if (team == 1)
-        inspect->setRelation(UnitInspectWindow::Relation::Ally);
-    else
-        inspect->setRelation(UnitInspectWindow::Relation::Enemy);
-
-    inspect->setHeader(unit->getData().name, unit->getData().className);
-    inspect->setSections({UnitInspectWindow::buildStatsSection(unit->getData())});
     m_inspectWindow = inspect;
 }
 
@@ -278,13 +275,9 @@ void BattleMenuController::showInspectWindowFromTemplate(const std::string &temp
 
         auto ctx = m_owner.makeMenuContext();
         ctx.uiManager.popById(WindowId::BattleInspect);
-        auto *inspect = ctx.uiManager.push<UnitInspectWindow>(WindowId::BattleInspect);
+        auto *inspect = ctx.uiManager.push<UnitDetailWindow>(
+            WindowId::BattleInspect, previewUnit, PartyContext::instance().gearCatalog());
         inspect->setFont(FontManager::instance().get(FontRole::Body));
-        // Deployment roster preview units are always the player's own —
-        // same reasoning as PartyWindow's Accept flow.
-        inspect->setRelation(UnitInspectWindow::Relation::Player);
-        inspect->setHeader(previewUnit.getData().name, previewUnit.getData().className);
-        inspect->setSections({UnitInspectWindow::buildStatsSection(previewUnit.getData())});
         m_inspectWindow = inspect;
     }
     catch (...)

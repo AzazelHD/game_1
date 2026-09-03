@@ -1,5 +1,8 @@
 #include "systems/RosterSystem.h"
 
+#include "inventory/GearCatalog.h"
+#include "inventory/Inventory.h"
+
 #include <algorithm>
 
 void RosterSystem::setUnits(std::vector<RosterUnit> units)
@@ -51,6 +54,16 @@ const RosterUnit *RosterSystem::findById(int instanceId) const
     return nullptr;
 }
 
+RosterUnit *RosterSystem::findById(int instanceId)
+{
+    for (RosterUnit &u : m_units)
+    {
+        if (u.instanceId == instanceId)
+            return &u;
+    }
+    return nullptr;
+}
+
 const RosterUnit *RosterSystem::findByRef(const std::string &unitRef) const
 {
     for (const RosterUnit &u : m_units)
@@ -64,4 +77,98 @@ const RosterUnit *RosterSystem::findByRef(const std::string &unitRef) const
             return &u;
     }
     return nullptr;
+}
+
+EquipmentLoadout RosterSystem::resolveLoadout(const RosterUnit &unit, const GearCatalog &catalog) const
+{
+    return catalog.resolve(unit.equippedGear);
+}
+
+bool RosterSystem::equip(int instanceId, GearSlot slot, int accessoryIndex, ItemId itemId,
+                         Inventory &inventory, const GearCatalog &catalog, Race race)
+{
+    RosterUnit *unit = findById(instanceId);
+    const Gear *gear = catalog.find(itemId);
+    if (!unit || !gear || gear->slot() != slot)
+        return false;
+
+    std::optional<ItemId> *destination = nullptr;
+    if (slot == GearSlot::Accessory)
+    {
+        if (accessoryIndex < 0 || accessoryIndex >= static_cast<int>(unit->equippedGear.accessories.size()))
+            return false;
+        destination = &unit->equippedGear.accessories[static_cast<std::size_t>(accessoryIndex)];
+    }
+    else
+    {
+        const std::size_t index = static_cast<std::size_t>(slot);
+        if (index >= unit->equippedGear.slots.size())
+            return false;
+        destination = &unit->equippedGear.slots[index];
+    }
+
+    if (destination->has_value() && **destination == itemId)
+        return true;
+    if (!inventory.has(itemId, 1))
+        return false;
+
+    EquipmentLoadout loadout = catalog.resolve(unit->equippedGear);
+    if (slot == GearSlot::Accessory)
+        loadout.accessories[static_cast<std::size_t>(accessoryIndex)] = nullptr;
+    else
+        loadout.slots[static_cast<std::size_t>(slot)] = nullptr;
+
+    if (!EquipRules::canEquip(race, *gear, loadout))
+        return false;
+
+    const std::optional<ItemId> displaced = *destination;
+    if (!inventory.remove(itemId, 1))
+        return false;
+
+    if (displaced.has_value())
+    {
+        const ItemDefinition *oldItem = catalog.findItem(*displaced);
+        if (!oldItem || !inventory.add(*oldItem, 1))
+        {
+            const ItemDefinition *newItem = catalog.findItem(itemId);
+            if (newItem)
+                (void)inventory.add(*newItem, 1);
+            return false;
+        }
+    }
+
+    *destination = itemId;
+    return true;
+}
+
+bool RosterSystem::unequip(int instanceId, GearSlot slot, int accessoryIndex,
+                           Inventory &inventory, const GearCatalog &catalog)
+{
+    RosterUnit *unit = findById(instanceId);
+    if (!unit)
+        return false;
+
+    std::optional<ItemId> *source = nullptr;
+    if (slot == GearSlot::Accessory)
+    {
+        if (accessoryIndex < 0 || accessoryIndex >= static_cast<int>(unit->equippedGear.accessories.size()))
+            return false;
+        source = &unit->equippedGear.accessories[static_cast<std::size_t>(accessoryIndex)];
+    }
+    else
+    {
+        const std::size_t index = static_cast<std::size_t>(slot);
+        if (index >= unit->equippedGear.slots.size())
+            return false;
+        source = &unit->equippedGear.slots[index];
+    }
+
+    if (!source->has_value())
+        return false;
+    const ItemDefinition *item = catalog.findItem(**source);
+    if (!item || !inventory.add(*item, 1))
+        return false;
+
+    source->reset();
+    return true;
 }

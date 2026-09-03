@@ -13,7 +13,8 @@ MovementRange::Result MovementRange::compute(
     int movementPoints,
     int team,
     const std::vector<Unit *> &allUnits,
-    int jump)
+    int jump,
+    MovementRangeOptions options)
 {
     Result result;
     std::unordered_set<Vec2i, Vec2iHash> visited;
@@ -47,9 +48,11 @@ MovementRange::Result MovementRange::compute(
         if (std::abs(battleMap.at(to.x, to.y).height - battleMap.at(from.x, from.y).height) > jump)
             return false;
 
-        // Occupancy check
+        // Normal movement follows the existing enemy-blocks/ally-passes
+        // contract. Teleport movement may traverse occupied tiles but can
+        // never land on one (filtered when adding to Result below).
         auto it = unitTeamAt.find(to);
-        if (it != unitTeamAt.end())
+        if (!options.ignoreUnitCollisionAlongPath && it != unitTeamAt.end())
         {
             int occTeam = it->second;
             if (occTeam != team) // enemy unit blocks completely
@@ -81,9 +84,10 @@ MovementRange::Result MovementRange::compute(
             const int stepCost = grid.getMoveCost(cur.pos, next);
             const int totalCost = cur.costSoFar + stepCost;
 
-            // Add tile to result unless an ally occupies it (cannot end on ally)
+            // Occupied tiles are never landing destinations. In normal mode
+            // enemies were rejected above and allies may be traversed only.
             auto it = unitTeamAt.find(next);
-            if (it == unitTeamAt.end() || it->second != team)
+            if (it == unitTeamAt.end())
             {
                 result.reachable.insert(next);
                 result.costs[next] = totalCost;

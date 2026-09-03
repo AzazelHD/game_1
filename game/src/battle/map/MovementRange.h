@@ -11,6 +11,13 @@ class Grid;
 class BattleMap;
 class Unit;
 
+struct MovementRangeOptions
+{
+    // Used by GearSpecialEffect::TeleportMovement. Occupied tiles may be
+    // traversed while searching, but never returned as landing destinations.
+    bool ignoreUnitCollisionAlongPath = false;
+};
+
 struct Vec2iHash
 {
     std::size_t operator()(Vec2i v) const noexcept
@@ -41,5 +48,6 @@ public:
         int movementPoints,
         int team,
         const std::vector<Unit *> &allUnits,
-        int jump);
+        int jump,
+        MovementRangeOptions options = {});
 };

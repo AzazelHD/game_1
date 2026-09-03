@@ -23,17 +23,14 @@
 ## Render Pass Integration (refactor/renderer-passes branch)
 
 - [x] Update `BattleState::render()` to use `beginLogicalPass()` / `endLogicalPass()`
-- [ ] Split `renderEffects()`: `DamagePreview` → native pass, `CombatAnimationSystem::render` + `DebugRenderer::flush` → world pass
+- [x] Split world/native effects passes: `DamagePreview` -> native pass, `CombatAnimationSystem::render` + `DebugRenderer::flush` -> world pass
 - [ ] Confirm no visual regressions (text crisp, correct coordinate spaces)
 
 ## Gameplay & Content
 
-- [ ] **DialogSystem**  
-       Implement wrapper (`start/update/render/isActive`), block input while active, add sample pre‑battle dialog
-- [ ] **SkillLoader**  
-       Complete loader, add at least 2 skill JSONs, feed selected skill into combat
-- [ ] **JSON schema documentation**  
-       Document map, unit, and skill JSON structures
+- [ ] **DialogSystem** - [x] Wrapper/controller implemented (`DialogueController`) with active-state API - [x] Input blocking while active (via UIManager blocking windows and `DialogWindow`) - [ ] Add sample pre-battle scripted dialogue sequence usage
+- [x] **SkillLoader** - [x] Loader implemented (`load`, `loadAll`, duplicate ID checks) - [x] At least 2 skill JSONs present (`slash.json`, `fireball.json`) - [x] Selected skill is wired into combat targeting/resolution flow
+- [x] **JSON schema documentation** - [x] Document map, unit, and skill JSON structures
 
 ## Polish
 
