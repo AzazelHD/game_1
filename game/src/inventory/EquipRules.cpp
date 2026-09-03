@@ -91,6 +91,32 @@ bool EquipRules::weaponSupportsOffhand(const Gear *weapon)
            !weapon->isRanged();
 }
 
+bool EquipRules::mainHandSupportsOffhand(const EquipmentLoadout &loadout)
+{
+    const Gear *mainHand = loadout.slots[static_cast<std::size_t>(GearSlot::Weapon)];
+    return weaponSupportsOffhand(mainHand);
+}
+
+bool EquipRules::isOffhandEligibleGear(const Gear &gear, const EquipmentLoadout &loadout)
+{
+    // Offhand is only enabled while a one-handed non-ranged main-hand is
+    // equipped. Two-handed or ranged main-hands disable the slot entirely.
+    if (!mainHandSupportsOffhand(loadout))
+        return false;
+
+    // Shield is the classic off-hand item: tagged with slot == Offhand and
+    // not a weapon.
+    if (gear.slot() == GearSlot::Offhand && !gear.isWeapon())
+        return true;
+
+    // Dual-wield: any one-handed non-ranged weapon (Sword, Mace, …) may
+    // fill the Offhand slot alongside a one-handed non-ranged main-hand.
+    if (gear.isWeapon())
+        return weaponSupportsOffhand(&gear);
+
+    return false;
+}
+
 bool EquipRules::canEquip(Race race, const Gear &gear, const EquipmentLoadout &loadout)
 {
     if (!isSlotEnabled(race, gear.slot()))
@@ -114,29 +140,49 @@ bool EquipRules::canEquip(Race race, const Gear &gear, const EquipmentLoadout &l
     if (loadout.slots[index] != nullptr)
         return false;
 
-    // Offhand has special eligibility: accepts Shield OR one-handed non-ranged weapon (dual-wield)
+    // Offhand has special eligibility: accepts Shield OR one-handed non-ranged
+    // weapon (dual-wield), but only while a one-handed non-ranged main-hand
+    // is already equipped. The dual-wield case covers weapons whose
+    // `slot()` is GearSlot::Weapon (e.g. Sword/Mace); the shield case
+    // covers gear tagged with slot() == GearSlot::Offhand.
     if (gear.slot() == GearSlot::Offhand)
-    {
-        if (gear.slot() == GearSlot::Offhand && !gear.isWeapon())
-        {
-            // Shield is allowed
-            return true;
-        }
-        // Weapon in Offhand: check main-hand compatibility
-        return gear.isWeapon() && weaponSupportsOffhand(&gear);
-    }
+        return isOffhandEligibleGear(gear, loadout);
 
-    // If changing the main-hand weapon, ensure any equipped Offhand remains valid
-    if (gear.slot() == GearSlot::Weapon && loadout.slots[slotIndex(GearSlot::Offhand)] != nullptr)
+    // Dual-wield validation: equipping a weapon (slot == Weapon) into an
+    // Offhand slot is allowed only when the current main-hand is a
+    // one-handed non-ranged weapon. RosterSystem::equip clears the target
+    // slot before calling, so we cannot rely on slot-equality here; we
+    // accept the request whenever the main-hand permits an off-hand item
+    // and the gear is a valid off-hand candidate. RosterSystem passes
+    // `slot` as the destination — we don't have it here, so the candidate
+    // filter in UnitDetailWindow is the first gate. The validation below
+    // also guards the Weapon-slot case where a Shield/dual-wield weapon
+    // already occupies Offhand and the new main-hand must still support it.
+    if (gear.isWeapon() && gear.weaponHandedness() == WeaponHandedness::OneHanded && !gear.isRanged())
     {
-        const Gear *offhand = loadout.slots[slotIndex(GearSlot::Offhand)];
-        if (offhand && offhand->isWeapon())
+        // This branch is hit both for normal main-hand equips (slot == Weapon)
+        // and dual-wield off-hand equips. Reject the main-hand case when an
+        // existing off-hand item is incompatible.
+        const Gear *offhand = loadout.slots[static_cast<std::size_t>(GearSlot::Offhand)];
+        if (offhand != nullptr)
         {
-            // Weapon in Offhand: new main-hand must support it
+            if (offhand->isWeapon())
+                return weaponSupportsOffhand(&gear);
+            // Shield in offhand: new main-hand must still be one-handed non-ranged
             return weaponSupportsOffhand(&gear);
         }
-        // Shield in Offhand: new main-hand must support it
-        return weaponSupportsOffhand(&gear);
+        // No offhand currently: the gear is a valid one-handed non-ranged
+        // weapon, the Weapon slot is empty (or this is a dual-wield swap),
+        // and main-hand is unchanged from loadout. Allow.
+        return true;
+    }
+    if (gear.isWeapon())
+    {
+        // Two-handed or ranged weapon: cannot be paired with any off-hand item.
+        const Gear *offhand = loadout.slots[static_cast<std::size_t>(GearSlot::Offhand)];
+        if (offhand != nullptr)
+            return false;
+        return true;
     }
 
     return true;

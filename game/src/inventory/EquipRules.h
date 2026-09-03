@@ -39,7 +39,20 @@ public:
     static bool canEquip(Race race, const Gear &gear, const EquipmentLoadout &loadout);
     static bool hasSpecialEffect(const EquipmentLoadout &loadout, GearSpecialEffect effect);
 
+    // True if `gear` is a valid candidate for the Offhand slot given the
+    // current main-hand state in `loadout`. Accepts both Shields (slot ==
+    // Offhand) and one-handed non-ranged weapons (dual-wield). Used both
+    // by canEquip()'s validation and by the candidate-filter that builds
+    // the ItemSelect list — keeping both in sync here prevents the bug
+    // where the validation accepts a candidate the filter rejects (or vice
+    // versa).
+    static bool isOffhandEligibleGear(const Gear &gear, const EquipmentLoadout &loadout);
+
 private:
     static std::size_t slotIndex(GearSlot slot);
     static bool weaponSupportsOffhand(const Gear *weapon);
+    // True if the main-hand weapon in `loadout` permits a secondary item
+    // in the Offhand slot (Shield or dual-wield weapon). The offhand slot
+    // is only enabled while a one-handed non-ranged main-hand is equipped.
+    static bool mainHandSupportsOffhand(const EquipmentLoadout &loadout);
 };

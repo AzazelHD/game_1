@@ -266,7 +266,10 @@ Observed in this repo:
 
 ## 8. Build, Run, Verify
 
-Build flows (full recipes in `USEFUL_COMMANDS.txt`):
+Two supported flows:
+
+- **DEV** — game Debug + engine consumed from `engine/build` package export.
+- **FINAL** — game Release + engine consumed from installed package in `../install`.
 
 ```bat
 :: DEV flow
@@ -292,13 +295,28 @@ tools\build_release.bat
 H:\Coding\Games\TRPG\game_1\build\debug\game\Debug\game.exe
 ```
 
-Clean configure when cache is stale:
+Clean configure when the cache is stale:
 
 ```bat
 cd /d H:\Coding\Games\TRPG\game_1
 if exist build\debug   rmdir /s /q build\debug
 if exist build\release rmdir /s /q build\release
 ```
+
+VS Code tasks (already wired in `.vscode/tasks.json`):
+
+- Engine DEV / Engine FINAL (engine workspace)
+- Game DEV / Game FINAL / Run Game (game_1 workspace)
+
+Per `.clinerules/instructions.md`, the agent **must** read `.vscode/tasks.json`
+before doing any build/run/configure work and summarize the existing tasks
+first. Add new tasks there instead of inventing ad-hoc CLI invocations.
+
+Shell host policy (per `.github/copilot-instructions.md`): use `cmd.exe` for
+all repository commands, builds, tests, CMake, MSVC, Git, and native
+toolchain setup. Even when the host terminal is PowerShell, prefer the
+`engine/tools/vsenv.bat` / `game_1/tools/build_*.bat` wrappers and avoid
+localized path names.
 
 Engineering rules to enforce:
 
@@ -416,3 +434,139 @@ When the agent needs ground truth, read in this order:
 Update `TODO.md` and `CHANGELOG.md` when finishing items. Update
 `ARCHITECTURE.md` when ownership/responsibilities change. Update
 `DATA_SCHEMAS.md` when a JSON contract or runtime struct shape changes.
+
+---
+
+## 14. Engine Public API — What to Call, What to Reuse
+
+`game_1` is gameplay; the engine is the platform. When you need a
+primitive the engine already exposes, **call it**. Do not reimplement
+camera math, text rendering, focus loops, tile drawing, or Tiled parsing
+in `game/src/`. The engine headers are the only supported integration
+point (see §2.1). `engine/ARCHITECTURE.md` is the full reference; this
+section is the cheat-sheet you should keep in your head.
+
+### 14.1 Where the public surface lives
+
+All engine headers are under `engine/include/engine/...` and are pulled
+in via the include path set in `game/CMakeLists.txt`. The public
+namespace is the global one — `App`, `Renderer`, `Camera`, `Scene`,
+`Input`, `Vec2f`, `Color`, etc. SDL is **not** exposed through these
+headers: never `#include <SDL3/SDL.h>` from `game/src/` for normal
+runtime use.
+
+The engine export target is `TRPG::engine` (static library) and is
+consumed via `find_package(TRPGEngine)`. The dev path consumes the
+build-tree package from `../engine/build`; release consumes the
+installed package from `../install`.
+
+### 14.2 Engine module summary
+
+| Module | Key public types | Purpose / key methods (use these, don't reimplement) |
+|---|---|---|
+| `engine/core/App` | `App`, `WindowStartupConfig`, `FrameRatePreset` | Top-level owner. `App::getRenderer()`, `getWindow()`, `getSceneStack()`, `getInstance()`, `requestQuit()`, `showErrorDialog()`. Construct once in `main.cpp` with a `SceneFactory`. |
+| `engine/core/Window` | `Window`, `VSyncMode`, `DisplayResolution` | Reach via `App::getWindow()`. `getRenderer()`, `setResizable()`, `setBorderless()`, `setVSync()`, `GetPrimaryDesktopResolution()`. |
+| `engine/core/Timer` | `Timer` | Internal to `App`; do not own one. |
+| `engine/core/Log` | `LOG_INFO/WARN/ERROR/SET_FRAME` macros | Always `LOG_*("Tag", "fmt", ...)`. Compiled to nothing in Release. |
+| `engine/input/Input` | `Input` (singleton), `KeyCode` | `Input::instance().isKeyDown/isKeyPressed(k, allowRepeat)/isKeyReleased/consumeKey/getMousePosition/isMouseButtonDown`. Use `allowRepeat=true` for menu navigation. Call `consumeKey()` after handling a press so other handlers don't double-fire. |
+| `engine/input/KeyCode` | `KeyCode` | Engine-neutral names. `Up/Down/Left/Right`, `Accept/Back/Pause/Advance/Details`, `CameraPan*`, `CameraZoom*`, `CameraReset`, `DebugToggle`. |
+| `engine/input/GamepadCode` | `GamepadCode` | Stub. No controller work yet. |
+| `engine/math/Vec2` | `Vec2<T>`, `Vec2i`, `Vec2f` | `x,y` members, `+,-,*,/,+=,-=,==,!=,toString()`. `Vec2i` for tile/grid; `Vec2f` for world/screen. |
+| `engine/math/Rect` | `Rect<T>`, `Recti`, `Rectf` | `x,y,w,h`, `contains(point)`, `intersects(other)`, `right()`, `bottom()`. **Do not use SDL_Rect** in game code. |
+| `engine/math/MathUtils` | free `lerp`, `manhattanDistance`, `tileToIso`, `isoToTile`, easing (`easeIn`, `easeOut`, `easeInOut`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic`, `bounce`, `linear`) | Prefer `tileToIso` / `isoToTile` over hand-rolled isometric math. Movement cost is **real path cost**, not Manhattan; `manhattanDistance` is acceptable as a heuristic inside `Pathfinder`, not as the cost. |
+| `engine/renderer/Renderer` | `Renderer`, `Color`, `FColor`, `HorizontalAlign`/`VerticalAlign` | The only draw entry point. `clear`, `present`, `setLogicalPresentation`, `setDrawColor`, `setBlendMode`, `fillRect/drawRect/drawLine/drawGeometry`, `loadFont`, `loadTexture`, `drawTexture(src,dst,flipH)`, `renderText`, `renderTextInRect`, `measureText`, `alignInRect`, `setFontWrapAlignment/getFontWrapAlignment`, `setLetterboxColor`, `beginLogicalPass`/`endLogicalPass`, `toNativeRect/toNativePos` (private helpers; not for game code), `drawDebugText`. |
+| `engine/renderer/Color` | `Color` (uint8 RGBA), `FColor` (float RGBA) | Use `Color::black()/white()/transparent()`, `FColor::black()/white()/transparent()`. `FColor` is implicit-constructible from `Color`. |
+| `engine/renderer/Aligment` | `HorizontalAlign`, `VerticalAlign` | `Left/Center/Right`, `Top/Middle/Bottom`. Note the engine's `Aligment.h` filename is misspelled — keep the include path verbatim. |
+| `engine/renderer/Camera` | `Camera`, `FollowEasing`, `Rotation` | Single source of truth for tile↔screen. `setMapSize`, `setTileSize`, `setMapBoundsMargin`, `setRenderScale`, `setLogicalPresentation` config; `tileToScreen`, `screenToTile`, `isoSpaceRectToScreen`, `rotateTile`, `unrotateTile`, `getDrawOrder` for back-to-front iteration; `pan`, `setOffset`, `follow` (edge-pan), `trackTarget` (ease to point); `clampToBounds`; `setZoom/zoomIn/zoomOut` (around focal point); `setRotation/rotateCW/rotateCCW`. `isTileInsideMap`. |
+| `engine/renderer/Texture` | `Texture` | Non-owning opaque handle. Create via `Renderer::loadTexture`; caller owns and deletes. |
+| `engine/renderer/Font` | `Font` | Non-owning opaque handle. Create via `Renderer::loadFont`. |
+| `engine/renderer/FontManager` | `FontManager` (singleton), `FontRole` | Single loading point in `BootState::onEnter()` via `FontManager::instance().loadAll(renderer)`. Roles: `Body`, `Heading`, `Title`, `Placeholder`. Fonts are loaded once and shared. |
+| `engine/renderer/SpriteBatch` | `SpriteBatch`, `DrawCommand` | Caller is responsible for calling `Camera::tileToScreen` before `draw()`. `flush(renderer)` and `clear()`. |
+| `engine/renderer/TileLayer` | `TileLayer` | `setTiles(mapW, mapH, indices)` where `indices[y*w+x]` is a 1-based tile id (0 = empty). `render(batch, camera, screenSize)` does culling. Use `Camera::getDrawOrder` for back-to-front. |
+| `engine/renderer/DebugRenderer` | `DebugRenderer` (singleton) | `instance().clear/addScreenLine/addScreenRect/addScreenCircle/addIsoLine/addIsoRect/flush(renderer, camera)`. No-op in Release. |
+| `engine/scene/Scene` | `Scene` | Abstract base. `onEnter`, `onExit`, `handleInput` (default empty), `update(dt)`, `render(alpha)`. |
+| `engine/statemachine/StateMachine` | `StateMachine<T>` | Deferred push/pop/replace; re-entrant calls from `update`/`handleInput` are queued. `push`, `pop`, `replace`, `update(dt)`, `handleInput()`, `render(alpha)`, `isEmpty`, `currentStateDebugName()`. |
+| `engine/ui/Button` | `Button : IFocusable` | `setOnClick`, `setEnabled`, `setSelected`, `setTextAlignment`, `setPadding`, `setDefaultFont`. |
+| `engine/ui/Slider` | `Slider` | `setRange`, `setValue`, `handleDrag(mouseX, mouseY, dragging)`, `step(delta)`, `getValue`, `normalized`, `setRenderStyle`. |
+| `engine/ui/TextLabel` | `TextLabel`, `TextStyle`, `TextAnimation` | Lightweight single-line label. `setText/setPosition/setColor/setFont/setStyle/setAnimation/update/render`. |
+| `engine/ui/TextWrap` | `TextWrap` | `wrap(renderer, font, text, maxWidth)` returns wrapped lines. |
+| `engine/ui/MenuPanel` | `MenuPanel` | Vertical list of buttons. `addButton`, `update()` (autonomous nav + activate + cancel), `render`, `setPosition`, `setVerticalLayout`, `setPadding`, `setOnCancel`, `setBackground`, `navigateUp/Down`, `activateSelected`, `getSelectedIndex`, `empty/size`, `clearButtons`, `getButtons`. |
+| `engine/ui/FocusGroup` | `FocusGroup` | Manages selection / wrap-around across `IFocusable*` items. `reset(container)`, `resetFromPointers`, `clear`, `refresh`, `focusPrevious/Next`, `activateSelected`, `handleSelectedLeft/Right`, `getSelectedIndex`, `empty/size`. |
+| `engine/ui/IFocusable` | `IFocusable` | `activate()`, `setSelected()`, `isEnabled()`, optional `handleLeft/Right` (default: not handled). |
+| `engine/ui/Insets` | `Insets` | `all(v)`, `symmetric(h,v)`, full 4-side ctor. |
+| `engine/ui/HorizontalLayout` | `HorizontalLayout` | Pure-geometry row layout. `measureTotalWidth`, `computeBounds`, `layoutItems`, `layoutContainers`. |
+| `engine/ui/VerticalLayout` | `VerticalLayout`, `VerticalLayoutConfig`, `HorizontalAlignment` | `apply(widgets, origin, config)` (template that calls `getRect/setPosition` on the widgets), `measureTotalHeight`, `computeBounds`, `layoutColumn`, `layoutContainers`. |
+| `engine/ui/ButtonControl` | `ButtonControl : IRowControl` | Row-shaped button: label getter + onClick. `setLabelFormatter`, `render`, `activate`. |
+| `engine/ui/SliderControl` | `SliderControl : IRowControl` | Wraps a `Slider` and uses `handleLeft/Right` to step value. |
+| `engine/ui/ValueControl` | `ValueControl : IRowControl` | Cycled value display: `getValue()` + `onAdjust(bool right)`. |
+| `engine/ui/IRowControl` | `IRowControl : IFocusable` | Heterogeneous row item: `measureWidth`, `render(renderer, font, rect, ui, normalColor, selectedColor)`, `isFullWidth`. |
+| `engine/ui/UIAnimation` | `UIAnimation`, `UIAnimationTrack` | `start/update/isFinished`; `Track` owns and ticks them. |
+| `engine/data/TileMapData` | `TileMapData`, `TileSetData`, `TileLayerData`, `MapObject`, `TileProperty`, `TileTypeId`, `LayerType`, `findProperty` | Runtime map schema returned by `TiledJsonLoader`. `findLayer`, `tileTypeId/tileTypeName`, `tileTypeForGlobalTileId`. Object layer entries → `MapObject` (point or shape). |
+| `engine/data/TiledJsonLoader` | `TiledJsonLoader` | `loadFromFile(path, outError) → std::optional<TileMapData>`; `tryLoadFromFile(path, out, outError) → bool`. Supports embedded and external `.tsx` tilesets. Does not throw. |
+| `engine/data/PropertyId` | `PropertyId` | Runtime enum used in place of Tiled string property names. `Unknown`, `Solid`, `Damage`, `SpawnPoint`. Extend as needed. |
+| `engine/data/PropertyRegistry` | `PropertyRegistry` | Maps string → `PropertyId`. Used at load time only. |
+| `engine/data/TileClass` | `TileClass` namespace | Canonical Tiled class strings (`Normal`, `Grass`, `GrassEva`, `GrassAtk`, `GrassMag`) and matching bit flags (`Flag*`); rule groups (`kWalkable`, `kAnyGrass`); `spawnEnemyTeam(int)` for enemy spawns; `toFlag(string_view)` to convert. **Strings must match the Tiled "Class" field exactly.** |
+| `engine/assets/FileWatcher` | `FileWatcher` | Polled FS watcher with debounce. `watchFile/watchDirectory/unwatch`, `setChangeCallback`, `setDebounce`, `poll`, `clear`. Single-threaded. |
+| `engine/assets/HotReloadBus` | `HotReloadBus`, `HotReloadEvent{,Type}`, `DispatchResult` | Thread-safe pub/sub. `subscribe/unsubscribe/publish/clear`. Handlers may safely re-enter. |
+| `engine/effects/ScreenTransition` | `ScreenTransition`, `ScreenTransitions::FadeIn/FadeOut` | `start(Config)`, `update(dt)`, `render(renderer, viewW, viewH)`, `reset`, `isActive`, `progress`. `Config { transition, duration, color, easing, onComplete }`. |
+
+### 14.3 Isometric projection formula (Tiled)
+
+Standard 2:1 isometric. The engine already provides this as
+`engine/math/MathUtils::tileToIso` / `isoToTile` (use those instead of
+re-deriving the math). The bare formula, for reference and for the
+existing `USEFUL_COMMANDS.txt` snippet:
+
+```
+tileWidth  = map.tileWidth
+tileHeight = map.tileHeight
+originX    = (map.height * tileWidth) / 2   # horizontal centering on the diamond
+
+screenX = ((tile.x - tile.y) * tileWidth)  / 2 + originX
+screenY = ((tile.x + tile.y) * tileHeight) / 2
+```
+
+The engine's `Camera::tileToScreen` does this for you plus zoom, offset,
+and rotation. Always go through `Camera` for game-side projection.
+
+### 14.4 Don't-duplicate checklist
+
+Before adding a "helper" to `game/src/`, ask: is this already in the
+engine? If yes, call the engine API. Common offenders:
+
+- Hand-rolled iso math → `Camera::tileToScreen` / `MathUtils::tileToIso`.
+- Local color structs / SDL_Rect usage → `engine::Color`, `Recti`, `Rectf`.
+- Local key tables / SDL scancodes → `engine::KeyCode` + `Input`.
+- A "mini scene manager" → `StateMachine<Scene>`.
+- A "mini menu" with manual selection → `MenuPanel` + `FocusGroup`.
+- Tiled JSON hand-parsing → `TiledJsonLoader` → `TileMapData` →
+  `BattleMap::buildFrom`.
+- Local font loading in scenes → `FontManager::instance().get(role)`;
+  load once in `BootState`.
+- Manually re-issuing `SDL_PushEvent(SDL_EVENT_QUIT)` → `App::requestQuit()`.
+
+### 14.5 Tool-specific instruction files (do not duplicate, do not delete)
+
+This file is the repo-level single source of truth for agent
+conventions, but three other files exist because different tools load
+different files first. Keep all three present and in sync; each loads
+for a different audience:
+
+- **`AGENTS.md`** (this file) — picked up by `AGENTS.md`-aware tools
+  (opencode, Aider, and similar). The canonical, full version of
+  every rule.
+- **`.github/copilot-instructions.md`** — picked up by GitHub
+  Copilot/Coding Agent. Currently scoped to shell-host policy
+  (use `cmd.exe`, prefer the `*.bat` wrappers, never localized
+  path names). Cross-link to AGENTS.md when adding rules; do not
+  duplicate the full table of contents here.
+- **`.clinerules/instructions.md`** — picked up by Cline. Currently a
+  short pre-flight rule: "before any build/run/configure task, read
+  `.vscode/tasks.json` first and summarize the existing tasks".
+  Enforce this rule when acting under Cline; new build-related rules
+  should land both in AGENTS.md §8 and in `.clinerules/instructions.md`
+  if they are Cline-relevant.
+
+`USEFUL_COMMANDS.txt` has been trimmed to hold only the isometric
+formula and a pointer to this file; do not reintroduce the build
+recipes there — they live in §8.

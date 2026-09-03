@@ -71,6 +71,7 @@ set(GAME_SOURCES
     src/ui/UIScale.cpp
     src/ui/UnitPortrait.cpp
     src/ui/FloatingTextSystem.cpp
+    src/ui/UIKeyRepeat.cpp
     
     src/ui/windows/ButtonMenuWindow.cpp
     src/ui/windows/ConfirmWindow.cpp
@@ -155,6 +156,7 @@ set(GAME_SOURCES
     src/ui/BattleMenuItem.h
     src/ui/FloatingTextSystem.h
     src/ui/UIUtils.h
+    src/ui/UIKeyRepeat.h
     
     src/ui/windows/ButtonMenuWindow.h
     src/ui/windows/ConfirmWindow.h

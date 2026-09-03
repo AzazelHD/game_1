@@ -1,7 +1,9 @@
 #pragma once
 
+#include "ui/UIKeyRepeat.h"
 #include "ui/UIWindow.h"
 #include "inventory/EquipRules.h"
+#include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
 
 #include <memory>
@@ -91,6 +93,14 @@ private:
     void renderSlotSelectPanel(Renderer *renderer) const;
     void renderItemSelectPanel(Renderer *renderer) const;
     void renderActionMenu(Renderer *renderer) const;
+    // Shared read-only description card used by both SlotSelect (currently
+    // equipped gear) and ItemSelect (candidate gear) — keeps the look and
+    // dismiss affordance identical across both panels (Part I).
+    void renderItemDescriptionCard(Renderer *renderer,
+                                   const Rectf &rightColumn,
+                                   const SlotEntry &slotForLabel,
+                                   const Gear *gear,
+                                   const char *closeHint) const;
 
     // Mode flag: true if interactive (has roster/inventory), false if read-only
     bool m_isInteractive = false;
@@ -119,6 +129,9 @@ private:
     // Slot selection state
     std::vector<SlotEntry> m_slots;
     int m_selectedSlotIndex = 0;
+    // Slot index to restore on the next SlotSelect entry. Set when
+    // transitioning into ItemSelect (Part H), consumed in enterSlotSelect.
+    int m_lastSelectedSlotIndex = -1;
     std::unique_ptr<FocusGroup> m_slotFocus;
 
     // Item selection state
@@ -126,4 +139,19 @@ private:
     int m_selectedItemIndex = 0;
     int m_candidateScroll = 0;
     std::unique_ptr<FocusGroup> m_itemFocus;
+
+    // Hold-to-repeat trackers (Part K) for SlotSelect and ItemSelect
+    // Up/Down navigation. A/D page jumps stay single-step.
+    UIKeyRepeat m_slotUpRepeat;
+    UIKeyRepeat m_slotDownRepeat;
+    UIKeyRepeat m_slotLeftRepeat;
+    UIKeyRepeat m_slotRightRepeat;
+    UIKeyRepeat m_itemUpRepeat;
+    UIKeyRepeat m_itemDownRepeat;
+    UIKeyRepeat m_itemLeftRepeat;
+    UIKeyRepeat m_itemRightRepeat;
+    // Most recent update() dt, cached so handleInput() can drive the
+    // repeat trackers (the engine dispatches handleInput before update
+    // on the same frame).
+    float m_lastDt = 0.f;
 };

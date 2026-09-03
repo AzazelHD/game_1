@@ -81,23 +81,31 @@ void InventoryWindow::handleInput(const Input &input)
 {
     const int count = static_cast<int>(m_rows.size());
 
+    // The four key-repeat trackers drive continuous Up/Down navigation
+    // and continuous A/D page-jumps (Part K). All four use the same
+    // initial-delay / interval tuning so the feel is consistent.
+    const bool upHit    = m_upRepeat.tick(m_lastDt,    input.isKeyDown(KeyCode::Up)    || input.isKeyDown(KeyCode::W));
+    const bool downHit  = m_downRepeat.tick(m_lastDt,  input.isKeyDown(KeyCode::Down)  || input.isKeyDown(KeyCode::S));
+    const bool leftHit  = m_leftRepeat.tick(m_lastDt,  input.isKeyDown(KeyCode::Left)  || input.isKeyDown(KeyCode::A));
+    const bool rightHit = m_rightRepeat.tick(m_lastDt, input.isKeyDown(KeyCode::Right) || input.isKeyDown(KeyCode::D));
+
     if (count > 0)
     {
-        if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::W, false))
+        if (upHit)
         {
             if (m_selectedIndex > 0)
                 --m_selectedIndex;
         }
-        else if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::S, false))
+        else if (downHit)
         {
             if (m_selectedIndex < count - 1)
                 ++m_selectedIndex;
         }
-        else if (input.isKeyPressed(KeyCode::Left, false) || input.isKeyPressed(KeyCode::A, false))
+        else if (leftHit)
         {
             m_selectedIndex = std::max(0, m_selectedIndex - 5);
         }
-        else if (input.isKeyPressed(KeyCode::Right, false) || input.isKeyPressed(KeyCode::D, false))
+        else if (rightHit)
         {
             m_selectedIndex = std::min(count - 1, m_selectedIndex + 5);
         }
@@ -115,8 +123,15 @@ void InventoryWindow::handleInput(const Input &input)
     }
 }
 
-void InventoryWindow::update(float /*dt*/)
+void InventoryWindow::update(float dt)
 {
+    // Cache dt so handleInput (which the engine dispatches *before* update
+    // on the same frame) can drive the hold-to-repeat trackers.
+    m_lastDt = dt;
+    m_upRepeat.start(0.35f, 0.09f);
+    m_downRepeat.start(0.35f, 0.09f);
+    m_leftRepeat.start(0.35f, 0.09f);
+    m_rightRepeat.start(0.35f, 0.09f);
 }
 
 void InventoryWindow::render(Renderer *renderer) const

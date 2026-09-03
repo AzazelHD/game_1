@@ -186,7 +186,20 @@ void UnitDetailWindow::setState(UIState newState)
 
 void UnitDetailWindow::enterSlotSelect()
 {
-    m_selectedSlotIndex = 0;
+    // Restore the slot the user was on before entering ItemSelect, so
+    // equipping into Helmet returns to the Helmet row rather than
+    // jumping back to Weapon (the bug Part H reports). The remembered
+    // index is cleared after the first restore so a future direct
+    // navigation to SlotSelect (Details → SlotSelect) starts at Weapon.
+    if (m_lastSelectedSlotIndex >= 0 && m_lastSelectedSlotIndex < static_cast<int>(m_slots.size()))
+    {
+        m_selectedSlotIndex = m_lastSelectedSlotIndex;
+        m_lastSelectedSlotIndex = -1;
+    }
+    else
+    {
+        m_selectedSlotIndex = 0;
+    }
     m_showItemDescription = false;
 }
 
@@ -199,6 +212,8 @@ void UnitDetailWindow::enterItemSelect()
     rebuildCandidatesList();
     m_selectedItemIndex = 0;
     m_candidateScroll = 0;
+    m_lastSelectedSlotIndex = m_selectedSlotIndex;
+    m_showItemDescription = false;
 }
 
 void UnitDetailWindow::exitItemSelect()
@@ -293,8 +308,16 @@ void UnitDetailWindow::rebuildCandidatesList()
         if (!gear)
             continue;
 
-        // Check if this gear can go in the selected slot
-        if (slot.slot != gear->slot())
+        // Slot matching: either the gear's tagged slot matches the
+        // selected slot, or (for the Offhand case) the gear is a valid
+        // off-hand candidate under the current main-hand state. Without
+        // the second clause dual-wield weapons (Sword/Mace, slot==Weapon)
+        // would never appear in the Offhand item list, which is the bug
+        // Part J reports.
+        const bool slotMatches = (slot.slot == gear->slot());
+        const bool offhandCandidate = (slot.slot == GearSlot::Offhand &&
+                                       EquipRules::isOffhandEligibleGear(*gear, candidateLoadout));
+        if (!slotMatches && !offhandCandidate)
             continue;
 
         if (!EquipRules::canEquip(m_unit->getRace(), *gear, candidateLoadout))
@@ -403,12 +426,17 @@ void UnitDetailWindow::handleInput(const Input &input)
             return;
         }
 
-        if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::W, false))
+        // Hold-to-repeat (Part K): continuous Up/Down after the initial
+        // press. Tab/Accept/Back/X keep their single-press semantics.
+        const bool upHit   = m_slotUpRepeat.tick(m_lastDt,   input.isKeyDown(KeyCode::Up)   || input.isKeyDown(KeyCode::W));
+        const bool downHit = m_slotDownRepeat.tick(m_lastDt, input.isKeyDown(KeyCode::Down) || input.isKeyDown(KeyCode::S));
+
+        if (upHit)
         {
             if (m_selectedSlotIndex > 0)
                 --m_selectedSlotIndex;
         }
-        else if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::S, false))
+        else if (downHit)
         {
             if (m_selectedSlotIndex < static_cast<int>(m_slots.size()) - 1)
                 ++m_selectedSlotIndex;
@@ -446,25 +474,52 @@ void UnitDetailWindow::handleInput(const Input &input)
     {
         const int count = static_cast<int>(m_candidates.size());
 
+        if (m_showItemDescription)
+        {
+            if (input.isKeyPressed(KeyCode::Details, false) || input.isKeyPressed(KeyCode::Back, false) || input.isKeyPressed(KeyCode::Accept, false))
+            {
+                m_showItemDescription = false;
+            }
+            return;
+        }
+
+        // Hold-to-repeat (Part K): Up/Down scroll the candidate list
+        // continuously; A/D page-jump (5 rows at a time), Tab details,
+        // Enter equip, X unequip, Back to SlotSelect. A/D uses the same
+        // initial-delay/interval tuning as W/S for a consistent feel.
+        const bool upHit    = m_itemUpRepeat.tick(m_lastDt,    input.isKeyDown(KeyCode::Up)    || input.isKeyDown(KeyCode::W));
+        const bool downHit  = m_itemDownRepeat.tick(m_lastDt,  input.isKeyDown(KeyCode::Down)  || input.isKeyDown(KeyCode::S));
+        const bool leftHit  = m_itemLeftRepeat.tick(m_lastDt,  input.isKeyDown(KeyCode::Left)  || input.isKeyDown(KeyCode::A));
+        const bool rightHit = m_itemRightRepeat.tick(m_lastDt, input.isKeyDown(KeyCode::Right) || input.isKeyDown(KeyCode::D));
+
         if (count > 0)
         {
-            if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::W, false))
+            if (upHit)
             {
                 if (m_selectedItemIndex > 0)
                     --m_selectedItemIndex;
             }
-            else if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::S, false))
+            else if (downHit)
             {
                 if (m_selectedItemIndex < count - 1)
                     ++m_selectedItemIndex;
             }
-            else if (input.isKeyPressed(KeyCode::Left, false) || input.isKeyPressed(KeyCode::A, false))
+            else if (leftHit)
             {
                 m_selectedItemIndex = std::max(0, m_selectedItemIndex - 5);
             }
-            else if (input.isKeyPressed(KeyCode::Right, false) || input.isKeyPressed(KeyCode::D, false))
+            else if (rightHit)
             {
                 m_selectedItemIndex = std::min(count - 1, m_selectedItemIndex + 5);
+            }
+            else if (input.isKeyPressed(KeyCode::Details, false)) // Tab opens read-only description of the candidate (Part I)
+            {
+                if (m_selectedItemIndex >= 0 && m_selectedItemIndex < static_cast<int>(m_candidates.size()))
+                {
+                    const ItemCandidate &cand = m_candidates[static_cast<std::size_t>(m_selectedItemIndex)];
+                    if (cand.gear)
+                        m_showItemDescription = true;
+                }
             }
             else if (input.isKeyPressed(KeyCode::Accept, false))
             {
@@ -492,8 +547,20 @@ void UnitDetailWindow::handleInput(const Input &input)
     }
 }
 
-void UnitDetailWindow::update(float /*dt*/)
+void UnitDetailWindow::update(float dt)
 {
+    // Refresh hold-to-repeat parameters (Part K). Each list gets its own
+    // set of trackers so navigation in SlotSelect doesn't leak into
+    // ItemSelect. W/S and A/D use the same tuning for a consistent feel.
+    m_lastDt = dt;
+    m_slotUpRepeat.start(0.35f, 0.09f);
+    m_slotDownRepeat.start(0.35f, 0.09f);
+    m_slotLeftRepeat.start(0.35f, 0.09f);
+    m_slotRightRepeat.start(0.35f, 0.09f);
+    m_itemUpRepeat.start(0.35f, 0.09f);
+    m_itemDownRepeat.start(0.35f, 0.09f);
+    m_itemLeftRepeat.start(0.35f, 0.09f);
+    m_itemRightRepeat.start(0.35f, 0.09f);
 }
 
 void UnitDetailWindow::render(Renderer *renderer) const
@@ -575,6 +642,7 @@ void UnitDetailWindow::renderStatsColumn(Renderer *renderer, Vec2f colPos, float
     const float usableW = columnW - (2.0f * padX);
     const float labelW = std::floor(usableW * 0.44f);
     const float baseValW = std::floor(usableW * 0.26f);
+    const float kDeltaGap = 6.0f;
     const float deltaW = usableW - labelW - baseValW;
 
     for (std::size_t index = 0; index < stats.size(); ++index)
@@ -585,7 +653,10 @@ void UnitDetailWindow::renderStatsColumn(Renderer *renderer, Vec2f colPos, float
 
         const Rectf labelRect{row.x + padX, row.y, labelW, row.h};
         const Rectf baseValRect{row.x + padX + labelW, row.y, baseValW, row.h};
-        const Rectf deltaRect{row.x + padX + labelW + baseValW, row.y, deltaW, row.h};
+        // Column edge stays at the same x so rows without a delta keep
+        // their right-alignment; the gap only narrows where the delta
+        // text actually renders.
+        const Rectf deltaRect{row.x + padX + labelW + baseValW + kDeltaGap, row.y, deltaW - kDeltaGap, row.h};
 
         // 1. Column 1: Label (left-aligned, fixed width)
         renderer->renderTextInRect(m_font, label, labelRect,
@@ -703,74 +774,9 @@ void UnitDetailWindow::renderSlotSelectPanel(Renderer *renderer) const
         const Gear *gear = equippedGearAt(slot);
         if (gear)
         {
-            renderer->renderTextInRect(m_font, "Item Details", Rectf{rightColX, lowerY, columnW, kLineH},
-                                       UITheme::SelectedText, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-
-            const Font *headingFont = FontManager::instance().get(FontRole::Heading);
-            if (!headingFont)
-                headingFont = m_font;
-
-            float cardY = lowerY + 30.0f;
-            // Title
-            renderer->renderTextInRect(headingFont, gear->displayName,
-                                       Rectf{rightColX + 8.0f, cardY, columnW - 16.0f, 28.0f},
-                                       UITheme::SelectedText, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-            cardY += 32.0f;
-
-            // Slot / Type label
-            std::string typeLabel = slot.label;
-            if (gear->isWeapon())
-                typeLabel += " (" + std::string(gear->weaponHandedness() == WeaponHandedness::OneHanded ? "1-Handed" : "2-Handed") + (gear->isRanged() ? ", Ranged" : "") + ")";
-            renderer->renderTextInRect(m_font, typeLabel,
-                                       Rectf{rightColX + 8.0f, cardY, columnW - 16.0f, 22.0f},
-                                       UITheme::Info, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-            cardY += 28.0f;
-
-            // Wrapped description
-            if (!gear->description.empty())
-            {
-                const std::vector<std::string> descLines = TextWrap::wrap(renderer, m_font, gear->description, columnW - 20.0f);
-                const float lineH = renderer->measureText(m_font, "Ag").y;
-                for (const auto &line : descLines)
-                {
-                    renderer->renderTextInRect(m_font, line, Rectf{rightColX + 8.0f, cardY, columnW - 20.0f, lineH},
-                                               UITheme::Text, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-                    cardY += lineH + 2.0f;
-                }
-                cardY += 8.0f;
-            }
-
-            // Stat modifiers list
-            const auto &mods = gear->statModifiers();
-            std::vector<std::string> modStrings;
-            if (mods.attack != 0)
-                modStrings.push_back((mods.attack > 0 ? "+" : "") + std::to_string(mods.attack) + " Attack");
-            if (mods.defense != 0)
-                modStrings.push_back((mods.defense > 0 ? "+" : "") + std::to_string(mods.defense) + " Defense");
-            if (mods.magic != 0)
-                modStrings.push_back((mods.magic > 0 ? "+" : "") + std::to_string(mods.magic) + " Magic");
-            if (mods.magicDefense != 0)
-                modStrings.push_back((mods.magicDefense > 0 ? "+" : "") + std::to_string(mods.magicDefense) + " Magic Def");
-            if (mods.speed != 0)
-                modStrings.push_back((mods.speed > 0 ? "+" : "") + std::to_string(mods.speed) + " Speed");
-            if (mods.evasion != 0)
-                modStrings.push_back((mods.evasion > 0 ? "+" : "") + std::to_string(mods.evasion) + " Evasion");
-            if (mods.maxHp != 0)
-                modStrings.push_back((mods.maxHp > 0 ? "+" : "") + std::to_string(mods.maxHp) + " Max HP");
-            if (mods.maxMp != 0)
-                modStrings.push_back((mods.maxMp > 0 ? "+" : "") + std::to_string(mods.maxMp) + " Max MP");
-            if (mods.moveRange != 0)
-                modStrings.push_back((mods.moveRange > 0 ? "+" : "") + std::to_string(mods.moveRange) + " Move");
-            if (mods.jump != 0)
-                modStrings.push_back((mods.jump > 0 ? "+" : "") + std::to_string(mods.jump) + " Jump");
-
-            for (const auto &modStr : modStrings)
-            {
-                renderer->renderTextInRect(m_font, modStr, Rectf{rightColX + 8.0f, cardY, columnW - 16.0f, 22.0f},
-                                           Color{0, 255, 0, 255}, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-                cardY += 24.0f;
-            }
-
+            renderItemDescriptionCard(renderer,
+                                      Rectf{rightColX, lowerY, columnW, lowerH},
+                                      slot, gear, "Tab/Esc: Close Description");
             renderer->renderTextInRect(m_font, "Tab/Esc: Close Description",
                                        Rectf{contentX, panelY + kPanelH - outer.bottom - 22.0f, contentW, 22.0f},
                                        UITheme::Info, HorizontalAlign::Center, VerticalAlign::Middle, false, false, false);
@@ -871,6 +877,26 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
     // Right side: Breadcrumb header + Candidate items list
     const float rightColX = contentX + columnW + kColumnGap;
     const SlotEntry &selectedSlot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+
+    // Tab-driven read-only description card for the currently highlighted
+    // candidate (Part I). Reuses the same card helper as SlotSelect.
+    // When the card is open, skip the breadcrumb so its "Editing: X" line
+    // doesn't overlap the card's own "Item Details" header.
+    if (m_showItemDescription && m_selectedItemIndex >= 0 && m_selectedItemIndex < static_cast<int>(m_candidates.size()))
+    {
+        const ItemCandidate &cand = m_candidates[static_cast<std::size_t>(m_selectedItemIndex)];
+        if (cand.gear)
+        {
+            renderItemDescriptionCard(renderer,
+                                      Rectf{rightColX, lowerY, columnW, lowerH},
+                                      selectedSlot, cand.gear, nullptr);
+            renderer->renderTextInRect(m_font, "Tab/Esc: Close Description",
+                                       Rectf{contentX, panelY + kPanelH - outer.bottom - 22.0f, contentW, 22.0f},
+                                       UITheme::Info, HorizontalAlign::Center, VerticalAlign::Middle, false, false, false);
+            return;
+        }
+    }
+
     const std::string breadcrumb = "Editing: " + selectedSlot.label;
     renderer->renderTextInRect(m_font, breadcrumb, Rectf{rightColX, lowerY, columnW, kLineH},
                                UITheme::SelectedText, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
@@ -928,8 +954,91 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
         }
     }
 
-    const std::string itemHelp = "W/S: Select | A/D: Page | X: Unequip | Enter: Equip | Esc: Back";
+    const std::string itemHelp = "W/S: Select | A/D: Page | Tab: Details | X: Unequip | Enter: Equip | Esc: Back";
     renderer->renderTextInRect(m_font, itemHelp,
                                Rectf{contentX, panelY + kPanelH - outer.bottom - 22.0f, contentW, 22.0f},
                                UITheme::Info, HorizontalAlign::Center, VerticalAlign::Middle, false, false, false);
+}
+
+void UnitDetailWindow::renderItemDescriptionCard(Renderer *renderer,
+                                                 const Rectf &rightColumn,
+                                                 const SlotEntry &slotForLabel,
+                                                 const Gear *gear,
+                                                 const char *closeHint) const
+{
+    if (!gear)
+        return;
+
+    const float cardX = rightColumn.x;
+    const float cardY = rightColumn.y;
+    const float cardW = rightColumn.w;
+
+    renderer->renderTextInRect(m_font, "Item Details", Rectf{cardX, cardY, cardW, kLineH},
+                               UITheme::SelectedText, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+
+    const Font *headingFont = FontManager::instance().get(FontRole::Heading);
+    if (!headingFont)
+        headingFont = m_font;
+
+    float lineY = cardY + 30.0f;
+    // Title
+    renderer->renderTextInRect(headingFont, gear->displayName,
+                               Rectf{cardX + 8.0f, lineY, cardW - 16.0f, 28.0f},
+                               UITheme::SelectedText, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+    lineY += 32.0f;
+
+    // Slot / Type label
+    std::string typeLabel = slotForLabel.label;
+    if (gear->isWeapon())
+        typeLabel += " (" + std::string(gear->weaponHandedness() == WeaponHandedness::OneHanded ? "1-Handed" : "2-Handed") + (gear->isRanged() ? ", Ranged" : "") + ")";
+    renderer->renderTextInRect(m_font, typeLabel,
+                               Rectf{cardX + 8.0f, lineY, cardW - 16.0f, 22.0f},
+                               UITheme::Info, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+    lineY += 28.0f;
+
+    // Wrapped description
+    if (!gear->description.empty())
+    {
+        const std::vector<std::string> descLines = TextWrap::wrap(renderer, m_font, gear->description, cardW - 20.0f);
+        const float lineH = renderer->measureText(m_font, "Ag").y;
+        for (const auto &line : descLines)
+        {
+            renderer->renderTextInRect(m_font, line, Rectf{cardX + 8.0f, lineY, cardW - 20.0f, lineH},
+                                       UITheme::Text, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+            lineY += lineH + 2.0f;
+        }
+        lineY += 8.0f;
+    }
+
+    // Stat modifiers list
+    const auto &mods = gear->statModifiers();
+    std::vector<std::string> modStrings;
+    if (mods.attack != 0)
+        modStrings.push_back((mods.attack > 0 ? "+" : "") + std::to_string(mods.attack) + " Attack");
+    if (mods.defense != 0)
+        modStrings.push_back((mods.defense > 0 ? "+" : "") + std::to_string(mods.defense) + " Defense");
+    if (mods.magic != 0)
+        modStrings.push_back((mods.magic > 0 ? "+" : "") + std::to_string(mods.magic) + " Magic");
+    if (mods.magicDefense != 0)
+        modStrings.push_back((mods.magicDefense > 0 ? "+" : "") + std::to_string(mods.magicDefense) + " Magic Def");
+    if (mods.speed != 0)
+        modStrings.push_back((mods.speed > 0 ? "+" : "") + std::to_string(mods.speed) + " Speed");
+    if (mods.evasion != 0)
+        modStrings.push_back((mods.evasion > 0 ? "+" : "") + std::to_string(mods.evasion) + " Evasion");
+    if (mods.maxHp != 0)
+        modStrings.push_back((mods.maxHp > 0 ? "+" : "") + std::to_string(mods.maxHp) + " Max HP");
+    if (mods.maxMp != 0)
+        modStrings.push_back((mods.maxMp > 0 ? "+" : "") + std::to_string(mods.maxMp) + " Max MP");
+    if (mods.moveRange != 0)
+        modStrings.push_back((mods.moveRange > 0 ? "+" : "") + std::to_string(mods.moveRange) + " Move");
+    if (mods.jump != 0)
+        modStrings.push_back((mods.jump > 0 ? "+" : "") + std::to_string(mods.jump) + " Jump");
+
+    for (const auto &modStr : modStrings)
+    {
+        renderer->renderTextInRect(m_font, modStr, Rectf{cardX + 8.0f, lineY, cardW - 16.0f, 22.0f},
+                                   Color{0, 255, 0, 255}, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+        lineY += 24.0f;
+    }
+    (void)closeHint; // hint text is rendered by the caller along the bottom row
 }

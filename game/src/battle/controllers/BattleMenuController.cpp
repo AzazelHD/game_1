@@ -324,8 +324,11 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
         }
     }
 
-    if (ctx.flowPhase == BattleState::BattleFlowPhase::Deployment &&
-        event.windowId == WindowId::BattleSystemMenu)
+    // System menu (Resume / Quit, or Start Battle / Quit during deployment)
+    // is shared across flow phases. The handler must run before the
+    // Combat-only early-return below, otherwise Resume/Quit pressed in
+    // combat are dropped (Part L).
+    if (event.windowId == WindowId::BattleSystemMenu)
     {
         if (event.type == UIEventType::ActionSelected)
         {
@@ -344,13 +347,6 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
             closeAllMenus();
             return true;
         }
-    }
-
-    if (event.windowId == WindowId::BattleInspect && event.type == UIEventType::ActionCanceled)
-    {
-        ctx.uiManager.popById(WindowId::BattleInspect);
-        m_inspectWindow = nullptr;
-        return true;
     }
 
     if (ctx.flowPhase != BattleState::BattleFlowPhase::Combat)

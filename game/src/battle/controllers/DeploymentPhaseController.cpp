@@ -20,6 +20,11 @@
 
 #include <unordered_set>
 
+#if defined(_DEBUG) || !defined(NDEBUG)
+#include "inventory/EquipRules.h"
+#include "inventory/GearCatalog.h"
+#endif
+
 namespace
 {
     // Small duplicate of BattleState.cpp's own local helper — both files
@@ -211,6 +216,39 @@ void DeploymentPhaseController::startCombatPhase()
         if (u && ctx.grid.isValid(u->getPosition()))
             ctx.grid.getTile(u->getPosition()).occupied = true;
     }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+    // Debug enemy loadout: equip the first enemy unit on team 2 with a
+    // representative gear spread using IDs already seeded by
+    // PartyContext::seedDebugInventoryWithTestGear(). The Mace in the
+    // Offhand exercises the dual-wield path fixed in Part J (EquipRules
+    // one-handed non-ranged weapon in Offhand). Remove this block to drop
+    // the feature entirely in Release.
+    {
+        const GearCatalog &catalog = PartyContext::instance().gearCatalog();
+        Unit *debugTarget = nullptr;
+        for (Unit *u : ctx.session.getUnitPtrs())
+        {
+            if (u && u->getTeam() == 2 && !u->isDead())
+            {
+                debugTarget = u;
+                break;
+            }
+        }
+        if (debugTarget)
+        {
+            EquipmentLoadout loadout;
+            loadout.slots[static_cast<std::size_t>(GearSlot::Weapon)]   = catalog.find(1001);
+            loadout.slots[static_cast<std::size_t>(GearSlot::Offhand)]  = catalog.find(1002);
+            loadout.slots[static_cast<std::size_t>(GearSlot::Head)]     = catalog.find(1004);
+            loadout.slots[static_cast<std::size_t>(GearSlot::Body)]     = catalog.find(1005);
+            loadout.slots[static_cast<std::size_t>(GearSlot::Accessory)] = catalog.find(1006);
+            loadout.accessories[1] = catalog.find(1007);
+            debugTarget->setResolvedEquipmentLoadout(loadout);
+            LOG_INFO("Deployment", "Debug enemy loadout applied to %s", debugTarget->getName().c_str());
+        }
+    }
+#endif
 
     if (Unit *first = ctx.session.getCurrentUnit(); first)
         ctx.cursor.setPosition(first->getPosition());
