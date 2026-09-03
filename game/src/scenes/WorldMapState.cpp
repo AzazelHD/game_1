@@ -5,6 +5,7 @@
 #include "engine/renderer/Font.h"
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
+#include "engine/math/MathUtils.h"
 #include "config/GameConstants.h"
 #include "battle/unit/Unit.h"
 #include "battle/unit/UnitData.h"
@@ -42,12 +43,6 @@ namespace
     constexpr float kPlayerRadius = 10.0f;
 
     constexpr float kGridStep = 180.0f;
-
-    Vec2f lerp(Vec2f a, Vec2f b, float t)
-    {
-        t = std::clamp(t, 0.0f, 1.0f);
-        return Vec2f{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
-    }
 
     float distanceSquared(Vec2f a, Vec2f b)
     {
@@ -678,7 +673,11 @@ void WorldMapState::drawWorld() const
         const world::WorldGraph::Node *fromNode = m_graph.getNode(m_path[m_pathSegment]);
         const world::WorldGraph::Node *toNode = m_graph.getNode(m_path[m_pathSegment + 1]);
         if (fromNode && toNode)
-            playerPos = lerp(fromNode->position, toNode->position, m_segmentProgress);
+        {
+            const float t = std::clamp(m_segmentProgress, 0.0f, 1.0f);
+            playerPos = Vec2f{lerp(fromNode->position.x, toNode->position.x, t),
+                              lerp(fromNode->position.y, toNode->position.y, t)};
+        }
     }
 
     drawCircle(m_renderer, toScreen(playerPos), kPlayerRadius, kPlayerColor, 24);

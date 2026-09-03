@@ -4,6 +4,7 @@
 #include "data/SkillLoader.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/Font.h"
+#include "engine/renderer/Aligment.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
 #include "config/GameConstants.h"
@@ -75,7 +76,5 @@ void DamagePreview::render(Renderer *renderer, const Font *font) const
     std::snprintf(line1, sizeof(line1), "DMG: %d   HIT: %.0f%%", m_damage, m_hitChance);
 
     // Draw text centred inside the box
-    const float textX = box.x + 10.0f;
-    const float textY = box.y + (box.h - 8.0f) * 0.5f;
-    renderer->renderText(font, line1, Vec2f{textX, textY}, TEXT_COLOR, false, false, false);
+    renderer->renderTextInRect(font, line1, box, TEXT_COLOR, HorizontalAlign::Center, VerticalAlign::Middle, false, false, false);
 }

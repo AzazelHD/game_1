@@ -6,23 +6,13 @@
 #include "engine/math/Vec2.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
+#include "engine/renderer/Aligment.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
 #include "ui/WindowId.h"
 #include "ui/UnitPortrait.h"
 
 #include <cstdio>
-
-namespace
-{
-    constexpr float kGlyphW = 8.0f;
-
-    float centeredTextX(float x, float w, const std::string &text)
-    {
-        const float textW = static_cast<float>(text.size()) * kGlyphW;
-        return x + (w - textW) * 0.5f;
-    }
-}
 
 UnitPanelWindow::UnitPanelWindow(WindowId id)
     : UIWindow(id, false, false)
@@ -166,5 +156,7 @@ void UnitPanelWindow::renderTurnBanner(Renderer *renderer) const
     else
         std::snprintf(buf, sizeof(buf), "%s's Turn", m_turnUnit->getName().c_str());
 
-    renderer->renderText(m_font, buf, Vec2f{centeredTextX(x, w, buf), y + 10.0f * ui}, UITheme::Text, false, false, false);
+    const Vec2f textSize = renderer->measureText(m_font, buf);
+    const Vec2f textPos = renderer->alignInRect(Rectf{x, y, w, h}, textSize, HorizontalAlign::Center, VerticalAlign::Top);
+    renderer->renderText(m_font, buf, Vec2f{textPos.x, y + 10.0f * ui}, UITheme::Text, false, false, false);
 }

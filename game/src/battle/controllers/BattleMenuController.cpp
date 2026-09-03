@@ -324,6 +324,16 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
         }
     }
 
+    // The battle-inspect detail window. Closing it must reset m_inspectWindow
+    // so the render dim (keyed on hasInspectWindowOpen()) is cleared — the
+    // same reset closeAllMenus() performs for the system-menu close path.
+    if (event.windowId == WindowId::BattleInspect && event.type == UIEventType::ActionCanceled)
+    {
+        ctx.uiManager.popById(WindowId::BattleInspect);
+        m_inspectWindow = nullptr;
+        return true;
+    }
+
     // System menu (Resume / Quit, or Start Battle / Quit during deployment)
     // is shared across flow phases. The handler must run before the
     // Combat-only early-return below, otherwise Resume/Quit pressed in

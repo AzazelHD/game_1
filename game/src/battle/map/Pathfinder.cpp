@@ -7,14 +7,11 @@
 #include <limits>
 #include <algorithm>
 
+#include "engine/math/MathUtils.h"
+
 static int hashVec(const Vec2i &v)
 {
     return (v.x * 73856093) ^ (v.y * 19349663);
-}
-
-static int manhattan(const Vec2i a, const Vec2i b)
-{
-    return std::abs(a.x - b.x) + std::abs(a.y - b.y);
 }
 
 std::vector<Vec2i> Pathfinder::findPath(
@@ -52,7 +49,7 @@ std::vector<Vec2i> Pathfinder::findPath(
     };
 
     gScore[key(start)] = 0;
-    open.push({start, 0, manhattan(start, goal)});
+    open.push({start, 0, manhattanDistance(start, goal)});
 
     while (!open.empty())
     {
@@ -101,7 +98,7 @@ std::vector<Vec2i> Pathfinder::findPath(
                 gScore[nKey] = tentativeG;
                 parent[nKey] = current.pos;
 
-                const int f = tentativeG + manhattan(n, goal);
+                const int f = tentativeG + manhattanDistance(n, goal);
 
                 open.push({n, tentativeG, f});
             }

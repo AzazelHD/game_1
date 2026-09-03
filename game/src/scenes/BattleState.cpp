@@ -1309,9 +1309,10 @@ void BattleState::renderUIStack()
     // UI is drawn last, on top of the battle scene, animations, and debug
     // overlay — otherwise unit sprites drawn after this point would paint
     // over any open menu (e.g. the Inspect window).
-    if (m_battleMenu.hasInspectWindowOpen())
+    if (m_battleMenu.hasInspectWindowOpen() || m_uiManager.hasWindow(WindowId::BattleSystemMenu))
     {
-        // Dim everything behind the Inspect panel so it reads as a modal.
+        // Dim everything behind the open modal (inspect or system/pause menu)
+        // so it reads as a modal overlay.
         m_renderer->setBlendMode(Renderer::BlendMode::Blend);
         m_renderer->setDrawColor(Color{0, 0, 0, 140});
         m_renderer->fillRect(Rectf{0.0f, 0.0f, GameConstants::VIEW_W, GameConstants::VIEW_H});

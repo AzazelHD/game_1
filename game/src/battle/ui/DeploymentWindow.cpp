@@ -12,17 +12,6 @@
 
 #include <cstdio>
 
-namespace
-{
-    constexpr float kGlyphW = 8.0f;
-
-    float centeredTextX(float panelX, float panelW, const std::string &text)
-    {
-        const float textW = static_cast<float>(text.size()) * kGlyphW;
-        return panelX + (panelW - textW) * 0.5f;
-    }
-}
-
 DeploymentWindow::DeploymentWindow(WindowId id)
     : UIWindow(id, false, false)
 {
