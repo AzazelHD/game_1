@@ -42,17 +42,33 @@ ButtonMenuWindow::ButtonMenuWindow(WindowId id)
 void ButtonMenuWindow::setItems(std::vector<Item> items)
 {
     m_items = std::move(items);
-    m_selected = 0;
     m_scroll = 0;
+
+    m_focusRows.clear();
+    m_focusRows.reserve(m_items.size());
+    std::vector<IFocusable *> focusableItems;
+    focusableItems.reserve(m_items.size());
 
     for (int i = 0; i < static_cast<int>(m_items.size()); ++i)
     {
-        if (m_items[i].enabled)
-        {
-            m_selected = i;
-            break;
-        }
+        const ActionId actionId = m_items[i].id;
+        const int index = i;
+
+        auto row = std::make_unique<Button>(Rectf{0.0f, 0.0f, 0.0f, 0.0f}, "");
+        row->setEnabled(m_items[i].enabled);
+        row->setOnClick([this, actionId, index]()
+                        {
+                            emit(UIEvent{.type = UIEventType::ActionSelected,
+                                         .windowId = id(),
+                                         .actionId = actionId,
+                                         .index = index});
+                        });
+
+        focusableItems.push_back(row.get());
+        m_focusRows.push_back(std::move(row));
     }
+
+    m_focus.resetFromPointers(std::move(focusableItems));
 }
 
 void ButtonMenuWindow::handleInput(const Input &input)
@@ -62,13 +78,15 @@ void ButtonMenuWindow::handleInput(const Input &input)
 
     if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::Left, false))
     {
-        moveSelection(-1);
+        m_focus.focusPrevious();
+        keepSelectionVisible();
         return;
     }
 
     if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::Right, false))
     {
-        moveSelection(1);
+        m_focus.focusNext();
+        keepSelectionVisible();
         return;
     }
 
@@ -80,18 +98,29 @@ void ButtonMenuWindow::handleInput(const Input &input)
 
     if (input.isKeyPressed(KeyCode::Accept, false))
     {
-        if (m_selected < 0 || m_selected >= static_cast<int>(m_items.size()))
-            return;
-
-        const Item &item = m_items[m_selected];
-        if (!item.enabled)
-            return;
-
-        emit(UIEvent{.type = UIEventType::ActionSelected,
-                     .windowId = id(),
-                     .actionId = item.id,
-                     .index = m_selected});
+        (void)m_focus.activateSelected();
     }
+}
+
+void ButtonMenuWindow::keepSelectionVisible()
+{
+    const int count = static_cast<int>(m_items.size());
+    if (count <= 0)
+        return;
+
+    const float contentH = count > 0
+                               ? (static_cast<float>(count) * (kItemH + kItemSpacing) - kItemSpacing + kBottomPadExtra)
+                               : kItemH;
+    const float menuH = std::clamp(2.0f * kPad + contentH, 64.0f, kMenuH);
+    const int visibleCount = std::max(1, static_cast<int>((menuH - 2.0f * kPad + kItemSpacing) / (kItemH + kItemSpacing)));
+    const int selected = m_focus.getSelectedIndex();
+    if (selected < 0)
+        return;
+
+    if (selected < m_scroll)
+        m_scroll = selected;
+    if (selected >= m_scroll + visibleCount)
+        m_scroll = selected - visibleCount + 1;
 }
 
 void ButtonMenuWindow::update(float /*dt*/)
@@ -156,7 +185,7 @@ void ButtonMenuWindow::render(Renderer *renderer) const
     for (int i = start; i < end; ++i)
     {
         const Item &item = m_items[i];
-        const bool selected = (i == m_selected && item.enabled);
+        const bool selected = (i == m_focus.getSelectedIndex() && item.enabled);
 
         const Color color = !item.enabled ? Color{130, 130, 130, 255}
                             : selected    ? UITheme::SelectedText
@@ -226,34 +255,5 @@ void ButtonMenuWindow::render(Renderer *renderer) const
                                  false);
         }
         y += itemH + itemSpacing;
-    }
-}
-
-void ButtonMenuWindow::moveSelection(int delta)
-{
-    if (m_items.empty())
-        return;
-
-    const int count = static_cast<int>(m_items.size());
-    int next = m_selected;
-
-    for (int i = 0; i < count; ++i)
-    {
-        next = (next + delta + count) % count;
-        if (m_items[next].enabled)
-        {
-            m_selected = next;
-
-            const float contentH = count > 0
-                                       ? (static_cast<float>(count) * (kItemH + kItemSpacing) - kItemSpacing + kBottomPadExtra)
-                                       : kItemH;
-            const float menuH = std::clamp(2.0f * kPad + contentH, 64.0f, kMenuH);
-            const int visibleCount = std::max(1, static_cast<int>((menuH - 2.0f * kPad + kItemSpacing) / (kItemH + kItemSpacing)));
-            if (m_selected < m_scroll)
-                m_scroll = m_selected;
-            if (m_selected >= m_scroll + visibleCount)
-                m_scroll = m_selected - visibleCount + 1;
-            return;
-        }
     }
 }

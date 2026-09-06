@@ -131,3 +131,14 @@ private:
     bool evaluateDefeat() const;
     bool allEnemiesDead() const;
 };
+
+// Returns the first live unit at `pos`, or nullptr. With enemiesOnly=true,
+// only units whose team is non-zero (enemy/neutral) are considered.
+inline Unit *unitAt(const std::vector<Unit *> &units, Vec2i pos, bool enemiesOnly = false)
+{
+    for (Unit *u : units)
+        if (u && !u->isDead() && u->getPosition() == pos &&
+            (!enemiesOnly || u->getTeam() != 0))
+            return u;
+    return nullptr;
+}

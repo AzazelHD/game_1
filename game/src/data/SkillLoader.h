@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battle/unit/UnitData.h"
+#include "battle/map/RangeRule.h"
 
 #include <string>
 #include <vector>
@@ -35,6 +36,14 @@ struct SkillData
     //         fire bolt jumping target to target) — TODO: play it per-step
     //         in processNextPendingResult().
     bool castOncePerArea = false;
+
+    // ── Range / targeting rules (backward-compatible, default = melee slash) ──
+    int heightTolerance = 0;        // -1 = ignore height, 0 = same height only, N = within N
+    bool requiresLineOfSight = false;
+    bool splashRespectsWalls = true;
+
+    // Flattens into the combat-facing RangeRule consumed by AttackRange.
+    RangeRule toRangeRule() const;
 };
 
 // SkillLoader reads skill definitions from JSON.

@@ -133,3 +133,15 @@ std::vector<UnitData> UnitLoader::loadAll(const std::string &directory)
     }
     return units;
 }
+
+std::string loadUnitDisplayName(const std::string &templatePath)
+{
+    try
+    {
+        return UnitLoader::load(templatePath).name;
+    }
+    catch (...)
+    {
+        return std::string();
+    }
+}

@@ -38,18 +38,6 @@ namespace
     constexpr float kLineH = 26.0f;
     constexpr float kColumnGap = 48.0f;
 
-    class CloseFocusable final : public IFocusable
-    {
-    public:
-        bool activate() const override { return true; }
-        void setSelected(bool selected) override { m_selected = selected; }
-        bool isEnabled() const override { return true; }
-        bool selected() const { return m_selected; }
-
-    private:
-        bool m_selected = false;
-    };
-
     std::string itemName(const Gear *gear)
     {
         return gear ? gear->displayName : "Empty";
@@ -90,6 +78,7 @@ UnitDetailWindow::UnitDetailWindow(WindowId id, const RosterUnit &rosterUnit, co
     };
 
     m_state = UIState::Details;
+    rebuildStaticRows();
 }
 
 // Live unit constructor (for in-battle unit inspection)
@@ -119,6 +108,7 @@ UnitDetailWindow::UnitDetailWindow(WindowId id, const Unit &unit, const GearCata
     };
 
     m_state = UIState::Details;
+    rebuildStaticRows();
 }
 
 // Interactive constructor (for equipment management)
@@ -135,9 +125,7 @@ UnitDetailWindow::UnitDetailWindow(WindowId id,
       m_catalog(&catalog),
       m_rosterInstanceId(rosterUnit.instanceId),
       m_loadout(std::make_unique<EquipmentLoadout>(catalog.resolve(rosterUnit.equippedGear))),
-      m_exp(rosterUnit.exp),
-      m_slotFocus(std::make_unique<FocusGroup>()),
-      m_itemFocus(std::make_unique<FocusGroup>())
+      m_exp(rosterUnit.exp)
 {
     try
     {
@@ -167,6 +155,53 @@ UnitDetailWindow::UnitDetailWindow(WindowId id,
     };
 
     m_state = UIState::Details;
+    rebuildStaticRows();
+}
+
+void UnitDetailWindow::rebuildStaticRows()
+{
+    const bool showEquipActions = m_isInteractive && m_isPlayerOwned;
+    const int actionCount = showEquipActions ? 3 : 2;
+
+    m_actionRows.clear();
+    m_slotRows.clear();
+    m_actionRows.reserve(actionCount);
+    m_slotRows.reserve(m_slots.size());
+    std::vector<IFocusable *> actionPtrs;
+    std::vector<IFocusable *> slotPtrs;
+    actionPtrs.reserve(actionCount);
+    slotPtrs.reserve(m_slots.size());
+
+    for (int i = 0; i < actionCount; ++i)
+    {
+        const int index = i;
+        auto row = std::make_unique<Button>(Rectf{0.0f, 0.0f, 0.0f, 0.0f}, "");
+        row->setOnClick([this, index]()
+                        {
+                            if (index == 0)
+                                setState(UIState::SlotSelect);
+                        });
+        actionPtrs.push_back(row.get());
+        m_actionRows.push_back(std::move(row));
+    }
+    m_actionFocus.resetFromPointers(std::move(actionPtrs));
+
+    for (int i = 0; i < static_cast<int>(m_slots.size()); ++i)
+    {
+        const int index = i;
+        auto row = std::make_unique<Button>(Rectf{0.0f, 0.0f, 0.0f, 0.0f}, "");
+        row->setOnClick([this, index]()
+                        {
+                            if (m_isInteractive && m_isPlayerOwned &&
+                                isSlotEligible(m_slots[static_cast<std::size_t>(index)].slot))
+                            {
+                                setState(UIState::ItemSelect);
+                            }
+                        });
+        slotPtrs.push_back(row.get());
+        m_slotRows.push_back(std::move(row));
+    }
+    m_slotFocus.resetFromPointers(std::move(slotPtrs));
 }
 
 void UnitDetailWindow::setState(UIState newState)
@@ -186,20 +221,6 @@ void UnitDetailWindow::setState(UIState newState)
 
 void UnitDetailWindow::enterSlotSelect()
 {
-    // Restore the slot the user was on before entering ItemSelect, so
-    // equipping into Helmet returns to the Helmet row rather than
-    // jumping back to Weapon (the bug Part H reports). The remembered
-    // index is cleared after the first restore so a future direct
-    // navigation to SlotSelect (Details → SlotSelect) starts at Weapon.
-    if (m_lastSelectedSlotIndex >= 0 && m_lastSelectedSlotIndex < static_cast<int>(m_slots.size()))
-    {
-        m_selectedSlotIndex = m_lastSelectedSlotIndex;
-        m_lastSelectedSlotIndex = -1;
-    }
-    else
-    {
-        m_selectedSlotIndex = 0;
-    }
     m_showItemDescription = false;
 }
 
@@ -209,10 +230,9 @@ void UnitDetailWindow::exitSlotSelect()
 
 void UnitDetailWindow::enterItemSelect()
 {
+    m_itemFocus.clear();
     rebuildCandidatesList();
-    m_selectedItemIndex = 0;
     m_candidateScroll = 0;
-    m_lastSelectedSlotIndex = m_selectedSlotIndex;
     m_showItemDescription = false;
 }
 
@@ -250,10 +270,11 @@ void UnitDetailWindow::setEquippedGearAt(const SlotEntry &slot, const Gear *gear
 EquipmentLoadout UnitDetailWindow::loadoutWithoutSelectedSlot() const
 {
     EquipmentLoadout candidateLoadout = *m_loadout;
-    if (m_selectedSlotIndex < 0 || m_selectedSlotIndex >= static_cast<int>(m_slots.size()))
+    const int selectedSlot = m_slotFocus.getSelectedIndex();
+    if (selectedSlot < 0 || selectedSlot >= static_cast<int>(m_slots.size()))
         return candidateLoadout;
 
-    const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+    const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlot)];
     if (slot.slot == GearSlot::Accessory)
     {
         if (slot.accessoryIndex >= 0 && slot.accessoryIndex < static_cast<int>(candidateLoadout.accessories.size()))
@@ -292,11 +313,12 @@ bool UnitDetailWindow::isSlotEligible(GearSlot slot) const
 void UnitDetailWindow::rebuildCandidatesList()
 {
     m_candidates.clear();
-    if (!m_inventory || m_selectedSlotIndex < 0 || m_selectedSlotIndex >= static_cast<int>(m_slots.size()))
+    const int selectedSlot = m_slotFocus.getSelectedIndex();
+    if (!m_inventory || selectedSlot < 0 || selectedSlot >= static_cast<int>(m_slots.size()))
         return;
 
     std::unordered_set<ItemId> seen;
-    const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+    const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlot)];
     const EquipmentLoadout candidateLoadout = loadoutWithoutSelectedSlot();
 
     for (const ItemStack &stack : m_inventory->stacks())
@@ -330,23 +352,45 @@ void UnitDetailWindow::rebuildCandidatesList()
         });
     }
 
-    if (m_selectedItemIndex >= static_cast<int>(m_candidates.size()))
-        m_selectedItemIndex = std::max(0, static_cast<int>(m_candidates.size()) - 1);
+    m_itemRows.clear();
+    m_itemRows.reserve(m_candidates.size());
+    std::vector<IFocusable *> itemPtrs;
+    itemPtrs.reserve(m_candidates.size());
+
+    for (int i = 0; i < static_cast<int>(m_candidates.size()); ++i)
+    {
+        auto row = std::make_unique<Button>(Rectf{0.0f, 0.0f, 0.0f, 0.0f}, "");
+        row->setOnClick([this]()
+                        { confirmItemSelection(); });
+        itemPtrs.push_back(row.get());
+        m_itemRows.push_back(std::move(row));
+    }
+    m_itemFocus.resetFromPointers(std::move(itemPtrs));
 }
 
 void UnitDetailWindow::unequipCurrentSlot()
 {
-    if (!m_isInteractive || !m_roster || !m_inventory || m_selectedSlotIndex < 0 ||
-        m_selectedSlotIndex >= static_cast<int>(m_slots.size()))
+    const int selectedSlot = m_slotFocus.getSelectedIndex();
+    if (!m_isInteractive || !m_roster || !m_inventory || selectedSlot < 0 ||
+        selectedSlot >= static_cast<int>(m_slots.size()))
         return;
 
-    const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+    const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlot)];
     if (m_roster->unequip(m_rosterInstanceId, slot.slot, slot.accessoryIndex, *m_inventory, *m_catalog))
     {
-        if (const RosterUnit *unit = m_roster->findById(m_rosterInstanceId))
-            *m_loadout = m_roster->resolveLoadout(*unit, *m_catalog);
-        if (m_unit)
-            m_unit->bindEquipmentLoadout(m_loadout.get());
+        if (RosterUnit *unit = m_roster->findById(m_rosterInstanceId); unit)
+        {
+            // Bind to a heap snapshot first (unit reads the OLD m_loadout
+            // object for the old max during the swap, so the HP/MP delta is
+            // computed correctly), then hand ownership of that snapshot to
+            // m_loadout. Never mutate *m_loadout in place — m_unit already
+            // points at it, so the delta would see the new gear beforehand;
+            // and never bind a stack temporary, which would dangle.
+            auto next = std::make_unique<EquipmentLoadout>(m_roster->resolveLoadout(*unit, *m_catalog));
+            if (m_unit)
+                m_unit->bindEquipmentLoadout(next.get());
+            m_loadout = std::move(next);
+        }
 
         if (m_state == UIState::ItemSelect)
         {
@@ -357,25 +401,32 @@ void UnitDetailWindow::unequipCurrentSlot()
 
 void UnitDetailWindow::confirmItemSelection()
 {
-    if (!m_isInteractive || !m_roster || !m_inventory || m_selectedSlotIndex < 0 ||
-        m_selectedSlotIndex >= static_cast<int>(m_slots.size()))
+    const int selectedSlot = m_slotFocus.getSelectedIndex();
+    if (!m_isInteractive || !m_roster || !m_inventory || selectedSlot < 0 ||
+        selectedSlot >= static_cast<int>(m_slots.size()))
         return;
 
-    if (m_selectedItemIndex < 0 || m_selectedItemIndex >= static_cast<int>(m_candidates.size()))
+    const int selectedItem = m_itemFocus.getSelectedIndex();
+    if (selectedItem < 0 || selectedItem >= static_cast<int>(m_candidates.size()))
         return;
 
-    const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
-    const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(m_selectedItemIndex)];
+    const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlot)];
+    const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(selectedItem)];
     const bool changed = m_roster->equip(m_rosterInstanceId, slot.slot, slot.accessoryIndex,
                                          candidate.itemId, *m_inventory, *m_catalog, m_unit->getRace());
 
     if (changed)
     {
-        // Refresh loadout from roster
-        if (const RosterUnit *unit = m_roster->findById(m_rosterInstanceId))
-            *m_loadout = m_roster->resolveLoadout(*unit, *m_catalog);
-        if (m_unit)
-            m_unit->bindEquipmentLoadout(m_loadout.get());
+        // Refresh from a heap snapshot and bind against it (see
+        // unequipCurrentSlot for why in-place mutation or a stack temporary
+        // are both wrong here).
+        if (RosterUnit *unit = m_roster->findById(m_rosterInstanceId); unit)
+        {
+            auto next = std::make_unique<EquipmentLoadout>(m_roster->resolveLoadout(*unit, *m_catalog));
+            if (m_unit)
+                m_unit->bindEquipmentLoadout(next.get());
+            m_loadout = std::move(next);
+        }
         // Return to slot select
         setState(UIState::SlotSelect);
     }
@@ -391,21 +442,17 @@ void UnitDetailWindow::handleInput(const Input &input)
 
         if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::W, false))
         {
-            if (m_selectedActionIndex > 0)
-                --m_selectedActionIndex;
+            if (m_actionFocus.getSelectedIndex() > 0)
+                m_actionFocus.focusPrevious();
         }
         else if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::S, false))
         {
-            if (m_selectedActionIndex < actionCount - 1)
-                ++m_selectedActionIndex;
+            if (m_actionFocus.getSelectedIndex() < actionCount - 1)
+                m_actionFocus.focusNext();
         }
         else if (input.isKeyPressed(KeyCode::Accept, false))
         {
-            if (m_selectedActionIndex == 0) // Equip (player interactive) or Gear (read-only/enemy)
-            {
-                setState(UIState::SlotSelect);
-            }
-            // Abilities (1) and Dismiss (2) are reserved for future tasks
+            (void)m_actionFocus.activateSelected();
         }
         else if (input.isKeyPressed(KeyCode::Back, false))
         {
@@ -433,19 +480,20 @@ void UnitDetailWindow::handleInput(const Input &input)
 
         if (upHit)
         {
-            if (m_selectedSlotIndex > 0)
-                --m_selectedSlotIndex;
+            if (m_slotFocus.getSelectedIndex() > 0)
+                m_slotFocus.focusPrevious();
         }
         else if (downHit)
         {
-            if (m_selectedSlotIndex < static_cast<int>(m_slots.size()) - 1)
-                ++m_selectedSlotIndex;
+            if (m_slotFocus.getSelectedIndex() < static_cast<int>(m_slots.size()) - 1)
+                m_slotFocus.focusNext();
         }
         else if (input.isKeyPressed(KeyCode::Details, false)) // Tab on equipped slot
         {
-            if (m_selectedSlotIndex >= 0 && m_selectedSlotIndex < static_cast<int>(m_slots.size()))
+            const int selectedSlot = m_slotFocus.getSelectedIndex();
+            if (selectedSlot >= 0 && selectedSlot < static_cast<int>(m_slots.size()))
             {
-                const Gear *gear = equippedGearAt(m_slots[static_cast<std::size_t>(m_selectedSlotIndex)]);
+                const Gear *gear = equippedGearAt(m_slots[static_cast<std::size_t>(selectedSlot)]);
                 if (gear)
                 {
                     m_showItemDescription = true;
@@ -454,8 +502,7 @@ void UnitDetailWindow::handleInput(const Input &input)
         }
         else if (input.isKeyPressed(KeyCode::Accept, false))
         {
-            if (m_isInteractive && m_isPlayerOwned && isSlotEligible(m_slots[m_selectedSlotIndex].slot))
-                setState(UIState::ItemSelect);
+            (void)m_slotFocus.activateSelected();
         }
         else if (input.isKeyPressed(KeyCode::X, false))
         {
@@ -494,43 +541,47 @@ void UnitDetailWindow::handleInput(const Input &input)
 
         if (count > 0)
         {
-            if (upHit)
+            const int selected = m_itemFocus.getSelectedIndex();
+
+            if (upHit && selected > 0)
             {
-                if (m_selectedItemIndex > 0)
-                    --m_selectedItemIndex;
+                m_itemFocus.focusPrevious();
             }
-            else if (downHit)
+            else if (downHit && selected < count - 1)
             {
-                if (m_selectedItemIndex < count - 1)
-                    ++m_selectedItemIndex;
+                m_itemFocus.focusNext();
             }
             else if (leftHit)
             {
-                m_selectedItemIndex = std::max(0, m_selectedItemIndex - 5);
+                for (int step = 0; step < 5 && m_itemFocus.getSelectedIndex() > 0; ++step)
+                    m_itemFocus.focusPrevious();
             }
             else if (rightHit)
             {
-                m_selectedItemIndex = std::min(count - 1, m_selectedItemIndex + 5);
+                for (int step = 0; step < 5 && m_itemFocus.getSelectedIndex() < count - 1; ++step)
+                    m_itemFocus.focusNext();
             }
             else if (input.isKeyPressed(KeyCode::Details, false)) // Tab opens read-only description of the candidate (Part I)
             {
-                if (m_selectedItemIndex >= 0 && m_selectedItemIndex < static_cast<int>(m_candidates.size()))
+                const int selectedItem = m_itemFocus.getSelectedIndex();
+                if (selectedItem >= 0 && selectedItem < static_cast<int>(m_candidates.size()))
                 {
-                    const ItemCandidate &cand = m_candidates[static_cast<std::size_t>(m_selectedItemIndex)];
+                    const ItemCandidate &cand = m_candidates[static_cast<std::size_t>(selectedItem)];
                     if (cand.gear)
                         m_showItemDescription = true;
                 }
             }
             else if (input.isKeyPressed(KeyCode::Accept, false))
             {
-                confirmItemSelection();
+                (void)m_itemFocus.activateSelected();
             }
 
             constexpr int kVisibleCandidates = 6;
-            if (m_selectedItemIndex < m_candidateScroll)
-                m_candidateScroll = m_selectedItemIndex;
-            if (m_selectedItemIndex >= m_candidateScroll + kVisibleCandidates)
-                m_candidateScroll = m_selectedItemIndex - kVisibleCandidates + 1;
+            const int current = m_itemFocus.getSelectedIndex();
+            if (current < m_candidateScroll)
+                m_candidateScroll = current;
+            if (current >= m_candidateScroll + kVisibleCandidates)
+                m_candidateScroll = current - kVisibleCandidates + 1;
         }
 
         if (input.isKeyPressed(KeyCode::X, false))
@@ -602,6 +653,9 @@ void UnitDetailWindow::renderIdentityHeader(Renderer *renderer, Vec2f contentPos
     const auto header = HorizontalLayout::layoutContainers(
         {portraitColumn, identityColumn}, contentPos, 20.0f);
 
+    // Portrait reflects the CURRENT equipped state — never the candidate
+    // preview. Gear stats only change once the equip is confirmed, the same
+    // way the live delta column previews future growth without committing it.
     UnitPortrait::render(renderer, m_font, *m_unit,
                          Vec2f{header[0].itemRects[0].x, header[0].itemRects[0].y},
                          UnitPortrait::PortraitStyle{.team = m_unit->getTeam()});
@@ -728,7 +782,7 @@ void UnitDetailWindow::renderDetailsPanel(Renderer *renderer) const
     for (std::size_t index = 0; index < actions.size(); ++index)
     {
         const Rectf &row = actionRows[index];
-        const bool isSelected = (static_cast<int>(index) == m_selectedActionIndex);
+        const bool isSelected = (static_cast<int>(index) == m_actionFocus.getSelectedIndex());
         const bool isEnabled = (index == 0); // Equip and Gear are active; Abilities & Dismiss are placeholders
 
         if (isSelected)
@@ -768,9 +822,9 @@ void UnitDetailWindow::renderSlotSelectPanel(Renderer *renderer) const
 
     const float rightColX = contentX + columnW + kColumnGap;
 
-    if (m_showItemDescription && m_selectedSlotIndex >= 0 && m_selectedSlotIndex < static_cast<int>(m_slots.size()))
+    if (m_showItemDescription && m_slotFocus.getSelectedIndex() >= 0 && m_slotFocus.getSelectedIndex() < static_cast<int>(m_slots.size()))
     {
-        const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+        const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_slotFocus.getSelectedIndex())];
         const Gear *gear = equippedGearAt(slot);
         if (gear)
         {
@@ -792,7 +846,7 @@ void UnitDetailWindow::renderSlotSelectPanel(Renderer *renderer) const
     for (int index = 0; index < static_cast<int>(m_slots.size()); ++index)
     {
         const SlotEntry &slot = m_slots[static_cast<std::size_t>(index)];
-        const bool selected = index == m_selectedSlotIndex;
+        const bool selected = index == m_slotFocus.getSelectedIndex();
         const bool enabled = isSlotEligible(slot.slot);
 
         if (selected && enabled)
@@ -826,7 +880,8 @@ void UnitDetailWindow::renderSlotSelectPanel(Renderer *renderer) const
 
 void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
 {
-    if (!m_isInteractive || m_selectedSlotIndex < 0 || m_selectedSlotIndex >= static_cast<int>(m_slots.size()))
+    const int selectedSlotIndex = m_slotFocus.getSelectedIndex();
+    if (!m_isInteractive || selectedSlotIndex < 0 || selectedSlotIndex >= static_cast<int>(m_slots.size()))
         return;
 
     const float panelX = (GameConstants::VIEW_W - kPanelW) * 0.5f;
@@ -836,7 +891,8 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
     const float contentY = panelY + outer.top;
     const float contentW = kPanelW - outer.left - outer.right;
 
-    // Fixed identity header across all states
+    // Fixed identity header across all states (always shows the current
+    // equipped gear — previews only flow into the stats delta column)
     renderIdentityHeader(renderer, Vec2f{contentX, contentY}, contentW);
 
     const float lowerY = contentY + kHeaderH + 18.0f;
@@ -848,12 +904,13 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
     if (m_previewLoadout && m_previewUnit)
     {
         *m_previewLoadout = *m_loadout;
-        if (m_selectedItemIndex >= 0 && m_selectedItemIndex < static_cast<int>(m_candidates.size()))
+        const int selectedItem = m_itemFocus.getSelectedIndex();
+        if (selectedItem >= 0 && selectedItem < static_cast<int>(m_candidates.size()))
         {
-            const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(m_selectedItemIndex)];
+            const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(selectedItem)];
             if (candidate.gear)
             {
-                const SlotEntry &slot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+                const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlotIndex)];
                 if (slot.slot == GearSlot::Accessory)
                 {
                     if (slot.accessoryIndex >= 0 && slot.accessoryIndex < static_cast<int>(m_previewLoadout->accessories.size()))
@@ -876,15 +933,15 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
 
     // Right side: Breadcrumb header + Candidate items list
     const float rightColX = contentX + columnW + kColumnGap;
-    const SlotEntry &selectedSlot = m_slots[static_cast<std::size_t>(m_selectedSlotIndex)];
+    const SlotEntry &selectedSlot = m_slots[static_cast<std::size_t>(selectedSlotIndex)];
 
     // Tab-driven read-only description card for the currently highlighted
     // candidate (Part I). Reuses the same card helper as SlotSelect.
     // When the card is open, skip the breadcrumb so its "Editing: X" line
     // doesn't overlap the card's own "Item Details" header.
-    if (m_showItemDescription && m_selectedItemIndex >= 0 && m_selectedItemIndex < static_cast<int>(m_candidates.size()))
+    if (m_showItemDescription && m_itemFocus.getSelectedIndex() >= 0 && m_itemFocus.getSelectedIndex() < static_cast<int>(m_candidates.size()))
     {
-        const ItemCandidate &cand = m_candidates[static_cast<std::size_t>(m_selectedItemIndex)];
+        const ItemCandidate &cand = m_candidates[static_cast<std::size_t>(m_itemFocus.getSelectedIndex())];
         if (cand.gear)
         {
             renderItemDescriptionCard(renderer,
@@ -919,7 +976,7 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
         for (int index = start; index < end; ++index)
         {
             const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(index)];
-            const bool selected = (m_selectedItemIndex == index);
+            const bool selected = (m_itemFocus.getSelectedIndex() == index);
 
             if (selected)
             {

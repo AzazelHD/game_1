@@ -9,5 +9,8 @@
   "range": 4,
   "area": 1,
   "mpCost": 5,
-  "effectTypes": ["damage"]
+  "effectTypes": ["damage"],
+  "heightTolerance": 2,
+  "requiresLineOfSight": true,
+  "splashRespectsWalls": true
 }

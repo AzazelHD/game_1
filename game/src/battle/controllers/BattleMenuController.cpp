@@ -88,7 +88,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
             Unit *active = ctx.session.getCurrentUnit();
             if (active)
             {
-                ctx.currentAttackRange = 1;
+                ctx.currentRangeRule = RangeRule{};
                 ctx.selectedSkillId.clear();
                 m_owner.computeAttackRangeTiles();
                 ctx.cursor.setPosition(active->getPosition());
@@ -172,7 +172,7 @@ void BattleMenuController::showSkillMenu()
                 auto it = ctx.skillDB.find(skillId);
                 if (it != ctx.skillDB.end())
                 {
-                    ctx.currentAttackRange = it->second.range;
+                    ctx.currentRangeRule = it->second.toRangeRule();
                     ctx.selectedSkillId = skillId;
                     m_owner.computeAttackRangeTiles();
                 }
@@ -181,7 +181,6 @@ void BattleMenuController::showSkillMenu()
                 ctx.humanTurnPhase = BattleState::HumanTurnPhase::AttackTarget;
                 ctx.uiManager.popById(WindowId::BattleSkillMenu);
                 m_owner.battleMenu().closeAllMenus();
-                ;
             }});
     }
 

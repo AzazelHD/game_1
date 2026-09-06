@@ -24,9 +24,12 @@
 #include "battle/unit/UnitProgression.h"
 #include "battle/controllers/AttackResolutionController.h"
 #include "battle/controllers/DeploymentPhaseController.h"
+#include "battle/controllers/EnemyTurnController.h"
 #include "battle/map/MovementRange.h"
+#include "battle/map/AttackRange.h"
 #include "battle/map/Pathfinder.h"
 #include "battle/combat/CombatSystem.h"
+#include "battle/systems/MovementCommitSystem.h"
 #include "renderer/BattleRendererContext.h"
 #include "ai/EnemyAI.h"
 #include "ui/Cursor.h"
@@ -52,19 +55,6 @@
 namespace
 {
     constexpr float SPRITE_H = 36.0f;
-
-    std::string loadUnitDisplayName(const std::string &templatePath)
-    {
-        try
-        {
-            const UnitData data = UnitLoader::load(templatePath);
-            return data.name;
-        }
-        catch (...)
-        {
-            return std::string();
-        }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +80,7 @@ void BattleState::onEnter()
 {
     m_selectedSkillId.clear();
     m_reachableTiles.clear();
-    m_currentAttackRange = 1;
+    m_currentRangeRule = RangeRule{};
     m_session.init({});
     m_floatingText.clear();
     m_pendingRewardXp = 0;
@@ -224,54 +214,12 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
     if (!unit)
         return;
 
+    MovementCommitResult result =
+        MovementCommitSystem::commitMovement(m_session, m_grid, m_battleMap, unit, dest);
+    if (!result.valid)
+        return;
+
     const Vec2i start = unit->getPosition();
-    const bool teleporting = unit->hasGearSpecialEffect(GearSpecialEffect::TeleportMovement);
-
-    // Same walkability rules MovementRange used (height/jump restriction,
-    // enemy-blocks/ally-passes-through occupancy) so Pathfinder reconstructs
-    // the SAME path MovementRange already found reachable. Teleporting units
-    // skip path reconstruction and visual walking after committing the move.
-    std::unordered_map<Vec2i, int, Vec2iHash> unitTeamAt;
-    for (Unit *u : m_session.getUnitPtrs())
-        if (u && !u->isDead())
-            unitTeamAt[u->getPosition()] = u->getTeam();
-
-    const int team = unit->getTeam();
-    const int jump = unit->getJump();
-    Grid *gridPtr = &m_grid;
-    BattleMap *battleMapPtr = &m_battleMap;
-
-    std::vector<Vec2i> path;
-    if (!teleporting)
-    {
-        PathRules rules;
-        rules.getNeighbors = [gridPtr, battleMapPtr, jump, team, unitTeamAt](Vec2i from) -> std::vector<Vec2i>
-        {
-            static const Vec2i dirs[4] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-            std::vector<Vec2i> out;
-            for (const Vec2i &d : dirs)
-            {
-                Vec2i to{from.x + d.x, from.y + d.y};
-                if (!gridPtr->isValid(to))
-                    continue;
-                if (std::abs(battleMapPtr->at(to.x, to.y).height - battleMapPtr->at(from.x, from.y).height) > jump)
-                    continue;
-                auto it = unitTeamAt.find(to);
-                if (it != unitTeamAt.end() && it->second != team)
-                    continue; // enemy fully blocks
-                out.push_back(to);
-            }
-            return out;
-        };
-        rules.moveCost = [gridPtr](Vec2i from, Vec2i to) -> int
-        {
-            return gridPtr->getMoveCost(from, to);
-        };
-
-        path = Pathfinder::findPath(m_grid, PathRequest{start, dest}, rules);
-        if (path.empty())
-            path = {start, dest}; // defensive fallback — dest was already validated reachable
-    }
 
     // Commit the logical move NOW, instantly (grid occupancy, points spent)
     // — only the VISUAL playback is deferred. Undo (Back) reads this same
@@ -285,7 +233,7 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
 
     m_humanTurnPhase = HumanTurnPhase::ActionMenu;
 
-    if (teleporting)
+    if (result.teleport)
     {
         if (onComplete)
             onComplete();
@@ -293,11 +241,11 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
     }
 
     std::vector<int> heights;
-    heights.reserve(path.size());
-    for (const Vec2i &tile : path)
+    heights.reserve(result.path.size());
+    for (const Vec2i &tile : result.path)
         heights.push_back(m_battleMap.at(tile.x, tile.y).height);
 
-    m_movementAnimation.begin(unit, std::move(path), std::move(heights), std::move(onComplete));
+    m_movementAnimation.begin(unit, std::move(result.path), std::move(heights), std::move(onComplete));
 }
 
 BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
@@ -315,7 +263,7 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
         .battleMap = m_battleMap,
         .canUndoLastMove = m_canUndoLastMove,
         .eventSystem = m_eventSystem,
-        .currentAttackRange = m_currentAttackRange,
+        .currentRangeRule = m_currentRangeRule,
         .selectedSkillId = m_selectedSkillId,
         .skillDB = m_skillDB,
         .damagePreview = m_damagePreview,
@@ -331,6 +279,8 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
     return AttackResolutionContext{
         .session = m_session,
         .eventSystem = m_eventSystem,
+        .grid = m_grid,
+        .battleMap = m_battleMap,
         .damagePreview = m_damagePreview,
         .floatingText = m_floatingText,
         .cursor = m_cursor,
@@ -383,7 +333,7 @@ BattleState::MenuContext BattleState::makeMenuContext()
         .cursor = m_cursor,
         .reachableTiles = m_reachableTiles,
         .reachableCosts = m_reachableCosts,
-        .currentAttackRange = m_currentAttackRange,
+        .currentRangeRule = m_currentRangeRule,
         .uiManager = m_uiManager,
         .humanTurnPhase = m_humanTurnPhase,
         .flowPhase = m_flowPhase,
@@ -795,7 +745,7 @@ void BattleState::update(float dt)
     // else: dialogue active with no speaker for this beat — leave camera where it is.
 
     m_camera.clampToBounds();
-    m_hoveredUnit = unitAt(cursorPos);
+    m_hoveredUnit = unitAt(m_session.getUnitPtrs(), cursorPos);
 
     // The turn-state machine (and everything that calls
     // m_turnQueue.getCurrentUnit()) is only valid once the queue has been
@@ -865,14 +815,14 @@ void BattleState::update(float dt)
                     beginUnitWalk(active, plan.destination, pathCost,
                                   [this, active, plan]()
                                   {
-                                      EnemyAI::resolveAttack(*active, plan.target);
+                                      EnemyAI::resolveAttack(*active, plan.target, m_grid, m_battleMap);
                                       finishEnemyAction();
                                   });
                 }
                 else
                 {
                     active->exhaustMovement();
-                    EnemyAI::resolveAttack(*active, plan.target);
+                    EnemyAI::resolveAttack(*active, plan.target, m_grid, m_battleMap);
                     finishEnemyAction();
                 }
                 break;
@@ -957,18 +907,14 @@ void BattleState::processCurrentTurn()
 
     if (active->getTeam() != 0) // Enemies
     {
+        const EnemyDecision decision = EnemyTurnController::chooseAction(m_session, active);
+
         m_pendingResolution = PendingResolution::EnemyAction;
         m_pendingActor = active;
-        m_pendingTarget = EnemyAI::chooseTarget(*active, m_session.getUnitPtrs());
+        m_pendingTarget = decision.target;
+        m_pendingEnemyAliveBefore = decision.playersAliveBefore;
         m_pendingActionLabel = "Attack";
         m_topBattleText = m_pendingActionLabel;
-
-        m_pendingEnemyAliveBefore = 0;
-        for (const Unit &u : m_session.getUnits())
-        {
-            if (!u.isDead() && u.getTeam() == 0)
-                ++m_pendingEnemyAliveBefore;
-        }
 
         m_turnTimer = 0.5f;
         m_turnState = TurnState::WaitingForAnimation;
@@ -981,7 +927,7 @@ void BattleState::processCurrentTurn()
         if (m_playerControlMode == PlayerControlMode::AI)
         {
 #ifdef _DEBUG
-            int actionIndex = EnemyAI::chooseAction(*active, m_grid, m_session.getUnitPtrs());
+            int actionIndex = EnemyAI::chooseAction(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
             m_autoPlayActionIndex = actionIndex;
             m_autoPlayPhase = AutoPlayPhase::ShowMenu;
             m_autoPlayTimer = 0.1f;
@@ -1041,15 +987,9 @@ void BattleState::advanceToNextUnit()
 
 void BattleState::finishEnemyAction()
 {
-    m_session.checkResult();
+    const EnemyTurnResult result = EnemyTurnController::finishAction(m_session, m_pendingEnemyAliveBefore);
 
-    int playersAliveAfter = 0;
-    for (const Unit &u : m_session.getUnits())
-    {
-        if (!u.isDead() && u.getTeam() == 0)
-            ++playersAliveAfter;
-    }
-    if (playersAliveAfter < m_pendingEnemyAliveBefore)
+    if (result.unitDied)
         m_eventSystem.emit(BattleTriggerType::OnUnitDeath);
 
     m_pendingResolution = PendingResolution::None;
@@ -1058,13 +998,13 @@ void BattleState::finishEnemyAction()
     m_pendingActionLabel.clear();
     m_topBattleText.clear();
 
-    if (checkDefeat())
+    if (result.outcome == EnemyTurnOutcome::PlayerDefeat)
     {
         startBattleEnd(false);
         m_turnState = TurnState::Idle;
         return;
     }
-    if (checkVictory())
+    if (result.outcome == EnemyTurnOutcome::PlayerVictory)
     {
         startBattleEnd(true);
         m_turnState = TurnState::Idle;
@@ -1117,7 +1057,7 @@ void BattleState::renderSceneAndOverlays(const Camera &renderCam)
     else if (m_humanTurnPhase == HumanTurnPhase::AttackTarget)
     {
         overlayMode = BattleOverlayMode::AttackRange;
-        overlayTiles = &m_attackRangeTiles;
+        overlayTiles = &m_attackCenterTiles;
     }
     else if (m_humanTurnPhase == HumanTurnPhase::AttackConfirm)
     {
@@ -1160,12 +1100,11 @@ void BattleState::renderDeploymentGrabbedGhost(const Camera &renderCam)
     const float s = static_cast<float>(m_scale) * renderCam.getZoom();
     const float halfTW = static_cast<float>(m_mapData.tileWidth) * s * 0.5f;
     const float halfTH = static_cast<float>(m_mapData.tileHeight) * s * 0.5f;
-    const float elevStep = static_cast<float>(m_mapData.tileHeight) * 0.5f * s;
-    const Vec2f iso = tileToIso(cursorPos, m_mapData.tileWidth, m_mapData.tileHeight);
-    const float ax = (iso.x - renderCam.getOffset().x) * s;
-    const float ay = (iso.y - renderCam.getOffset().y) * s;
+    const Vec2f screenPos = renderCam.tileToScreen(cursorPos);
+    const float ax = screenPos.x;
+    const float ay = screenPos.y;
     const GameTile &gt = m_battleMap.at(cursorPos.x, cursorPos.y);
-    const float elev = static_cast<float>(gt.height) * elevStep;
+    const float elev = static_cast<float>(gt.height) * halfTH;
 
     const float cx = ax;
     const float cy = ay - elev - halfTH - 6.0f * s;
@@ -1197,6 +1136,16 @@ void BattleState::syncUnitPanelWindow()
             m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget, m_pendingTarget->getTeam() != 0);
         else
             m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam());
+        return;
+    }
+
+    if (m_playerControlMode == PlayerControlMode::Human &&
+        m_humanTurnPhase == HumanTurnPhase::ActionMenu)
+    {
+        if (active && !active->isDead())
+            m_unitPanelWindow->setSingle(active, active->getTeam());
+        else
+            m_unitPanelWindow->clearPanels();
         return;
     }
 
@@ -1387,31 +1336,18 @@ void BattleState::render(float alpha)
 
 void BattleState::computeAttackRangeTiles()
 {
-    m_attackRangeTiles.clear();
+    m_attackCenterTiles.clear();
     Unit *active = m_session.getCurrentUnit();
     if (!active)
         return;
 
     Vec2i pos = active->getPosition();
-    int range = m_currentAttackRange;
 
-    for (int r = 0; r < m_mapData.height; ++r)
-        for (int c = 0; c < m_mapData.width; ++c)
-            if (manhattanDistance(pos, Vec2i{c, r}) <= range)
-                m_attackRangeTiles.insert({c, r});
+    AttackRange::Result rng = AttackRange::compute(m_grid, m_battleMap, pos, m_currentRangeRule);
+    m_attackCenterTiles = std::move(rng.tiles);
 
     // exclude the tile the unit is standing on
-    m_attackRangeTiles.erase(pos);
-}
-
-Unit *BattleState::unitAt(Vec2i pos) const
-{
-    // Only ever called from update()'s Combat-only branch — deployment
-    // hover-testing is DeploymentPhaseController::previewUnitAt() now.
-    for (Unit *u : m_session.getUnitPtrs())
-        if (u && !u->isDead() && u->getPosition() == pos)
-            return u;
-    return nullptr;
+    m_attackCenterTiles.erase(pos);
 }
 
 HitContext BattleState::makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const

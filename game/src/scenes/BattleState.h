@@ -18,6 +18,7 @@
 #include "battle/map/BattleMap.h"
 #include "battle/BattleSession.h"
 #include "battle/map/MovementRange.h"
+#include "battle/map/RangeRule.h"
 #include "battle/map/Pathfinder.h"
 #include "renderer/BattleRenderer.h"
 #include "config/BattleCatalog.h"
@@ -134,7 +135,7 @@ public:
         BattleMap &battleMap;
         bool &canUndoLastMove;
         BattleEventSystem &eventSystem;
-        int currentAttackRange;
+        RangeRule currentRangeRule;
         std::string &selectedSkillId;
         const std::unordered_map<std::string, SkillData> &skillDB;
         DamagePreview &damagePreview;
@@ -155,6 +156,8 @@ public:
     {
         BattleSession &session;
         BattleEventSystem &eventSystem;
+        Grid &grid;
+        BattleMap &battleMap;
         DamagePreview &damagePreview;
         FloatingTextSystem &floatingText;
         Cursor &cursor;
@@ -213,7 +216,7 @@ public:
         Cursor &cursor;
         std::unordered_set<Vec2i, Vec2iHash> &reachableTiles;
         std::unordered_map<Vec2i, int, Vec2iHash> &reachableCosts;
-        int &currentAttackRange;
+        RangeRule &currentRangeRule;
         UIManager &uiManager;
         HumanTurnPhase &humanTurnPhase;
         BattleFlowPhase &flowPhase;
@@ -296,8 +299,8 @@ private:
 
     std::unordered_set<Vec2i, Vec2iHash> m_reachableTiles;
     std::unordered_map<Vec2i, int, Vec2iHash> m_reachableCosts;
-    std::unordered_set<Vec2i, Vec2iHash> m_attackRangeTiles;
-    int m_currentAttackRange = 1;
+    std::unordered_set<Vec2i, Vec2iHash> m_attackCenterTiles;
+    RangeRule m_currentRangeRule;
 
     bool m_playerWon = false;
     bool m_showDefeatOverlay = false;
@@ -364,8 +367,6 @@ private:
     CombatAnimationSystem m_combatAnimations;
 
     FloatingTextSystem m_floatingText;
-
-    Unit *unitAt(Vec2i pos) const;
 
     // ── Render sub-steps (Seam #4 split) ────────────────────────────────────
     // Each does exactly what its old inline block in render() did — pure

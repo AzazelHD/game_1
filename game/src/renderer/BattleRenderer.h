@@ -31,52 +31,60 @@ public:
 
     void drawTileLayersAt(int row, int col,
                           float ax, float ay,
-                          const IsoMetrics &m,
+                          float s,
+                          float halfTW, float halfTH,
                           const std::vector<TileLayerRef> &layers,
                           Texture *tileset,
                           int tilesPerRow,
-                          float spriteH) const;
+                          float spriteH,
+                          float tileW) const;
 
     void drawSpawnOverlayAt(int row, int col, float ax, float ay,
-                            const IsoMetrics &m,
+                            float s,
+                            float halfTW, float halfTH,
                             const std::vector<std::uint8_t> &spawnGrid,
                             std::size_t gridSize,
                             int mapWidth,
                             const BattleMap &battleMap) const;
 
     void drawRangeOverlayAt(int row, int col, float ax, float ay,
-                            const IsoMetrics &m,
+                            float s,
+                            float halfTW, float halfTH,
                             const BattleMap &battleMap,
                             Color color) const;
 
     void drawCursorAt(int row, int col, float ax, float ay,
-                      const IsoMetrics &m,
+                      float s,
+                      float halfTW, float halfTH,
                       const Cursor &cursor,
                       const BattleMap &battleMap,
                       float hoverOffset,
                       float triW, float triH) const;
 
     void drawCursorTriangle(float cx, float cy,
-                            const IsoMetrics &m,
+                            float s,
                             float triW, float triH) const;
 
     void drawCursorTicks(float ax, float ay, int tileHeight,
-                         const IsoMetrics &m) const;
+                         float s,
+                         float halfTW, float halfTH) const;
 
     void drawUnitAt(int row, int col, float ax, float ay,
-                    const IsoMetrics &m,
+                    float s,
+                    float halfTW, float halfTH,
                     const std::vector<UnitRenderProxy> &units,
                     const BattleMap &battleMap,
                     DebugRenderer *debugRenderer,
                     const MovementAnimationController *movementAnimation) const;
 
-    void drawAnimatingUnit(const BattleRendererContext &ctx, const IsoMetrics &m,
+    void drawAnimatingUnit(const BattleRendererContext &ctx,
+                           float s,
+                           float halfTW, float halfTH,
                            const std::vector<UnitRenderProxy> &units) const;
 
     std::vector<UnitRenderProxy> buildUnitRenderList(const std::vector<Unit *> &units) const;
 
 private:
-    IsoMetrics makeIsoMetrics(const BattleRendererContext &ctx) const;
     std::vector<TileLayerRef> collectTileLayers(const BattleRendererContext &ctx) const;
     std::vector<std::uint8_t> buildSpawnGrid(const BattleRendererContext &ctx) const;
 

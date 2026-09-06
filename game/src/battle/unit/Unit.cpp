@@ -183,8 +183,31 @@ bool Unit::hasGearSpecialEffect(GearSpecialEffect effect) const
     return m_equipmentLoadout && EquipRules::hasSpecialEffect(*m_equipmentLoadout, effect);
 }
 
+void Unit::applyEquipmentLoadout(const EquipmentLoadout *loadout)
+{
+    const int oldMaxHp = getMaxHp();
+    const int oldMaxMp = getMaxMp();
+
+    m_equipmentLoadout = loadout;
+
+    // Gear modifiers change max HP/MP. Ride the delta over to the current
+    // value so equipping a +5 Max HP helmet also heals 5 current HP (and
+    // unequipping it takes the 5 back), keeping the "wound" constant. Clamp
+    // so a max-lowering swap never leaves current above the new max (or
+    // below zero).
+    const int newMaxHp = getMaxHp();
+    const int newMaxMp = getMaxMp();
+    m_currentHp = std::clamp(m_currentHp + (newMaxHp - oldMaxHp), 0, newMaxHp);
+    m_currentMp = std::clamp(m_currentMp + (newMaxMp - oldMaxMp), 0, newMaxMp);
+}
+
+void Unit::bindEquipmentLoadout(const EquipmentLoadout *loadout)
+{
+    applyEquipmentLoadout(loadout);
+}
+
 void Unit::setResolvedEquipmentLoadout(EquipmentLoadout loadout)
 {
     m_ownedEquipmentLoadout = std::move(loadout);
-    m_equipmentLoadout = &m_ownedEquipmentLoadout;
+    applyEquipmentLoadout(&m_ownedEquipmentLoadout);
 }

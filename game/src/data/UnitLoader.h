@@ -34,3 +34,7 @@ public:
     static UnitData load(const std::string &filePath);
     static std::vector<UnitData> loadAll(const std::string &directory);
 };
+
+// Returns a unit's display name from its template file, or an empty string
+// when the file cannot be loaded.
+std::string loadUnitDisplayName(const std::string &templatePath);

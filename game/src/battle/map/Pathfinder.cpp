@@ -1,5 +1,7 @@
 #include "Pathfinder.h"
 
+#include "MovementRange.h"
+
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -8,11 +10,6 @@
 #include <algorithm>
 
 #include "engine/math/MathUtils.h"
-
-static int hashVec(const Vec2i &v)
-{
-    return (v.x * 73856093) ^ (v.y * 19349663);
-}
 
 std::vector<Vec2i> Pathfinder::findPath(
     const Grid &,
@@ -39,13 +36,13 @@ std::vector<Vec2i> Pathfinder::findPath(
 
     std::priority_queue<Node, std::vector<Node>, Compare> open;
 
-    std::unordered_map<int, Vec2i> parent;
-    std::unordered_map<int, int> gScore;
-    std::unordered_set<int> closed;
+    std::unordered_map<std::size_t, Vec2i> parent;
+    std::unordered_map<std::size_t, int> gScore;
+    std::unordered_set<std::size_t> closed;
 
     auto key = [](const Vec2i &v)
     {
-        return hashVec(v);
+        return Vec2iHash{}(v);
     };
 
     gScore[key(start)] = 0;
@@ -56,7 +53,7 @@ std::vector<Vec2i> Pathfinder::findPath(
         Node current = open.top();
         open.pop();
 
-        const int cKey = key(current.pos);
+        const std::size_t cKey = key(current.pos);
 
         if (closed.count(cKey))
             continue;
@@ -84,7 +81,7 @@ std::vector<Vec2i> Pathfinder::findPath(
 
         for (const Vec2i &n : rules.getNeighbors(current.pos))
         {
-            const int nKey = key(n);
+            const std::size_t nKey = key(n);
 
             if (closed.count(nKey))
                 continue;

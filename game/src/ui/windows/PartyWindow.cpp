@@ -21,41 +21,6 @@ namespace
     constexpr float kPanelH = 340.0f;
     constexpr float kRowH = 40.0f;
     constexpr int kVisibleRows = 6;
-
-    void drawCircle(Renderer *renderer, Vec2f center, float radius, Color color)
-    {
-        if (!renderer)
-            return;
-
-        const FColor c = {
-            static_cast<float>(color.r) / 255.0f,
-            static_cast<float>(color.g) / 255.0f,
-            static_cast<float>(color.b) / 255.0f,
-            static_cast<float>(color.a) / 255.0f,
-        };
-
-        std::vector<Renderer::Vertex> verts;
-        std::vector<int> idx;
-        constexpr int segments = 16;
-        verts.reserve(segments + 2);
-        idx.reserve(segments * 3);
-
-        verts.push_back(Renderer::Vertex{center, c});
-        constexpr float pi = 3.1415926535f;
-        for (int i = 0; i <= segments; ++i)
-        {
-            const float a = 2.0f * pi * static_cast<float>(i) / static_cast<float>(segments);
-            verts.push_back(Renderer::Vertex{Vec2f{center.x + std::cos(a) * radius, center.y + std::sin(a) * radius}, c});
-            if (i > 0)
-            {
-                idx.push_back(0);
-                idx.push_back(i);
-                idx.push_back(i + 1);
-            }
-        }
-
-        renderer->drawGeometry(verts, idx);
-    }
 }
 
 PartyWindow::PartyWindow(WindowId id)
@@ -174,7 +139,7 @@ void PartyWindow::render(Renderer *renderer) const
         }
         else
         {
-            drawCircle(renderer, Vec2f{iconX, iconY}, 8.0f, Color{200, 200, 210, 255});
+            UIUtils::drawCircle(renderer, Vec2f{iconX, iconY}, 8.0f, Color{200, 200, 210, 255});
         }
 
         std::string label = UIUtils::formatButtonLabel(m_entries[static_cast<std::size_t>(i)].name, isSelected);

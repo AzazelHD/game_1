@@ -1,5 +1,4 @@
 #include "engine/math/Vec2.h"
-#include "engine/math/MathUtils.h"
 #include "engine/core/App.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Font.h"
@@ -37,8 +36,9 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
     if (!m_renderer || !ctx.tileset || ctx.mapData.isEmpty())
         return;
 
-    const Vec2f offset = ctx.camera.getOffset();
-    const IsoMetrics m = makeIsoMetrics(ctx);
+    const float s = static_cast<float>(ctx.scale) * ctx.camera.getZoom();
+    const float halfTW = static_cast<float>(ctx.mapData.tileWidth) * s * 0.5f;
+    const float halfTH = static_cast<float>(ctx.mapData.tileHeight) * s * 0.5f;
     const auto tileLayers = collectTileLayers(ctx);
     const auto spawnGrid = buildSpawnGrid(ctx);
     const auto unitRender = buildUnitRenderList(ctx.units);
@@ -49,15 +49,28 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
     {
         for (int col = 0; col < ctx.mapData.width; ++col)
         {
-            const Vec2f iso = tileToIso(Vec2i{col, row}, ctx.mapData.tileWidth, ctx.mapData.tileHeight);
-            const float ax = (iso.x - offset.x) * m.s;
-            const float ay = (iso.y - offset.y) * m.s;
-            drawTileLayersAt(row, col, ax, ay, m, tileLayers,
-                             ctx.tileset, ctx.tilesPerRow, ctx.spriteH);
+            const Vec2f screenPos = ctx.camera.tileToScreen(Vec2i{col, row});
+            const float ax = screenPos.x;
+            const float ay = screenPos.y;
+
+            const float spriteSh = ctx.spriteH * s;
+            const float cullL = ax - 2.0f * halfTW;
+            const float cullR = ax + 2.0f * halfTW;
+            const float cullT = ay - 2.0f * spriteSh;
+            const float cullB = ay + 2.0f * spriteSh;
+            if (cullR < 0.0f || cullL > GameConstants::VIEW_W ||
+                cullB < 0.0f || cullT > GameConstants::VIEW_H)
+                continue;
+
+            drawTileLayersAt(row, col, ax, ay, s, halfTW, halfTH,
+                             tileLayers,
+                             ctx.tileset, ctx.tilesPerRow, ctx.spriteH,
+                             static_cast<float>(ctx.mapData.tileWidth));
 
             if (ctx.showSpawnOverlays)
             {
-                drawSpawnOverlayAt(row, col, ax, ay, m, spawnGrid, spawnGrid.size(),
+                drawSpawnOverlayAt(row, col, ax, ay, s, halfTW, halfTH,
+                                   spawnGrid, spawnGrid.size(),
                                    ctx.mapData.width, ctx.battleMap);
             }
 
@@ -68,21 +81,22 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
                     overlayColor = Color{0, 100, 255, 120};
                 else if (ctx.overlayMode == BattleOverlayMode::ConfirmTargets)
                     overlayColor = Color{255, 210, 80, 150};
-                drawRangeOverlayAt(row, col, ax, ay, m, ctx.battleMap, overlayColor);
+                drawRangeOverlayAt(row, col, ax, ay, s, halfTW, halfTH,
+                                   ctx.battleMap, overlayColor);
             }
 
-            drawCursorAt(row, col, ax, ay, m,
+            drawCursorAt(row, col, ax, ay, s, halfTW, halfTH,
                          ctx.cursor, ctx.battleMap,
-                         ctx.cursorHoverOffset * m.s, ctx.cursorTriW, ctx.cursorTriH);
+                         ctx.cursorHoverOffset * s, ctx.cursorTriW, ctx.cursorTriH);
 
-            drawUnitAt(row, col, ax, ay, m,
+            drawUnitAt(row, col, ax, ay, s, halfTW, halfTH,
                        unitRender,
                        ctx.battleMap,
                        ctx.debugRenderer,
                        ctx.movementAnimation);
         }
     }
-    drawAnimatingUnit(ctx, m, unitRender);
+    drawAnimatingUnit(ctx, s, halfTW, halfTH, unitRender);
 }
 
 void BattleRenderer::drawBackground(FColor top, FColor bottom) const
@@ -94,19 +108,6 @@ void BattleRenderer::drawBackground(FColor top, FColor bottom) const
         {{0.0f, GameConstants::VIEW_H}, bottom}};
     const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
     m_renderer->drawGeometry(verts, indices);
-}
-
-IsoMetrics BattleRenderer::makeIsoMetrics(const BattleRendererContext &ctx) const
-{
-    IsoMetrics m;
-    m.s = static_cast<float>(ctx.scale) * ctx.camera.getZoom();
-    m.tw = static_cast<float>(ctx.mapData.tileWidth) * m.s;
-    m.th = static_cast<float>(ctx.mapData.tileHeight) * m.s;
-    m.halfTW = m.tw * 0.5f;
-    m.halfTH = m.th * 0.5f;
-    m.ntw = static_cast<float>(ctx.mapData.tileWidth);
-    m.elevStep = static_cast<float>(ctx.mapData.tileHeight) * 0.5f * m.s;
-    return m;
 }
 
 std::vector<TileLayerRef> BattleRenderer::collectTileLayers(const BattleRendererContext &ctx) const
@@ -188,7 +189,7 @@ std::vector<UnitRenderProxy> BattleRenderer::buildUnitRenderList(const std::vect
 }
 
 void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
-                                const IsoMetrics &m,
+                                float s, float halfTW, float halfTH,
                                 const std::vector<UnitRenderProxy> &units,
                                 const BattleMap &battleMap,
                                 DebugRenderer *debugRenderer,
@@ -237,16 +238,17 @@ void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
         break;
     }
 
-    const float elev = static_cast<float>(gt.height) * m.elevStep;
-    const float floatOffset = 6.0f * m.s;
+    const float elev = static_cast<float>(gt.height) * halfTH;
+    const float floatOffset = 6.0f * s;
     const float cx = ax;
-    const float cy = ay - elev - m.halfTH - floatOffset;
-    float radius = m.halfTW * 0.6f;
+    const float cy = ay - elev - halfTH - floatOffset;
+    float radius = halfTW * 0.6f;
 
     UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, radius * 2.0f, unit->team, unit->debugLabel);
 }
 
-void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx, const IsoMetrics &m,
+void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx,
+                                       float s, float halfTW, float halfTH,
                                        const std::vector<UnitRenderProxy> &units) const
 {
     if (!ctx.debugRenderer || !ctx.movementAnimation || !ctx.movementAnimation->isAnimating())
@@ -266,11 +268,11 @@ void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx, const I
         return;
 
     const Vec2f visualTile = ctx.movementAnimation->getVisualTilePos();
-    const Vec2f iso = tileToIso(visualTile, ctx.mapData.tileWidth, ctx.mapData.tileHeight);
-    const float ax = (iso.x - ctx.camera.getOffset().x) * m.s;
-    const float ay = (iso.y - ctx.camera.getOffset().y) * m.s;
+    const Vec2f screenPos = ctx.camera.tileToScreen(visualTile);
+    const float ax = screenPos.x;
+    const float ay = screenPos.y;
 
-    const float elev = ctx.movementAnimation->getVisualHeight() * m.elevStep;
+    const float elev = ctx.movementAnimation->getVisualHeight() * halfTH;
 
     Color color;
     switch (proxy->team)
@@ -286,10 +288,10 @@ void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx, const I
         break;
     }
 
-    const float floatOffset = 6.0f * m.s;
+    const float floatOffset = 6.0f * s;
     const float cx = ax;
-    const float cy = ay - elev - m.halfTH - floatOffset;
-    const float radius = m.halfTW * 0.6f;
+    const float cy = ay - elev - halfTH - floatOffset;
+    const float radius = halfTW * 0.6f;
 
     // TODO: swap placeholder circle for a real walk-cycle/jump sprite once
     // art exists — pick facing/frame from the segment's direction of
@@ -300,7 +302,7 @@ void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx, const I
 // ── Cursor rendering (using passed parameters) ──────────────────────────────
 
 void BattleRenderer::drawCursorAt(int row, int col, float ax, float ay,
-                                  const IsoMetrics &m,
+                                  float s, float halfTW, float halfTH,
                                   const Cursor &cursor,
                                   const BattleMap &battleMap,
                                   float hoverOffset,
@@ -311,20 +313,20 @@ void BattleRenderer::drawCursorAt(int row, int col, float ax, float ay,
         return;
 
     const GameTile &gt = battleMap.at(col, row);
-    const float elev = static_cast<float>(gt.height) * m.elevStep;
+    const float elev = static_cast<float>(gt.height) * halfTH;
     const float cx = ax;
-    const float cy = ay - elev - m.halfTH - hoverOffset;
+    const float cy = ay - elev - halfTH - hoverOffset;
 
-    drawCursorTriangle(cx, cy, m, triW, triH);
-    drawCursorTicks(ax, ay, gt.height, m);
+    drawCursorTriangle(cx, cy, s, triW, triH);
+    drawCursorTicks(ax, ay, gt.height, s, halfTW, halfTH);
 }
 
 void BattleRenderer::drawCursorTriangle(float cx, float cy,
-                                        const IsoMetrics &m,
+                                        float s,
                                         float triW, float triH) const
 {
-    const float tw = triW * m.s;
-    const float th = triH * m.s;
+    const float tw = triW * s;
+    const float th = triH * s;
     const float border = 2.0f;
     const std::vector<int> indices = {0, 1, 2};
 
@@ -342,16 +344,16 @@ void BattleRenderer::drawCursorTriangle(float cx, float cy,
 }
 
 void BattleRenderer::drawCursorTicks(float ax, float ay, int tileHeight,
-                                     const IsoMetrics &m) const
+                                     float s, float halfTW, float halfTH) const
 {
-    const float elev = static_cast<float>(tileHeight) * m.elevStep;
-    const float tickLen = 4.0f * m.s;
+    const float elev = static_cast<float>(tileHeight) * halfTH;
+    const float tickLen = 4.0f * s;
 
     const Vec2f corners[4] = {
-        {ax, ay - m.halfTH - elev},
-        {ax + m.halfTW, ay - elev},
-        {ax, ay + m.halfTH - elev},
-        {ax - m.halfTW, ay - elev}};
+        {ax, ay - halfTH - elev},
+        {ax + halfTW, ay - elev},
+        {ax, ay + halfTH - elev},
+        {ax - halfTW, ay - elev}};
     const Vec2f inward[4] = {
         {0.0f, 1.0f},  // top    → down
         {-1.0f, 0.0f}, // right  → left
@@ -370,11 +372,12 @@ void BattleRenderer::drawCursorTicks(float ax, float ay, int tileHeight,
 
 void BattleRenderer::drawTileLayersAt(int row, int col,
                                       float ax, float ay,
-                                      const IsoMetrics &m,
+                                      float s, float halfTW, float halfTH,
                                       const std::vector<TileLayerRef> &layers,
                                       Texture *tileset,
                                       int tilesPerRow,
-                                      float spriteH) const
+                                      float spriteH,
+                                      float tileW) const
 {
     for (const auto &ref : layers)
     {
@@ -387,15 +390,19 @@ void BattleRenderer::drawTileLayersAt(int row, int col,
         const int srcRow = localId / tilesPerRow;
 
         const Recti src = {
-            static_cast<int>(static_cast<float>(srcCol) * m.ntw),
+            static_cast<int>(static_cast<float>(srcCol) * tileW),
             static_cast<int>(static_cast<float>(srcRow) * spriteH),
-            static_cast<int>(m.ntw),
+            static_cast<int>(tileW),
             static_cast<int>(spriteH)};
         const Rectf dst = {
-            ax - m.halfTW + ref.offsetX * m.s,
-            ay - spriteH * m.s + m.th + ref.offsetY * m.s,
-            m.tw,
-            spriteH * m.s};
+            ax - halfTW + ref.offsetX * s,
+            ay - spriteH * s + 2.0f * halfTH + ref.offsetY * s,
+            2.0f * halfTW,
+            spriteH * s};
+
+        if (dst.x + dst.w < 0.0f || dst.x > GameConstants::VIEW_W ||
+            dst.y + dst.h < 0.0f || dst.y > GameConstants::VIEW_H)
+            continue;
 
         m_renderer->setTextureAlphaMod(tileset, ref.opacity);
         m_renderer->drawTexture(tileset, src, dst);
@@ -404,7 +411,7 @@ void BattleRenderer::drawTileLayersAt(int row, int col,
 
 void BattleRenderer::drawSpawnOverlayAt(int row, int col,
                                         float ax, float ay,
-                                        const IsoMetrics &m,
+                                        float s, float halfTW, float halfTH,
                                         const std::vector<std::uint8_t> &spawnGrid,
                                         std::size_t gridSize,
                                         int mapWidth,
@@ -418,35 +425,35 @@ void BattleRenderer::drawSpawnOverlayAt(int row, int col,
 
     const GameTile &gt = battleMap.at(col, row);
     const float ox = ax;
-    const float oy = ay - static_cast<float>(gt.height) * m.elevStep;
+    const float oy = ay - static_cast<float>(gt.height) * halfTH;
 
     const FColor &overlayColor =
         spawnGrid[idx] == 1u ? COL_PLAYER_SPAWN : COL_ENEMY_SPAWN;
 
     const std::vector<Renderer::Vertex> verts = {
-        {{ox, oy - m.halfTH}, overlayColor},
-        {{ox + m.halfTW, oy}, overlayColor},
-        {{ox, oy + m.halfTH}, overlayColor},
-        {{ox - m.halfTW, oy}, overlayColor}};
+        {{ox, oy - halfTH}, overlayColor},
+        {{ox + halfTW, oy}, overlayColor},
+        {{ox, oy + halfTH}, overlayColor},
+        {{ox - halfTW, oy}, overlayColor}};
 
     const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
     m_renderer->drawGeometry(verts, indices);
 }
 
 void BattleRenderer::drawRangeOverlayAt(int row, int col, float ax, float ay,
-                                        const IsoMetrics &m,
+                                        float s, float halfTW, float halfTH,
                                         const BattleMap &battleMap,
                                         Color color) const
 {
     const GameTile &gt = battleMap.at(col, row);
     const float ox = ax;
-    const float oy = ay - static_cast<float>(gt.height) * m.elevStep;
+    const float oy = ay - static_cast<float>(gt.height) * halfTH;
 
     const std::vector<Renderer::Vertex> verts = {
-        Renderer::Vertex{{ox, oy - m.halfTH}, color},
-        Renderer::Vertex{{ox + m.halfTW, oy}, color},
-        Renderer::Vertex{{ox, oy + m.halfTH}, color},
-        Renderer::Vertex{{ox - m.halfTW, oy}, color}};
+        Renderer::Vertex{{ox, oy - halfTH}, color},
+        Renderer::Vertex{{ox + halfTW, oy}, color},
+        Renderer::Vertex{{ox, oy + halfTH}, color},
+        Renderer::Vertex{{ox - halfTW, oy}, color}};
 
     const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
     m_renderer->drawGeometry(verts, indices);

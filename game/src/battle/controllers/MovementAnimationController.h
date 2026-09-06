@@ -31,14 +31,15 @@ public:
     [[nodiscard]] bool isAnimating() const { return m_unit != nullptr; }
     [[nodiscard]] Unit *animatingUnit() const { return m_unit; }
 
-    // Fractional tile-space position, e.g. {2.4f, 1.0f}. Project with the
-    // Vec2f overload of tileToIso — the transform is linear, so this is a
-    // true smooth glide, not a stepped approximation.
+    // Fractional tile-space position, e.g. {2.4f, 1.0f}. Project with
+    // Camera::tileToScreen (Vec2f overload) — the transform is linear, so
+    // this is a true smooth glide, not a stepped approximation.
     [[nodiscard]] Vec2f getVisualTilePos() const;
 
     // Effective elevation (tile-height units — can exceed both endpoints'
-    // heights during a hop's arc peak). Multiply by elevStep for pixels,
-    // same conversion already used for an integer GameTile::height.
+    // heights during a hop's arc peak). Multiply by halfTH (the screen
+    // half-extent of one tile height) for pixels, same conversion already
+    // used for an integer GameTile::height.
     // TODO: once real walk-cycle sprites exist, this is also where you'd
     // pick facing/frame from the current segment's direction, and a
     // distinct airborne pose during a hop's non-paused portion.

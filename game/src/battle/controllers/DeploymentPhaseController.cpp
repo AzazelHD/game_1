@@ -20,30 +20,6 @@
 
 #include <unordered_set>
 
-#if defined(_DEBUG) || !defined(NDEBUG)
-#include "inventory/EquipRules.h"
-#include "inventory/GearCatalog.h"
-#endif
-
-namespace
-{
-    // Small duplicate of BattleState.cpp's own local helper — both files
-    // need "look up a unit's display name from its template path" and it's
-    // an 8-line pure function, not worth a shared header for.
-    std::string loadUnitDisplayName(const std::string &templatePath)
-    {
-        try
-        {
-            const UnitData data = UnitLoader::load(templatePath);
-            return data.name;
-        }
-        catch (...)
-        {
-            return std::string();
-        }
-    }
-}
-
 void DeploymentPhaseController::initializeDeploymentPhase()
 {
     BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
@@ -175,12 +151,21 @@ void DeploymentPhaseController::setUnitPanelPreviewFromEntry(const DeploymentEnt
 
     try
     {
+        PartyContext &partyContext = PartyContext::instance();
+        partyContext.ensureInitialized();
+
         const UnitData templateData = UnitLoader::load(entry->templatePath);
         const RaceData &raceData = getRaceData(templateData.race);
         const GenderData &genderData = getGenderData(templateData.gender);
-        const Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
+        Unit previewUnit(templateData, raceData, genderData, Vec2i{0, 0});
+        if (const RosterUnit *rosterUnit = partyContext.roster().findById(entry->instanceId))
+        {
+            previewUnit.setResolvedEquipmentLoadout(
+                partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+        }
         const UnitData &data = previewUnit.getData();
-        ctx.unitPanelWindow->setPreview(data.name, data.level, data.maxHp, data.maxMp, false, isPlaced);
+        ctx.unitPanelWindow->setPreview(data.name, previewUnit.getLevel(),
+                                        previewUnit.getMaxHp(), previewUnit.getMaxMp(), false, isPlaced);
     }
     catch (...)
     {
@@ -216,39 +201,6 @@ void DeploymentPhaseController::startCombatPhase()
         if (u && ctx.grid.isValid(u->getPosition()))
             ctx.grid.getTile(u->getPosition()).occupied = true;
     }
-
-#if defined(_DEBUG) || !defined(NDEBUG)
-    // Debug enemy loadout: equip the first enemy unit on team 2 with a
-    // representative gear spread using IDs already seeded by
-    // PartyContext::seedDebugInventoryWithTestGear(). The Mace in the
-    // Offhand exercises the dual-wield path fixed in Part J (EquipRules
-    // one-handed non-ranged weapon in Offhand). Remove this block to drop
-    // the feature entirely in Release.
-    {
-        const GearCatalog &catalog = PartyContext::instance().gearCatalog();
-        Unit *debugTarget = nullptr;
-        for (Unit *u : ctx.session.getUnitPtrs())
-        {
-            if (u && u->getTeam() == 2 && !u->isDead())
-            {
-                debugTarget = u;
-                break;
-            }
-        }
-        if (debugTarget)
-        {
-            EquipmentLoadout loadout;
-            loadout.slots[static_cast<std::size_t>(GearSlot::Weapon)]   = catalog.find(1001);
-            loadout.slots[static_cast<std::size_t>(GearSlot::Offhand)]  = catalog.find(1002);
-            loadout.slots[static_cast<std::size_t>(GearSlot::Head)]     = catalog.find(1004);
-            loadout.slots[static_cast<std::size_t>(GearSlot::Body)]     = catalog.find(1005);
-            loadout.slots[static_cast<std::size_t>(GearSlot::Accessory)] = catalog.find(1006);
-            loadout.accessories[1] = catalog.find(1007);
-            debugTarget->setResolvedEquipmentLoadout(loadout);
-            LOG_INFO("Deployment", "Debug enemy loadout applied to %s", debugTarget->getName().c_str());
-        }
-    }
-#endif
 
     if (Unit *first = ctx.session.getCurrentUnit(); first)
         ctx.cursor.setPosition(first->getPosition());
@@ -311,10 +263,7 @@ void DeploymentPhaseController::update(float dt)
 
 Unit *DeploymentPhaseController::previewUnitAt(Vec2i pos) const
 {
-    for (Unit *u : m_deploymentPreviewUnits)
-        if (u && !u->isDead() && u->getPosition() == pos)
-            return u;
-    return nullptr;
+    return unitAt(m_deploymentPreviewUnits, pos);
 }
 
 void DeploymentPhaseController::releaseGrabbedUnit()
@@ -457,6 +406,13 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
         {
             if (ctx.hoveredUnit && !ctx.hoveredUnit->isDead())
             {
+                if (ctx.hoveredUnit->getTeam() != 0)
+                {
+                    // Enemy/neutral preview unit — no roster entry to equip;
+                    // show its live stats instead of the selected player unit.
+                    m_owner.battleMenu().showInspectWindow(ctx.hoveredUnit);
+                    return true;
+                }
                 const DeploymentEntry *hoverEntry = m_deployment.deployedEntryAt(ctx.hoveredUnit->getPosition());
                 if (hoverEntry)
                     target = hoverEntry;

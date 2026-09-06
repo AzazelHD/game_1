@@ -19,7 +19,7 @@ struct UIEvent;
 // AttackResolutionContext.
 //
 // BattleState keeps only read-only accessors (deployment(), previewUnits())
-// for its own render()/unitAt() needs; every mutation happens in here.
+// for its own render() needs; every mutation happens in here.
 class DeploymentPhaseController
 {
 public:
@@ -47,7 +47,7 @@ public:
     [[nodiscard]] bool hasGrabbedUnit() const { return m_deployment.hasGrabbedUnit(); }
     void releaseGrabbedUnit();
 
-    // Read-only access for BattleState::render() and unitAt().
+    // Read-only access for BattleState::render().
     [[nodiscard]] const DeploymentSystem &deployment() const { return m_deployment; }
     [[nodiscard]] const std::vector<Unit *> &previewUnits() const { return m_deploymentPreviewUnits; }
     [[nodiscard]] Unit *previewUnitAt(Vec2i pos) const;

@@ -3,6 +3,7 @@
 #include "battle/unit/Unit.h"
 #include "battle/map/BattleMap.h"
 #include "battle/map/MovementRange.h"
+#include "battle/map/AttackRange.h"
 #include "battle/combat/CombatSystem.h"
 #include "engine/core/Log.h"
 #include "engine/math/Vec2.h"
@@ -186,7 +187,7 @@ EnemyAI::EnemyTurnPlan EnemyAI::planTurn(Unit &unit, Grid &grid, const BattleMap
     return plan;
 }
 
-void EnemyAI::resolveAttack(Unit &unit, Unit *target)
+void EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap)
 {
     if (unit.hasActed())
         return;
@@ -197,8 +198,9 @@ void EnemyAI::resolveAttack(Unit &unit, Unit *target)
         return;
     }
 
-    const int distToTarget = manhattanDistance(unit.getPosition(), target->getPosition());
-    if (distToTarget <= unit.getAtkRange())
+    RangeRule rule;
+    rule.range = unit.getAtkRange();
+    if (AttackRange::canTarget(grid, battleMap, unit.getPosition(), target->getPosition(), rule))
     {
         HitContext ctx = makeAttackContext(unit, *target);
         CombatResult result = CombatSystem::resolve(ctx);
@@ -220,8 +222,8 @@ void EnemyAI::resolveAttack(Unit &unit, Unit *target)
     }
     else
     {
-        LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (dist %d > range %d)",
-                 unit.getName().c_str(), target->getName().c_str(), distToTarget, unit.getAtkRange());
+        LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (range %d)",
+                 unit.getName().c_str(), target->getName().c_str(), unit.getAtkRange());
     }
     unit.setMajorAction(MajorAction::Attack);
 }
@@ -247,15 +249,19 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::
         unit.exhaustMovement();
     }
 
-    resolveAttack(unit, plan.target);
+    resolveAttack(unit, plan.target, grid, battleMap);
 }
 
-int EnemyAI::chooseAction(const Unit &unit, const Grid &grid, std::vector<Unit *> &allUnits)
+int EnemyAI::chooseAction(const Unit &unit, const Grid &grid, const BattleMap &battleMap,
+                          std::vector<Unit *> &allUnits)
 {
     Unit *target = findBestTarget(unit, allUnits);
     if (!target)
         return 2;
-    if (manhattanDistance(unit.getPosition(), target->getPosition()) <= unit.getAtkRange())
+
+    RangeRule rule;
+    rule.range = unit.getAtkRange();
+    if (AttackRange::canTarget(grid, battleMap, unit.getPosition(), target->getPosition(), rule))
         return 1;
     if (!unit.hasMoved())
         return 0;

@@ -89,7 +89,7 @@ bool RosterSystem::equip(int instanceId, GearSlot slot, int accessoryIndex, Item
 {
     RosterUnit *unit = findById(instanceId);
     const Gear *gear = catalog.find(itemId);
-    if (!unit || !gear || gear->slot() != slot)
+    if (!unit || !gear)
         return false;
 
     std::optional<ItemId> *destination = nullptr;
@@ -118,7 +118,16 @@ bool RosterSystem::equip(int instanceId, GearSlot slot, int accessoryIndex, Item
     else
         loadout.slots[static_cast<std::size_t>(slot)] = nullptr;
 
-    if (!EquipRules::canEquip(race, *gear, loadout))
+    // Destination-slot-aware validation. The Offhand slot admits Shields
+    // (slot == Offhand) and one-handed non-ranged weapons (dual-wield,
+    // slot == Weapon), so it cannot be validated by slot-equality — reuse
+    // the same eligibility rule the ItemSelect candidate filter applies.
+    const bool allowed = (slot == GearSlot::Accessory)
+                             ? (gear->slot() == GearSlot::Accessory)
+                             : (slot == GearSlot::Offhand)
+                                   ? EquipRules::isOffhandEligibleGear(*gear, loadout)
+                                   : EquipRules::canEquip(race, *gear, loadout);
+    if (!allowed)
         return false;
 
     const std::optional<ItemId> displaced = *destination;

@@ -4,7 +4,10 @@
 #include "ui/ActionId.h"
 #include "ui/WindowId.h"
 #include "engine/math/Vec2.h"
+#include "engine/ui/Button.h"
+#include "engine/ui/FocusGroup.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -60,10 +63,11 @@ public:
     void render(Renderer *renderer) const override;
 
 private:
-    void moveSelection(int delta);
+    void keepSelectionVisible();
 
     std::vector<Item> m_items;
-    int m_selected = 0;
+    std::vector<std::unique_ptr<Button>> m_focusRows;
+    FocusGroup m_focus;
     int m_scroll = 0;
     Vec2f m_panelPos{0.0f, 0.0f};
     bool m_useCustomPanelPos = false;

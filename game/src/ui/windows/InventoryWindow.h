@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/ui/Button.h"
 #include "engine/ui/FocusGroup.h"
 #include "engine/ui/IFocusable.h"
 #include "inventory/GearCatalog.h"
@@ -42,7 +43,8 @@ private:
     const Font *m_font = nullptr;
 
     std::vector<ItemRow> m_rows;
-    int m_selectedIndex = 0;
+    std::vector<std::unique_ptr<Button>> m_focusRows;
+    FocusGroup m_focus;
     int m_scroll = 0;
 
     // Most recent update() dt, cached so handleInput() (which the engine

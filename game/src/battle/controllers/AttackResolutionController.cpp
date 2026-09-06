@@ -13,7 +13,9 @@
 void AttackResolutionController::prepare(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill)
 {
     BattleState::AttackResolutionContext ctx = m_owner.makeAttackResolutionContext();
-    m_pendingAttack.begin(active, targetPos, directTarget, skill, ctx.session.getUnitPtrs());
+    const RangeRule rule = skill ? skill->toRangeRule() : RangeRule{};
+    m_pendingAttack.begin(active, targetPos, directTarget, skill, rule,
+                          ctx.grid, ctx.battleMap, ctx.session.getUnitPtrs());
     updatePreview(active);
 }
 

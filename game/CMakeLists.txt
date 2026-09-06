@@ -19,13 +19,13 @@ set(GAME_SOURCES
     src/battle/unit/RecruitmentRules.cpp
     src/inventory/Item.cpp
     src/inventory/Inventory.cpp
-    src/inventory/Gear.cpp
     src/inventory/EquipRules.cpp
     src/inventory/GearCatalog.cpp
     src/battle/combat/TurnQueue.cpp
     src/battle/combat/CombatSystem.cpp
     src/battle/map/Pathfinder.cpp
     src/battle/map/MovementRange.cpp
+    src/battle/map/AttackRange.cpp
     src/battle/map/BattleMap.cpp
     src/battle/unit/UnitFactory.cpp
     src/battle/controllers/AttackResolutionController.cpp
@@ -33,6 +33,7 @@ set(GAME_SOURCES
     src/battle/combat/PendingAttackController.cpp
     src/battle/controllers/HumanTurnController.cpp
     src/battle/controllers/DialogueController.cpp
+    src/battle/controllers/EnemyTurnController.cpp
     src/battle/BattleSession.cpp
     src/battle/controllers/DeploymentPhaseController.cpp
     src/battle/controllers/BattleMenuController.cpp
@@ -40,6 +41,7 @@ set(GAME_SOURCES
     src/battle/systems/DeploymentSystem.cpp
     src/battle/systems/BattleParticipantsBuilder.cpp
     src/battle/systems/CombatAnimationSystem.cpp
+    src/battle/systems/MovementCommitSystem.cpp
     src/battle/ui/UnitPanelWindow.cpp
     src/battle/ui/UnitInspectWindow.cpp
     src/battle/ui/DeploymentWindow.cpp
@@ -104,6 +106,8 @@ set(GAME_SOURCES
     src/battle/combat/CombatSystem.h
     src/battle/map/Pathfinder.h
     src/battle/map/MovementRange.h
+    src/battle/map/AttackRange.h
+    src/battle/map/RangeRule.h
     src/battle/map/GameTile.h
     src/battle/map/BattleMap.h
     src/battle/unit/UnitFactory.h
@@ -112,6 +116,7 @@ set(GAME_SOURCES
     src/battle/combat/PendingAttackController.h
     src/battle/controllers/HumanTurnController.h
     src/battle/controllers/DialogueController.h
+    src/battle/controllers/EnemyTurnController.h
     src/battle/BattleSession.h
     src/battle/controllers/DeploymentPhaseController.h
     src/battle/controllers/BattleMenuController.h
@@ -119,6 +124,7 @@ set(GAME_SOURCES
     src/battle/systems/DeploymentSystem.h
     src/battle/systems/BattleParticipantsBuilder.h
     src/battle/systems/CombatAnimationSystem.h
+    src/battle/systems/MovementCommitSystem.h
     src/battle/ui/UnitPanelWindow.h
     src/battle/ui/UnitInspectWindow.h
     src/battle/ui/DeploymentWindow.h

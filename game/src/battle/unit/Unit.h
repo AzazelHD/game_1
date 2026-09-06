@@ -108,7 +108,7 @@ public:
 
     bool promote(PromotionClass promotion);
     bool learnOrUpgradeSkill(const std::string &skillId);
-    void bindEquipmentLoadout(const EquipmentLoadout *loadout) { m_equipmentLoadout = loadout; }
+    void bindEquipmentLoadout(const EquipmentLoadout *loadout);
     void setResolvedEquipmentLoadout(EquipmentLoadout loadout);
     const EquipmentLoadout *equipmentLoadout() const { return m_equipmentLoadout; }
     bool hasGearSpecialEffect(GearSpecialEffect effect) const;
@@ -178,6 +178,7 @@ private:
     const EquipmentLoadout *m_equipmentLoadout = nullptr; // non-owning external campaign/loadout state
 
     // Internal
+    void applyEquipmentLoadout(const EquipmentLoadout *loadout);
     void levelUp();
     GearStatModifiers gearModifiers() const;
 };

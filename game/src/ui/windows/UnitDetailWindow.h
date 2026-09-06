@@ -5,6 +5,8 @@
 #include "inventory/EquipRules.h"
 #include "engine/math/Rect.h"
 #include "engine/math/Vec2.h"
+#include "engine/ui/Button.h"
+#include "engine/ui/FocusGroup.h"
 
 #include <memory>
 #include <vector>
@@ -19,8 +21,6 @@ class Inventory;
 class Gear;
 struct EquipmentLoadout;
 struct RosterUnit;
-class FocusGroup;
-class IFocusable;
 
 class UnitDetailWindow final : public UIWindow
 {
@@ -76,6 +76,7 @@ private:
     void exitItemSelect();
     void confirmItemSelection();
     void unequipCurrentSlot();
+    void rebuildStaticRows();
 
     // Item filtering and preview
     void rebuildCandidatesList();
@@ -124,21 +125,19 @@ private:
 
     // Interactive UI state
     UIState m_state = UIState::Details;
-    int m_selectedActionIndex = 0;
+    std::vector<std::unique_ptr<Button>> m_actionRows;
+    FocusGroup m_actionFocus;
 
     // Slot selection state
     std::vector<SlotEntry> m_slots;
-    int m_selectedSlotIndex = 0;
-    // Slot index to restore on the next SlotSelect entry. Set when
-    // transitioning into ItemSelect (Part H), consumed in enterSlotSelect.
-    int m_lastSelectedSlotIndex = -1;
-    std::unique_ptr<FocusGroup> m_slotFocus;
+    std::vector<std::unique_ptr<Button>> m_slotRows;
+    FocusGroup m_slotFocus;
 
     // Item selection state
     std::vector<ItemCandidate> m_candidates;
-    int m_selectedItemIndex = 0;
+    std::vector<std::unique_ptr<Button>> m_itemRows;
+    FocusGroup m_itemFocus;
     int m_candidateScroll = 0;
-    std::unique_ptr<FocusGroup> m_itemFocus;
 
     // Hold-to-repeat trackers (Part K) for SlotSelect and ItemSelect
     // Up/Down navigation. A/D page jumps stay single-step.

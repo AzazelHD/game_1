@@ -73,7 +73,23 @@ void InventoryWindow::rebuildRows()
         });
     }
 
-    m_selectedIndex = 0;
+    m_focusRows.clear();
+    m_focusRows.reserve(m_rows.size());
+    std::vector<IFocusable *> focusableRows;
+    focusableRows.reserve(m_rows.size());
+
+    for (int i = 0; i < static_cast<int>(m_rows.size()); ++i)
+    {
+        auto row = std::make_unique<Button>(Rectf{0.0f, 0.0f, 0.0f, 0.0f}, "");
+        row->setOnClick([this]()
+                        {
+                        });
+
+        focusableRows.push_back(row.get());
+        m_focusRows.push_back(std::move(row));
+    }
+
+    m_focus.resetFromPointers(std::move(focusableRows));
     m_scroll = 0;
 }
 
@@ -91,35 +107,39 @@ void InventoryWindow::handleInput(const Input &input)
 
     if (count > 0)
     {
-        if (upHit)
+        const int selected = m_focus.getSelectedIndex();
+
+        if (upHit && selected > 0)
         {
-            if (m_selectedIndex > 0)
-                --m_selectedIndex;
+            m_focus.focusPrevious();
         }
-        else if (downHit)
+        else if (downHit && selected < count - 1)
         {
-            if (m_selectedIndex < count - 1)
-                ++m_selectedIndex;
+            m_focus.focusNext();
         }
         else if (leftHit)
         {
-            m_selectedIndex = std::max(0, m_selectedIndex - 5);
+            for (int step = 0; step < 5 && m_focus.getSelectedIndex() > 0; ++step)
+                m_focus.focusPrevious();
         }
         else if (rightHit)
         {
-            m_selectedIndex = std::min(count - 1, m_selectedIndex + 5);
+            for (int step = 0; step < 5 && m_focus.getSelectedIndex() < count - 1; ++step)
+                m_focus.focusNext();
         }
 
-        if (m_selectedIndex < m_scroll)
-            m_scroll = m_selectedIndex;
-        if (m_selectedIndex >= m_scroll + kVisibleRows)
-            m_scroll = m_selectedIndex - kVisibleRows + 1;
+        const int current = m_focus.getSelectedIndex();
+        if (current < m_scroll)
+            m_scroll = current;
+        if (current >= m_scroll + kVisibleRows)
+            m_scroll = current - kVisibleRows + 1;
     }
 
-    if (input.isKeyPressed(KeyCode::Back, false) || input.isKeyPressed(KeyCode::Accept, false))
+    if (input.isKeyPressed(KeyCode::Back, false))
     {
-        LOG_INFO("InventoryWindow", "Back/Accept pressed -> Closing inventory window");
+        LOG_INFO("InventoryWindow", "Back pressed -> Closing inventory window");
         emit(UIEvent{.type = UIEventType::ActionCanceled, .windowId = id(), .actionId = ActionId::Close});
+        return;
     }
 }
 
@@ -199,7 +219,7 @@ void InventoryWindow::render(Renderer *renderer) const
         for (int i = start; i < end; ++i)
         {
             const ItemRow &row = m_rows[static_cast<std::size_t>(i)];
-            const bool isSelected = (i == m_selectedIndex);
+            const bool isSelected = (i == m_focus.getSelectedIndex());
             const Rectf itemRect{contentX + 6.0f, rowY, contentW - 12.0f, kRowH};
 
             if (isSelected)
@@ -250,9 +270,10 @@ void InventoryWindow::render(Renderer *renderer) const
     renderer->setDrawColor(Color{60, 75, 95, 255});
     renderer->drawRect(descRect);
 
-    if (m_selectedIndex >= 0 && m_selectedIndex < static_cast<int>(m_rows.size()))
+    const int selected = m_focus.getSelectedIndex();
+    if (selected >= 0 && selected < static_cast<int>(m_rows.size()))
     {
-        const ItemRow &sel = m_rows[static_cast<std::size_t>(m_selectedIndex)];
+        const ItemRow &sel = m_rows[static_cast<std::size_t>(selected)];
         const float maxTextW = descRect.w - 24.0f;
         const std::vector<std::string> lines = TextWrap::wrap(renderer, m_font, sel.description, maxTextW);
         const float lineH = renderer->measureText(m_font, "Ag").y;
@@ -279,7 +300,7 @@ void InventoryWindow::render(Renderer *renderer) const
     }
 
     // Footer Hint
-    renderer->renderTextInRect(m_font, "W/S: Navigate | A/D: Page | Esc/Enter: Back",
+    renderer->renderTextInRect(m_font, "W/S: Navigate | A/D: Page | Esc: Back",
                                Rectf{contentX, panelY + kPanelH - outer.bottom - kFooterH, contentW, kFooterH},
                                UITheme::Info,
                                HorizontalAlign::Center, VerticalAlign::Middle,

@@ -26,14 +26,16 @@ public:
 
     // Resolves the attack-if-in-range step only (no movement) — called once
     // the unit has arrived at its planned destination (or immediately, if
-    // the plan never wanted to move).
-    static void resolveAttack(Unit &unit, Unit *target);
+    // the plan never wanted to move). Uses the unit's atkRange with the
+    // default RangeRule (same-height, LOS-free).
+    static void resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap);
 
     // Synchronous, instant, unanimated — still used by debug-only paths
     // (immediate AI takeover, autoplay). Internally now just calls
     // planTurn()+resolveAttack() back to back.
     static void takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits);
 
-    static int chooseAction(const Unit &unit, const Grid &grid, std::vector<Unit *> &allUnits);
+    static int chooseAction(const Unit &unit, const Grid &grid, const BattleMap &battleMap,
+                            std::vector<Unit *> &allUnits);
     static Unit *chooseTarget(const Unit &unit, std::vector<Unit *> &allUnits);
 };

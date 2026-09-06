@@ -27,10 +27,11 @@ public:
     void enqueue(const std::string &text, Vec2i tilePos, Color color, float ttl = 1.0f);
     void update(float dt);
     // TODO: not implemented yet — needs the same iso/camera transform
-    // BattleRenderer uses for units (tileToIso + camera offset/zoom), which
-    // this system doesn't have access to. Either give it a Camera& + iso
-    // metrics, or move rendering into BattleRenderer::drawScene() where
-    // that transform already exists, iterating getEntries() from here.
+    // BattleRenderer uses for units (Camera::tileToScreen + elevation
+    // offset), which this system doesn't have access to. Either give it a
+    // Camera& + tile-size/scale, or move rendering into
+    // BattleRenderer::drawScene() where that transform already exists,
+    // iterating getEntries() from here.
     void render(Renderer *renderer, const Font *font) const;
     void clear();
 

@@ -2,14 +2,15 @@
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "engine/renderer/FontManager.h"
-#include "engine/math/MathUtils.h"
 #include "battle/controllers/HumanTurnController.h"
 #include "battle/unit/Unit.h"
+#include "battle/map/AttackRange.h"
 #include "battle/combat/CombatSystem.h"
 #include "scenes/BattleState.h"
 #include "ui/windows/ConfirmWindow.h"
 
 #include <cstdio>
+#include <unordered_set>
 
 void HumanTurnController::handleActiveTurn(const Input &input)
 {
@@ -33,13 +34,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
         if (input.isKeyPressed(KeyCode::Details, false))
         {
             Vec2i cursorPos = ctx.cursor.getPosition();
-            Unit *hovered = nullptr;
-            for (Unit *u : ctx.session.getUnitPtrs())
-                if (u && !u->isDead() && u->getPosition() == cursorPos)
-                {
-                    hovered = u;
-                    break;
-                }
+            Unit *hovered = unitAt(ctx.session.getUnitPtrs(), cursorPos);
 
             if (hovered)
                 m_state.battleMenu().showInspectWindow(hovered);
@@ -57,13 +52,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             }
             else
             {
-                Unit *hovered = nullptr;
-                for (Unit *u : ctx.session.getUnitPtrs())
-                    if (u && !u->isDead() && u->getPosition() == cursorPos)
-                    {
-                        hovered = u;
-                        break;
-                    }
+                Unit *hovered = unitAt(ctx.session.getUnitPtrs(), cursorPos);
 
                 if (hovered)
                 {
@@ -106,18 +95,12 @@ void HumanTurnController::handleActiveTurn(const Input &input)
     else if (ctx.phase == BattleState::HumanTurnPhase::AttackTarget)
     {
         Vec2i cursorPos = ctx.cursor.getPosition();
-        Unit *hoveredEnemy = nullptr;
-        for (Unit *u : ctx.session.getUnitPtrs())
-            if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == cursorPos)
-            {
-                hoveredEnemy = u;
-                break;
-            }
+        Unit *hoveredEnemy = unitAt(ctx.session.getUnitPtrs(), cursorPos, true);
 
         if (hoveredEnemy)
         {
-            int dist = manhattanDistance(active->getPosition(), hoveredEnemy->getPosition());
-            if (dist <= ctx.currentAttackRange)
+            if (AttackRange::canTarget(ctx.grid, ctx.battleMap, active->getPosition(),
+                                       hoveredEnemy->getPosition(), ctx.currentRangeRule))
             {
                 const SkillData *previewSkill = nullptr;
                 if (!ctx.selectedSkillId.empty())
@@ -150,13 +133,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
         if (input.isKeyPressed(KeyCode::Accept, false))
         {
             Vec2i targetPos = ctx.cursor.getPosition();
-            Unit *target = nullptr;
-            for (Unit *u : ctx.session.getUnitPtrs())
-                if (u && !u->isDead() && u->getTeam() != 0 && u->getPosition() == targetPos)
-                {
-                    target = u;
-                    break;
-                }
+            Unit *target = unitAt(ctx.session.getUnitPtrs(), targetPos, true);
 
             const SkillData *skill = nullptr;
             if (!ctx.selectedSkillId.empty())
@@ -168,12 +145,17 @@ void HumanTurnController::handleActiveTurn(const Input &input)
 
             bool canAttack = (target != nullptr);
 
-            if (!canAttack && skill && skill->area > 0)
+            if (!canAttack && skill && skill->area > 0 &&
+                AttackRange::canTarget(ctx.grid, ctx.battleMap, active->getPosition(),
+                                       targetPos, ctx.currentRangeRule))
             {
+                const std::unordered_set<Vec2i, Vec2iHash> splash =
+                    AttackRange::computeSplashTiles(ctx.grid, ctx.battleMap, targetPos,
+                                                    ctx.currentRangeRule);
                 for (Unit *u : ctx.session.getUnitPtrs())
                 {
                     if (u && !u->isDead() && u->getTeam() != 0 &&
-                        manhattanDistance(u->getPosition(), targetPos) <= skill->area)
+                        splash.count(u->getPosition()))
                     {
                         canAttack = true;
                         break;
@@ -184,8 +166,8 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             if (!canAttack)
                 return;
 
-            int dist = manhattanDistance(active->getPosition(), targetPos);
-            if (dist > ctx.currentAttackRange)
+            if (!AttackRange::canTarget(ctx.grid, ctx.battleMap, active->getPosition(),
+                                        targetPos, ctx.currentRangeRule))
                 return;
 
             const SkillData *skillToUse = nullptr;

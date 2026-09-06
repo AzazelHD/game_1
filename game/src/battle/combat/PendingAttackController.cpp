@@ -3,11 +3,15 @@
 #include <algorithm>
 
 #include "battle/unit/Unit.h"
-#include "data/SkillLoader.h"      // SkillData
-#include "engine/math/MathUtils.h" // manhattanDistance
+#include "battle/map/Grid.h"
+#include "battle/map/BattleMap.h"
+#include "battle/map/AttackRange.h"
+#include "data/SkillLoader.h" // SkillData
 
 void PendingAttackController::begin(Unit *active, Vec2i targetPos, Unit *directTarget,
-                                    const SkillData *skill, const std::vector<Unit *> &units)
+                                    const SkillData *skill, const RangeRule &rule,
+                                    const Grid &grid, const BattleMap &battleMap,
+                                    const std::vector<Unit *> &units)
 {
     m_targets.clear();
     m_tiles.clear();
@@ -23,11 +27,13 @@ void PendingAttackController::begin(Unit *active, Vec2i targetPos, Unit *directT
         // caster themself if they're standing in the blast. Only
         // single-target (area == 0) is restricted to enemies, and that
         // restriction lives in HumanTurnController's targeting instead.
+        const std::unordered_set<Vec2i, Vec2iHash> splashTiles =
+            AttackRange::computeSplashTiles(grid, battleMap, targetPos, rule);
         for (Unit *u : units)
         {
             if (!u || u->isDead())
                 continue;
-            if (manhattanDistance(u->getPosition(), targetPos) <= skill->area)
+            if (splashTiles.count(u->getPosition()))
                 m_targets.push_back(u);
         }
     }

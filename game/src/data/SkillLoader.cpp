@@ -57,6 +57,10 @@ SkillData SkillLoader::load(const std::string &filePath)
     skill.mpCost = j.value("mpCost", 0);
     skill.castOncePerArea = j.value("castOncePerArea", false);
 
+    skill.heightTolerance = j.value("heightTolerance", 0);
+    skill.requiresLineOfSight = j.value("requiresLineOfSight", false);
+    skill.splashRespectsWalls = j.value("splashRespectsWalls", true);
+
     if (j.contains("effectTypes") && j["effectTypes"].is_array())
     {
         for (const auto &e : j["effectTypes"])
@@ -72,6 +76,17 @@ SkillData SkillLoader::load(const std::string &filePath)
     }
 
     return skill;
+}
+
+RangeRule SkillData::toRangeRule() const
+{
+    return RangeRule{
+        .range = range,
+        .area = area,
+        .heightTolerance = heightTolerance,
+        .requiresLineOfSight = requiresLineOfSight,
+        .splashRespectsWalls = splashRespectsWalls,
+    };
 }
 
 // ── Load all skills in a directory (with duplicate ID check) ─────────────────

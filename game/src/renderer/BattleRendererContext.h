@@ -26,17 +26,6 @@ enum class BattleOverlayMode
     ConfirmTargets
 };
 
-struct IsoMetrics
-{
-    float s;
-    float tw;
-    float th;
-    float halfTW;
-    float halfTH;
-    float ntw;
-    float elevStep;
-};
-
 struct TileLayerRef
 {
     const TileLayerData *layer;

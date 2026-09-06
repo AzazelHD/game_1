@@ -4,82 +4,52 @@ All notable completed milestones for the TRPG game project.
 
 ---
 
-## [Unreleased] – refactor/renderer-passes (not yet merged)
+## 2026-09-05 – UI input architecture + mechanical cleanup
 
-### Added
+### Architecture & UI
 
-- World / native render pass split: Renderer now owns a logical target texture, replacing SDL’s automatic logical presentation.
-- `beginLogicalPass()` / `endLogicalPass()` to manually control letterbox stretching with configurable scale mode.
-- Native‑pass coordinate conversion (`toNativeRect`, `toNativePos`) so all UI windows draw in physical pixels without code changes.
-- Crisp text: `renderText` temporarily scales font point size to match native pixel density, rasterising at real resolution.
-- Move‑only `Renderer` with proper Rule‑of‑5.
+- UI navigation refactor (hand-rolled selection → engine primitives) for `ButtonMenuWindow`,
+  `InventoryWindow`, and `UnitDetailWindow`: each window now drives selection with an engine
+  `FocusGroup` + a set of `Button` carrier rows, while keeping all custom drawing, anchoring,
+  scrolling, and viewport math.
+- Accept input is routed through `FocusGroup::activateSelected()` → `Button::activate()`, so the
+  enabled/`onClick` gating lives in one place per window.
+- Removed per-window manual bookkeeping: `m_selectedIndex` / `m_selectedActionIndex` /
+  `m_selectedSlotIndex` / `m_selectedItemIndex`, the part-H slot-restore flag, and the never-used
+  `CloseFocusable` class.
+- Navigation semantics preserved window-by-window: clamp (no wrap-around), hold-to-repeat timing,
+  A/D page jumps, scroll-follow, empty-inventory close, and "select a slot → equip → back to the
+  same slot".
 
 ### Fixed
 
-- Blurry text after resolution change (no more linear‑filtering stretch of a low‑res canvas).
+- Gear HP/MP sync on equip/unequip: roster stores a heap snapshot of current HP/MP before applying
+  loadout changes and restores it on unequip, so swapping gear no longer clamps or loses current
+  values (`UnitDetailWindow::confirmItemSelection` / `unequipCurrentSlot`).
+- Redundant off-screen tile renders culled in the battle renderer (two-level gate: render pass
+  eligibility + per-tile batch eligibility).
+- Unit panel portrait now syncs to the active unit immediately when a turn starts
+  (`BattleState::syncUnitPanelWindow`), instead of only after the first action.
+- World map camera clamping: audited, behavior kept as-is.
 
----
+### Mechanical cleanup
 
-## v0.x – Core Vertical Slice
+- `Pathfinder::findPath` local coordinate hash removed; pathfinding maps now key via the shared
+  `Vec2iHash` (`MovementRange.h`).
+- Local `drawCircle` polygon helpers in `WorldMapState` and `PartyWindow` consolidated into a single
+  `UIUtils::drawCircle`; the per-file manual `Color` → `FColor` conversions were dropped in favor of
+  the implicit conversion.
+- `DamagePreview` text centering via `renderTextInRect` (Center/Middle).
+- `Pathfinder` heuristic uses engine `MathUtils::manhattanDistance`; world-map interpolation uses
+  engine `MathUtils::lerp`.
+- `Gear.cpp` one-line stub removed.
 
-### Bootstrap & Integration
+### Notes
 
-- TRPG executable target linked to engine.
-- `vcpkg.json` aligned; Debug/Release builds clean.
-
-### State Flow
-
-- BootState, MainMenuState, BattleState, SettingsState, ResultState fully wired.
-- Menu → Battle → Result → return path stable.
-
-### Grid & Navigation
-
-- Grid data structure with tile metadata.
-- Tiled map loading via `TiledJsonLoader` with gameplay properties.
-- Cursor movement, pathfinding (A\*), movement range (BFS).
-
-### Units, Turns, Combat
-
-- UnitData, runtime Unit, UnitLoader from JSON.
-- TurnQueue, combat resolution (hit/crit/damage/KO).
-- Win/lose conditions.
-
-### Enemy AI
-
-- `EnemyAI::takeTurn()` heuristic movement + targeting.
-- AI always performs a valid action or wait.
-
-### Tactical UI
-
-- UnitPanelWindow, ActionMenu (Move/Attack/Wait), DamagePreview.
-- Turn/round indicators, UnitInspectWindow (name, job, stats).
-- DeploymentWindow, PartyWindow, ConfirmWindow, DialogWindow, ButtonMenuWindow.
-- FloatingTextSystem, UITheme, UIScale, UIUtils, UIWindow framework.
-
-### Camera & Rendering
-
-- Camera tracking during deployment and combat.
-- Borderless mode with Stretch presentation, windowed mode with Letterbox.
-- Aspect‑ratio fixes, clamp fixes, render‑scale corrections.
-
-### Data & Settings
-
-- UnitLoader, skill skeleton, BattleCatalog.
-- SettingsManager: audio, graphics, window mode with persistence.
-- Settings applied during boot.
-
-### World Map
-
-- Skeleton world map scene with WorldGraph and WorldPathfinding.
-
-### Architecture & Clean‑up
-
-- BattleState SRP split into controllers.
-- BattleUIManager removed; UIManager is sole window owner.
-- Folder restructure by kind, not feature.
-- Engine/game boundary strict separation.
-- UI ownership, input blocking, button menu config centralised.
-- Settings feature extraction.
+- `MovementAnimationController::kPi` retained: a `constexpr float` is preferable to the `M_PI`
+  macro (float precision, MSVC-safe without `_USE_MATH_DEFINES`).
+- World-map `distanceSquared` kept local: the engine exposes no distance helper and the helper is
+  used only within a single translation unit.
 
 ---
 

@@ -2,19 +2,26 @@
 
 #include "engine/math/Vec2.h"
 #include "battle/map/MovementRange.h"
+#include "battle/map/RangeRule.h"
 
 #include <vector>
 #include <unordered_set>
 
 class Unit;
+class Grid;
+class BattleMap;
 struct SkillData;
 
 class PendingAttackController
 {
 public:
     // Builds the target/tile set from the skill area (or a single direct target).
+    // Uses the skill's RangeRule + map geometry so AoE splash respects height
+    // and line-of-sight rules.
     void begin(Unit *active, Vec2i targetPos, Unit *directTarget,
-               const SkillData *skill, const std::vector<Unit *> &units);
+               const SkillData *skill, const RangeRule &rule,
+               const Grid &grid, const BattleMap &battleMap,
+               const std::vector<Unit *> &units);
 
     void cycleFocus(int delta);
     void clear();

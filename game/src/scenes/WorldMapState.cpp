@@ -19,6 +19,7 @@
 #include "ui/windows/InventoryWindow.h"
 #include "ui/windows/PartyWindow.h"
 #include "ui/windows/UnitDetailWindow.h"
+#include "ui/UIUtils.h"
 #include "systems/PartyContext.h"
 #include "scenes/WorldMapState.h"
 #include "world/WorldPathfinding.h"
@@ -49,44 +50,6 @@ namespace
         const float dx = a.x - b.x;
         const float dy = a.y - b.y;
         return dx * dx + dy * dy;
-    }
-
-    void drawCircle(Renderer *renderer, Vec2f center, float radius, Color color, int segments = 20)
-    {
-        if (!renderer)
-            return;
-
-        const FColor fColor = {
-            static_cast<float>(color.r) / 255.0f,
-            static_cast<float>(color.g) / 255.0f,
-            static_cast<float>(color.b) / 255.0f,
-            static_cast<float>(color.a) / 255.0f,
-        };
-
-        std::vector<Renderer::Vertex> verts;
-        std::vector<int> indices;
-        verts.reserve(static_cast<std::size_t>(segments + 2));
-        indices.reserve(static_cast<std::size_t>(segments * 3));
-
-        verts.push_back(Renderer::Vertex{center, fColor});
-
-        constexpr float pi = 3.1415926535f;
-        for (int i = 0; i <= segments; ++i)
-        {
-            const float angle = 2.0f * pi * static_cast<float>(i) / static_cast<float>(segments);
-            verts.push_back(Renderer::Vertex{
-                Vec2f{center.x + std::cos(angle) * radius, center.y + std::sin(angle) * radius},
-                fColor});
-
-            if (i > 0)
-            {
-                indices.push_back(0);
-                indices.push_back(i);
-                indices.push_back(i + 1);
-            }
-        }
-
-        renderer->drawGeometry(verts, indices);
     }
 }
 
@@ -651,17 +614,17 @@ void WorldMapState::drawWorld() const
                 color = kBattleNodeColor;
         }
 
-        drawCircle(m_renderer, toScreen(node->position), kNodeRadius, color);
+        UIUtils::drawCircle(m_renderer, toScreen(node->position), kNodeRadius, color);
     }
 
     if (m_hoveredNodeId >= 0)
     {
         const world::WorldGraph::Node *hoveredNode = m_graph.getNode(m_hoveredNodeId);
         if (hoveredNode)
-            drawCircle(m_renderer, toScreen(hoveredNode->position), kHoverRadius, kHoverColor, 28);
+            UIUtils::drawCircle(m_renderer, toScreen(hoveredNode->position), kHoverRadius, kHoverColor, 28);
     }
 
-    drawCircle(m_renderer, toScreen(m_cursorPos), kCursorRadius, kCursorColor, 16);
+    UIUtils::drawCircle(m_renderer, toScreen(m_cursorPos), kCursorRadius, kCursorColor, 16);
 
     Vec2f playerPos{0.0f, 0.0f};
     const world::WorldGraph::Node *playerNode = m_graph.getNode(m_playerNodeId);
@@ -680,5 +643,5 @@ void WorldMapState::drawWorld() const
         }
     }
 
-    drawCircle(m_renderer, toScreen(playerPos), kPlayerRadius, kPlayerColor, 24);
+    UIUtils::drawCircle(m_renderer, toScreen(playerPos), kPlayerRadius, kPlayerColor, 24);
 }
