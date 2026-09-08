@@ -29,9 +29,12 @@
 #include "battle/map/AttackRange.h"
 #include "battle/map/Pathfinder.h"
 #include "battle/combat/CombatSystem.h"
+#include "battle/combat/SkillEffects.h"
 #include "battle/systems/MovementCommitSystem.h"
 #include "renderer/BattleRendererContext.h"
+#include "renderer/BattleWorldProjection.h"
 #include "ai/EnemyAI.h"
+#include "systems/PartyContext.h"
 #include "ui/Cursor.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
@@ -84,6 +87,7 @@ void BattleState::onEnter()
     m_session.init({});
     m_floatingText.clear();
     m_pendingRewardXp = 0;
+    m_rewardXpAwarded = false;
     m_flowPhase = BattleFlowPhase::Deployment;
     m_showDefeatOverlay = false;
     m_showVictoryOverlay = false;
@@ -283,6 +287,7 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
         .battleMap = m_battleMap,
         .damagePreview = m_damagePreview,
         .floatingText = m_floatingText,
+        .combatAnimations = m_combatAnimations,
         .cursor = m_cursor,
         .skillDB = m_skillDB,
         .selectedSkillId = m_selectedSkillId,
@@ -802,6 +807,15 @@ void BattleState::update(float dt)
                     break;
                 }
 
+                // The rolled attack already played (damage + VFX + pause): now
+                // just close the turn out.
+                if (m_enemyActionResolved)
+                {
+                    m_enemyActionResolved = false;
+                    finishEnemyAction();
+                    break;
+                }
+
                 EnemyAI::EnemyTurnPlan plan = EnemyAI::planTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
 
                 // Parked here (no-op case in the switch) until the walk (if
@@ -815,15 +829,13 @@ void BattleState::update(float dt)
                     beginUnitWalk(active, plan.destination, pathCost,
                                   [this, active, plan]()
                                   {
-                                      EnemyAI::resolveAttack(*active, plan.target, m_grid, m_battleMap);
-                                      finishEnemyAction();
+                                      resolveEnemyAttack(*active, plan.target);
                                   });
                 }
                 else
                 {
                     active->exhaustMovement();
-                    EnemyAI::resolveAttack(*active, plan.target, m_grid, m_battleMap);
-                    finishEnemyAction();
+                    resolveEnemyAttack(*active, plan.target);
                 }
                 break;
             }
@@ -855,6 +867,7 @@ void BattleState::startBattleEnd(bool playerWon)
     if (playerWon)
     {
         m_showVictoryOverlay = true;
+        awardVictoryBonusXp();
         m_eventSystem.emit(BattleTriggerType::OnVictory);
     }
     else
@@ -879,6 +892,36 @@ bool BattleState::checkVictory() const
 bool BattleState::checkDefeat() const
 {
     return m_session.getResult() == BattleResult::Defeat;
+}
+
+void BattleState::awardVictoryBonusXp()
+{
+    if (m_rewardXpAwarded)
+        return;
+    m_rewardXpAwarded = true;
+
+    PartyContext &ctx = PartyContext::instance();
+    ctx.ensureInitialized();
+
+    const int gained = GameConstants::BATTLE_VICTORY_XP + m_pendingRewardXp;
+    for (const Unit &u : m_session.getUnits())
+    {
+        if (u.getTeam() != 0 || u.isDead())
+            continue;
+        const int rosterId = u.getRosterInstanceId();
+        if (rosterId < 0)
+            continue;
+        if (RosterUnit *rosterUnit = ctx.roster().findById(rosterId))
+        {
+            // Current progression rule: surviving units gain exactly one level
+            // per battle victory. Leveling only raises stats for now (skill
+            // progression is a later milestone).
+            if (rosterUnit->level < u.getMaxLevel())
+                ++rosterUnit->level;
+            rosterUnit->exp += gained;
+        }
+    }
+    m_pendingRewardXp = 0;
 }
 
 void BattleState::processCurrentTurn()
@@ -913,6 +956,7 @@ void BattleState::processCurrentTurn()
         m_pendingActor = active;
         m_pendingTarget = decision.target;
         m_pendingEnemyAliveBefore = decision.playersAliveBefore;
+        m_enemyActionResolved = false;
         m_pendingActionLabel = "Attack";
         m_topBattleText = m_pendingActionLabel;
 
@@ -983,6 +1027,43 @@ void BattleState::advanceToNextUnit()
         startBattleEnd(true);
         return;
     }
+}
+
+void BattleState::resolveEnemyAttack(Unit &unit, Unit *target)
+{
+    const EnemyAttackResult atk = EnemyAI::resolveAttack(unit, target, m_grid, m_battleMap);
+
+    m_pendingResolution = PendingResolution::EnemyAction;
+
+    if (atk.attacked)
+    {
+        // Apply through the session so victory/defeat and death detection
+        // stay in sync with the player's path.
+        m_session.applyDamage(*atk.target, atk.result);
+
+        if (atk.result.hit)
+        {
+            m_floatingText.enqueue(std::to_string(atk.result.damage), atk.target->getPosition(),
+                                   Color{255, 90, 90, 255});
+            m_combatAnimations.enqueue("hit_impact", atk.target->getPosition());
+        }
+        else
+        {
+            m_floatingText.enqueue("MISS", atk.target->getPosition(), Color{200, 200, 200, 255});
+            m_combatAnimations.enqueue("dodge", atk.target->getPosition());
+        }
+
+        // Pause briefly so the damage number + ring are readable, then the
+        // next WaitingForAnimation tick (with m_enemyActionResolved) closes
+        // the turn.
+        m_enemyActionResolved = true;
+        m_turnTimer = 0.45f;
+        m_turnState = TurnState::WaitingForAnimation;
+        return;
+    }
+
+    // No legal target in range (or nothing to attack) — close the turn now.
+    finishEnemyAction();
 }
 
 void BattleState::finishEnemyAction()
@@ -1242,7 +1323,14 @@ void BattleState::renderTopBattleText()
 
 void BattleState::renderWorldEffects(const Camera &renderCam)
 {
-    m_combatAnimations.render(m_renderer);
+    const battleworld::AnchorContext effectsCtx{
+        .camera = renderCam,
+        .mapData = m_mapData,
+        .battleMap = m_battleMap,
+        .scale = m_scale,
+    };
+    m_combatAnimations.render(m_renderer, effectsCtx);
+    m_floatingText.render(m_renderer, FontManager::instance().get(FontRole::Body), effectsCtx);
 
     if (m_debugRenderer)
         m_debugRenderer->flush(m_renderer, renderCam);
@@ -1346,8 +1434,17 @@ void BattleState::computeAttackRangeTiles()
     AttackRange::Result rng = AttackRange::compute(m_grid, m_battleMap, pos, m_currentRangeRule);
     m_attackCenterTiles = std::move(rng.tiles);
 
-    // exclude the tile the unit is standing on
-    m_attackCenterTiles.erase(pos);
+    // Supportive skills (heal/buff) may be cast on the caster's own tile, so
+    // keep `pos` highlighted for them; every other range keeps it excluded.
+    bool supportive = false;
+    if (!m_selectedSkillId.empty())
+    {
+        auto it = m_skillDB.find(m_selectedSkillId);
+        if (it != m_skillDB.end())
+            supportive = skill_effects::isSupportive(it->second);
+    }
+    if (!supportive)
+        m_attackCenterTiles.erase(pos);
 }
 
 HitContext BattleState::makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const

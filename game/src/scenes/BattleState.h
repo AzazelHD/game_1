@@ -160,6 +160,7 @@ public:
         BattleMap &battleMap;
         DamagePreview &damagePreview;
         FloatingTextSystem &floatingText;
+        CombatAnimationSystem &combatAnimations;
         Cursor &cursor;
         const std::unordered_map<std::string, SkillData> &skillDB;
         std::string &selectedSkillId;
@@ -291,6 +292,7 @@ private:
     const BattleDefinition *m_battleDefinition = nullptr;
     BattleEventSystem m_eventSystem;
     int m_pendingRewardXp = 0;
+    bool m_rewardXpAwarded = false;
 
     // ── Move undo ──────────────────────────────────────────────────────────
     Vec2i m_moveStartPos{0, 0};
@@ -329,6 +331,9 @@ private:
     int m_pendingEnemyAliveBefore = 0;
     std::string m_pendingActionLabel;
     std::string m_topBattleText;
+    // True while the enemy's rolled attack awaits its short VFX pause before
+    // finishEnemyAction() runs (damage already applied + FX enqueued).
+    bool m_enemyActionResolved = false;
 
     // ── Tileset layout ─────────────────────────────────────────────────────
     float m_texW = 0.0f;
@@ -396,4 +401,6 @@ private:
     void startStoryDialogue(std::vector<DialogueBeat> beats, std::function<void()> onComplete = {});
 
     void finishEnemyAction();
+    void resolveEnemyAttack(Unit &unit, Unit *target);
+    void awardVictoryBonusXp();
 };

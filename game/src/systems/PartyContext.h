@@ -5,12 +5,21 @@
 #include "inventory/GearCatalog.h"
 #include "inventory/Inventory.h"
 
+#include <string>
+
+struct CampaignSave;
+
 class PartyContext
 {
 public:
     static PartyContext &instance();
 
     void ensureInitialized();
+
+    // Replaces roster + party + inventory contents with a loaded campaign.
+    // Assumes ensureInitialized() has run (so the gear catalog exists to
+    // resolve inventory ItemIds).
+    bool applyCampaign(const CampaignSave &campaign);
 
     // Shipped campaign starting kit (placeholder items for new game; runs in Release and Debug)
     void seedDefaultStartingInventory();

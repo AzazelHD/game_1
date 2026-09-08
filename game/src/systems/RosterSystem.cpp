@@ -22,6 +22,9 @@ void RosterSystem::ensureDefaultUnits()
 
     recruit("assets/units/aria.json", "Aria");
     recruit("assets/units/soldier.json", "Soldier");
+    recruit("assets/units/elf_archer.json", "Elf Archer");
+    recruit("assets/units/elin_duelist.json", "Elin Duelist");
+    recruit("assets/units/debug_overlord.json", "Debug Overlord");
 }
 
 RosterUnit *RosterSystem::recruit(std::string templatePath, std::string customName)

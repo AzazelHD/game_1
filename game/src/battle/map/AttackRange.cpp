@@ -102,8 +102,6 @@ AttackRange::Result AttackRange::compute(const Grid &grid,
         for (int c = 0; c < mapW; ++c)
         {
             const Vec2i target{c, r};
-            if (target == origin)
-                continue;
 
             if (!battleMap.isValid(c, r))
                 continue;
@@ -133,9 +131,6 @@ bool AttackRange::canTarget(const Grid &grid,
                             const RangeRule &rule)
 {
     if (!battleMap.isValid(target.x, target.y))
-        return false;
-
-    if (attackerPos == target)
         return false;
 
     if (!distanceCheck(attackerPos, target, rule))

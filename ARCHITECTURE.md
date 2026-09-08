@@ -61,6 +61,8 @@ The game owns all domain logic:
 
 - `BattleRenderer`: battle draw pipeline, overlays, and map/unit presentation.
 - `BattleRendererContext`: read-only render input contract.
+- `BattleWorldProjection`: shared tile→screen anchor math (Camera projection +
+  elevation) for world-anchored VFX and floating damage text.
 
 ### `data/`
 

@@ -30,6 +30,19 @@ struct SkillData
     int mpCost = 0;                           // MP required to use
     std::vector<SkillEffectType> effectTypes; // "damage", "heal", "buff", "debuff"
 
+    // Turns this skill is unusable after being used (0 = no cooldown). The
+    // turn of use counts; combat decrements at each start of the caster's turn.
+    int cooldown = 0;
+
+    // Buff/debuff parameters (ignored by pure damage/heal skills):
+    // statKey   — which stat the mod applies to: "attack", "defense",
+    //             "magic", "magicDefense", "speed", "evasion"
+    // statAmount— signed flat amount (negative = debuff)
+    // buffTurns — duration in the target's own turns
+    std::string statKey;
+    int statAmount = 0;
+    int buffTurns = 0;
+
     // true  = cast animation plays ONCE before resolving all targets (e.g.
     //         a dragon's breath weapon) — TODO: play it in beginAttackResolution().
     // false = cast animation plays before EACH target (e.g. a mage's

@@ -23,6 +23,7 @@ set(GAME_SOURCES
     src/inventory/GearCatalog.cpp
     src/battle/combat/TurnQueue.cpp
     src/battle/combat/CombatSystem.cpp
+    src/battle/combat/SkillEffects.cpp
     src/battle/map/Pathfinder.cpp
     src/battle/map/MovementRange.cpp
     src/battle/map/AttackRange.cpp
@@ -49,6 +50,7 @@ set(GAME_SOURCES
     src/ai/EnemyAI.cpp
     
     src/renderer/BattleRenderer.cpp
+    src/renderer/BattleWorldProjection.cpp
     
     src/data/UnitLoader.cpp
     src/data/SkillLoader.cpp
@@ -104,6 +106,7 @@ set(GAME_SOURCES
     src/inventory/GearCatalog.h
     src/battle/combat/TurnQueue.h
     src/battle/combat/CombatSystem.h
+    src/battle/combat/SkillEffects.h
     src/battle/map/Pathfinder.h
     src/battle/map/MovementRange.h
     src/battle/map/AttackRange.h
@@ -133,10 +136,12 @@ set(GAME_SOURCES
     
     src/renderer/BattleRenderer.h
     src/renderer/BattleRendererContext.h
+    src/renderer/BattleWorldProjection.h
     
     src/data/UnitLoader.h
     src/data/SkillLoader.h
     src/data/SettingsManager.h
+    src/data/SaveManager.h
     
     src/config/BattleCatalog.h
     

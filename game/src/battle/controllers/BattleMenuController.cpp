@@ -160,8 +160,13 @@ void BattleMenuController::showSkillMenu()
             continue;
 
         const SkillData &skill = it->second;
-        std::string label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
-        bool canUse = (active->getCurrentMp() >= skill.mpCost);
+        std::string label;
+        const int cooldownLeft = active->skillCooldownLeft(skillId);
+        if (cooldownLeft > 0)
+            label = skill.name + " [CD " + std::to_string(cooldownLeft) + "]";
+        else
+            label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
+        bool canUse = (active->getCurrentMp() >= skill.mpCost) && (cooldownLeft <= 0);
 
         m_skillMenuItems.push_back(BattleMenuItem{
             .label = label,

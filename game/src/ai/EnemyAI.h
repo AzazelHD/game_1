@@ -2,11 +2,22 @@
 
 #include <vector>
 #include "engine/math/Vec2.h"
+#include "battle/combat/CombatSystem.h"
 
 class Unit;
 class Grid;
 class TurnQueue;
 class BattleMap;
+
+// Outcome of EnemyAI::resolveAttack(). The attack math is done here, but the
+// damage is NOT applied — the caller owns applying it (through BattleSession,
+// so victory/defeat and VFX can be driven from one place).
+struct EnemyAttackResult
+{
+    bool attacked = false; // true when a legal in-range attack was resolved (hit OR miss)
+    CombatResult result;
+    Unit *target = nullptr;
+};
 
 // EnemyAI decides and executes one enemy unit's turn.
 class EnemyAI
@@ -27,8 +38,9 @@ public:
     // Resolves the attack-if-in-range step only (no movement) — called once
     // the unit has arrived at its planned destination (or immediately, if
     // the plan never wanted to move). Uses the unit's atkRange with the
-    // default RangeRule (same-height, LOS-free).
-    static void resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap);
+    // default RangeRule (same-height, LOS-free). Returns the roll result but
+    // does NOT apply damage; see EnemyAttackResult.
+    static EnemyAttackResult resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap);
 
     // Synchronous, instant, unanimated — still used by debug-only paths
     // (immediate AI takeover, autoplay). Internally now just calls

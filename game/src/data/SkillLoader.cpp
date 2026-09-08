@@ -61,6 +61,11 @@ SkillData SkillLoader::load(const std::string &filePath)
     skill.requiresLineOfSight = j.value("requiresLineOfSight", false);
     skill.splashRespectsWalls = j.value("splashRespectsWalls", true);
 
+    skill.cooldown = j.value("cooldown", 0);
+    skill.statKey = j.value("statKey", "");
+    skill.statAmount = j.value("statAmount", 0);
+    skill.buffTurns = j.value("buffTurns", 0);
+
     if (j.contains("effectTypes") && j["effectTypes"].is_array())
     {
         for (const auto &e : j["effectTypes"])

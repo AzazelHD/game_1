@@ -6,6 +6,7 @@
 #include "battle/unit/Unit.h"
 #include "battle/map/AttackRange.h"
 #include "battle/combat/CombatSystem.h"
+#include "battle/combat/SkillEffects.h"
 #include "scenes/BattleState.h"
 #include "ui/windows/ConfirmWindow.h"
 
@@ -94,29 +95,28 @@ void HumanTurnController::handleActiveTurn(const Input &input)
     }
     else if (ctx.phase == BattleState::HumanTurnPhase::AttackTarget)
     {
-        Vec2i cursorPos = ctx.cursor.getPosition();
-        Unit *hoveredEnemy = unitAt(ctx.session.getUnitPtrs(), cursorPos, true);
+        const SkillData *curSkill = nullptr;
+        if (!ctx.selectedSkillId.empty())
+        {
+            auto it = ctx.skillDB.find(ctx.selectedSkillId);
+            if (it != ctx.skillDB.end())
+                curSkill = &it->second;
+        }
+        const bool supportive = curSkill && skill_effects::isSupportive(*curSkill);
 
-        if (hoveredEnemy)
+        Vec2i cursorPos = ctx.cursor.getPosition();
+        Unit *hovered = unitAt(ctx.session.getUnitPtrs(), cursorPos, /*enemiesOnly=*/!supportive);
+
+        if (hovered)
         {
             if (AttackRange::canTarget(ctx.grid, ctx.battleMap, active->getPosition(),
-                                       hoveredEnemy->getPosition(), ctx.currentRangeRule))
+                                       hovered->getPosition(), ctx.currentRangeRule))
             {
-                const SkillData *previewSkill = nullptr;
-                if (!ctx.selectedSkillId.empty())
-                {
-                    auto it = ctx.skillDB.find(ctx.selectedSkillId);
-                    if (it != ctx.skillDB.end())
-                        previewSkill = &it->second;
-                }
-                ctx.damagePreview.show(*active, *hoveredEnemy, previewSkill);
+                ctx.damagePreview.show(*active, *hovered, curSkill);
 
-                HitContext hitCtx = m_state.makeHitContext(active, hoveredEnemy, previewSkill);
-
-                const CombatResult preview = CombatSystem::preview(hitCtx);
-                char textBuf[96];
-                std::snprintf(textBuf, sizeof(textBuf), "DMG %d   ACC %d%%", preview.damage, static_cast<int>(preview.hitChance + 0.5f));
-                ctx.topBattleText = textBuf;
+                HitContext hitCtx = m_state.makeHitContext(active, hovered, curSkill);
+                ctx.topBattleText = curSkill ? skill_effects::describeSkill(*curSkill, hitCtx)
+                                             : skill_effects::describeAttack(hitCtx);
             }
             else
             {
@@ -133,19 +133,19 @@ void HumanTurnController::handleActiveTurn(const Input &input)
         if (input.isKeyPressed(KeyCode::Accept, false))
         {
             Vec2i targetPos = ctx.cursor.getPosition();
-            Unit *target = unitAt(ctx.session.getUnitPtrs(), targetPos, true);
+            Unit *target = unitAt(ctx.session.getUnitPtrs(), targetPos, /*enemiesOnly=*/!supportive);
 
-            const SkillData *skill = nullptr;
-            if (!ctx.selectedSkillId.empty())
-            {
-                auto it = ctx.skillDB.find(ctx.selectedSkillId);
-                if (it != ctx.skillDB.end())
-                    skill = &it->second;
-            }
+            // Supportive cast on a hostile tile / hostile cast on a friendly
+            // tile is not allowed. For single-target (area 0) the tile must
+            // even hold a unit at all.
+            if (target && supportive && target->getTeam() != active->getTeam())
+                return;
+            if (target && !supportive && target->getTeam() == active->getTeam())
+                return;
 
             bool canAttack = (target != nullptr);
 
-            if (!canAttack && skill && skill->area > 0 &&
+            if (!canAttack && curSkill && curSkill->area > 0 &&
                 AttackRange::canTarget(ctx.grid, ctx.battleMap, active->getPosition(),
                                        targetPos, ctx.currentRangeRule))
             {
@@ -154,8 +154,11 @@ void HumanTurnController::handleActiveTurn(const Input &input)
                                                     ctx.currentRangeRule);
                 for (Unit *u : ctx.session.getUnitPtrs())
                 {
-                    if (u && !u->isDead() && u->getTeam() != 0 &&
-                        splash.count(u->getPosition()))
+                    if (!u || u->isDead())
+                        continue;
+                    const bool teamMatch = supportive ? u->getTeam() == active->getTeam()
+                                                       : u->getTeam() != active->getTeam();
+                    if (teamMatch && splash.count(u->getPosition()))
                     {
                         canAttack = true;
                         break;
@@ -170,15 +173,7 @@ void HumanTurnController::handleActiveTurn(const Input &input)
                                         targetPos, ctx.currentRangeRule))
                 return;
 
-            const SkillData *skillToUse = nullptr;
-            if (!ctx.selectedSkillId.empty())
-            {
-                auto it = ctx.skillDB.find(ctx.selectedSkillId);
-                if (it != ctx.skillDB.end())
-                    skillToUse = &it->second;
-            }
-
-            m_state.preparePendingAttack(active, targetPos, target, skillToUse);
+            m_state.preparePendingAttack(active, targetPos, target, curSkill);
 
             if (ctx.pendingAttack.empty())
                 return;

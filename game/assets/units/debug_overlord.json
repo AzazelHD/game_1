@@ -1,0 +1,32 @@
+{
+  "name": "Debug Overlord",
+  "className": "Soldier",
+  "baseClass": "Soldier",
+  "race": "Human",
+  "gender": "Female",
+  "level": 1,
+  "maxHp": 99,
+  "maxMp": 99,
+  "attack": 10,
+  "defense": 99,
+  "magic": 10,
+  "magicDefense": 99,
+  "moveRange": 5,
+  "atkRange": 4,
+  "evasion": 99,
+  "jump": 3,
+  "speed": 20,
+  "skills": [
+    "slash",
+    "fireball",
+    "heal",
+    "valor",
+    "weaken",
+    "placeholder_templar_smite",
+    "placeholder_templar_aegis",
+    "placeholder_knight_strike",
+    "placeholder_knight_guard",
+    "placeholder_paladin_rebuke",
+    "placeholder_paladin_grace"
+  ]
+}

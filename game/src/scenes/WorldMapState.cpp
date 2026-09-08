@@ -10,6 +10,7 @@
 #include "battle/unit/Unit.h"
 #include "battle/unit/UnitData.h"
 #include "battle/unit/UnitProgression.h"
+#include "data/SaveManager.h"
 #include "data/UnitLoader.h"
 #include "scenes/BattleState.h"
 #include "settings/SettingsState.h"
@@ -120,13 +121,13 @@ void WorldMapState::handleInput()
 
     if (input.isKeyPressed(KeyCode::Back, false))
     {
-        auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::WorldMap);
-        menu->setFont(FontManager::instance().get(FontRole::Heading));
-        menu->setItems({
+        m_worldMapMenu = m_uiManager.push<ButtonMenuWindow>(WindowId::WorldMap);
+        m_worldMapMenu->setFont(FontManager::instance().get(FontRole::Heading));
+        m_worldMapMenu->setItems({
             ButtonMenuWindow::Item{.id = ActionId::OpenPartyMenu, .label = "Party", .enabled = true},
             ButtonMenuWindow::Item{.id = ActionId::OpenInventory, .label = "Inventory", .enabled = true},
-            // Save is visible but disabled/inert for now (future save-system task)
-            ButtonMenuWindow::Item{.id = ActionId::SaveGame, .label = "Save", .enabled = false},
+            ButtonMenuWindow::Item{.id = ActionId::SaveGame, .label = "Save", .enabled = true},
+            ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load", .enabled = SaveManager::instance().latestCampaignSlot() >= 0},
             ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
             ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
         });
@@ -469,6 +470,59 @@ void WorldMapState::processUIEvents()
             continue;
         }
 
+        if (event.windowId == WindowId::SaveListDeleteConfirm && event.type == UIEventType::ConfirmResult)
+        {
+            m_uiManager.popById(WindowId::SaveListDeleteConfirm);
+            if (event.confirmed && m_pendingDeleteSlotIndex >= 0)
+            {
+                SaveManager::instance().deleteSave(m_pendingDeleteSlotIndex);
+                m_pendingDeleteSlotIndex = -1;
+                if (m_saveListWindow)
+                    refreshSaveList();
+            }
+            continue;
+        }
+
+        if (event.windowId == WindowId::SaveList)
+        {
+            if (event.type == UIEventType::ActionCanceled)
+            {
+                closeSaveList();
+            }
+            else if (event.type == UIEventType::ActionSelected)
+            {
+                const int idx = event.index;
+                if (idx < 0 || idx >= static_cast<int>(m_saveListSlotIndexes.size()))
+                    continue;
+
+                if (event.actionId == ActionId::LoadGame)
+                {
+                    CampaignSave save;
+                    const int slotIndex = m_saveListSlotIndexes[static_cast<std::size_t>(idx)];
+                    if (SaveManager::instance().loadCampaign(slotIndex, save))
+                    {
+                        PartyContext &partyContext = PartyContext::instance();
+                        partyContext.ensureInitialized();
+                        if (partyContext.applyCampaign(save))
+                        {
+                            m_uiManager.popById(WindowId::SaveList);
+                            m_sm.replace(std::make_unique<WorldMapState>(m_sm, m_renderer, save.worldNodeId));
+                            return;
+                        }
+                    }
+                }
+                else if (event.actionId == ActionId::DeleteSave)
+                {
+                    m_pendingDeleteSlotIndex = m_saveListSlotIndexes[static_cast<std::size_t>(idx)];
+                    auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SaveListDeleteConfirm);
+                    confirm->setFont(FontManager::instance().get(FontRole::Body));
+                    confirm->setPrompt("Delete this save file?");
+                    confirm->setButtonLabels("Cancel", "Delete");
+                }
+            }
+            continue;
+        }
+
         if (event.windowId == WindowId::WorldMap && event.type == UIEventType::ActionSelected)
         {
             if (event.actionId == ActionId::OpenPartyMenu)
@@ -518,6 +572,27 @@ void WorldMapState::processUIEvents()
                     WindowId::Inventory, partyContext.inventory(), partyContext.gearCatalog());
                 inventoryWin->setFont(FontManager::instance().get(FontRole::Body));
             }
+            else if (event.actionId == ActionId::SaveGame)
+            {
+                PartyContext &partyContext = PartyContext::instance();
+                partyContext.ensureInitialized();
+                const bool ok = SaveManager::instance().saveCampaign(
+                    partyContext.roster(), partyContext.party(),
+                    partyContext.inventory(), m_playerNodeId);
+
+                m_uiManager.popById(WindowId::WorldMap);
+                m_worldMapMenu = nullptr;
+                if (ok)
+                {
+                    auto *dialog = m_uiManager.push<DialogWindow>(WindowId::WorldMapNodeInfo);
+                    dialog->setFont(FontManager::instance().get(FontRole::Body));
+                    dialog->start({DialogWindow::Line{.speaker = "System", .text = "Game saved."}});
+                }
+            }
+            else if (event.actionId == ActionId::LoadGame)
+            {
+                openSaveList();
+            }
             else if (event.actionId == ActionId::OpenSettings)
             {
                 m_sm.push(std::make_unique<SettingsState>(m_sm, m_renderer));
@@ -564,9 +639,89 @@ void WorldMapState::processUIEvents()
         if ((event.windowId == WindowId::WorldMap || event.windowId == WindowId::PartyMenu) && event.type == UIEventType::ActionCanceled)
         {
             m_uiManager.popById(event.windowId);
+            if (event.windowId == WindowId::WorldMap)
+                m_worldMapMenu = nullptr;
             continue;
         }
     }
+}
+
+void WorldMapState::openSaveList()
+{
+    SaveManager::instance().loadIndex();
+
+    std::vector<ButtonMenuWindow::Item> items;
+    std::vector<int> slotIndexes;
+    for (const SaveSlotInfo &info : SaveManager::instance().slots())
+    {
+        if (info.kind != SaveKind::Campaign)
+            continue;
+        items.push_back(ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = info.label, .enabled = true});
+        slotIndexes.push_back(info.slotIndex);
+    }
+    if (items.empty())
+        return;
+
+    m_saveListSlotIndexes = std::move(slotIndexes);
+    if (m_worldMapMenu)
+        m_worldMapMenu->setVisible(false);
+
+    m_saveListWindow = m_uiManager.push<ButtonMenuWindow>(WindowId::SaveList);
+    m_saveListWindow->setFont(FontManager::instance().get(FontRole::Heading));
+    m_saveListWindow->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
+    m_saveListWindow->centerHorizontally(true);
+    m_saveListWindow->setItems(std::move(items));
+    m_saveListWindow->setDeleteMode(ActionId::DeleteSave, "X: Delete save file");
+}
+
+void WorldMapState::refreshSaveList()
+{
+    if (!m_saveListWindow)
+        return;
+
+    std::vector<ButtonMenuWindow::Item> items;
+    std::vector<int> slotIndexes;
+    for (const SaveSlotInfo &info : SaveManager::instance().slots())
+    {
+        if (info.kind != SaveKind::Campaign)
+            continue;
+        items.push_back(ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = info.label, .enabled = true});
+        slotIndexes.push_back(info.slotIndex);
+    }
+    m_saveListSlotIndexes = std::move(slotIndexes);
+    if (items.empty())
+    {
+        closeSaveList();
+        return;
+    }
+    m_saveListWindow->setItems(std::move(items));
+}
+
+void WorldMapState::closeSaveList()
+{
+    m_uiManager.popById(WindowId::SaveList);
+    m_saveListWindow = nullptr;
+    m_saveListSlotIndexes.clear();
+    m_pendingDeleteSlotIndex = -1;
+    if (m_worldMapMenu)
+    {
+        m_worldMapMenu->setVisible(true);
+        refreshWorldMapMenuItems();
+    }
+}
+
+void WorldMapState::refreshWorldMapMenuItems()
+{
+    if (!m_worldMapMenu)
+        return;
+    m_worldMapMenu->setItems({
+        ButtonMenuWindow::Item{.id = ActionId::OpenPartyMenu, .label = "Party", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::OpenInventory, .label = "Inventory", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::SaveGame, .label = "Save", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load", .enabled = SaveManager::instance().latestCampaignSlot() >= 0},
+        ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
+    });
 }
 
 void WorldMapState::drawWorld() const

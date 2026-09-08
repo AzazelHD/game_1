@@ -25,6 +25,10 @@ namespace
     constexpr int kMaxLabelChars = 24;
     constexpr float kMarkerGap = 8.0f;
     constexpr float kOpticalCenterBiasX = 1.0f;
+    constexpr Color kDeleteXColor{230, 74, 74, 255};
+    constexpr Color kHintColor{160, 162, 172, 255};
+    constexpr float kHintGap = 6.0f;
+    constexpr float kHintH = 20.0f;
 
     std::string clipLabel(const std::string &label)
     {
@@ -96,6 +100,15 @@ void ButtonMenuWindow::handleInput(const Input &input)
         return;
     }
 
+    if (m_deleteAction != ActionId::None && input.isKeyPressed(KeyCode::X, false))
+    {
+        emit(UIEvent{.type = UIEventType::ActionSelected,
+                     .windowId = id(),
+                     .actionId = m_deleteAction,
+                     .index = m_focus.getSelectedIndex()});
+        return;
+    }
+
     if (input.isKeyPressed(KeyCode::Accept, false))
     {
         (void)m_focus.activateSelected();
@@ -151,11 +164,13 @@ void ButtonMenuWindow::render(Renderer *renderer) const
     // to avoid a degenerate sliver for 1-2 character labels.
     constexpr float kMinMenuW = 80.0f;
     const float markerW = renderer->measureText(m_font, ">").x;
+    const float xGlyphW = hasDeleteMode() ? renderer->measureText(m_font, "X").x : 0.0f;
+    const float deleteGutter = hasDeleteMode() ? xGlyphW + 2.0f * pad : 0.0f;
     float maxTextW = 0.0f;
     for (const Item &item : m_items)
         maxTextW = std::max(maxTextW, renderer->measureText(m_font, clipLabel(item.label)).x);
     const float menuW = std::max(kMinMenuW * ui,
-                                 maxTextW + 2.0f * (markerW + markerGap) + 2.0f * pad);
+                                 maxTextW + 2.0f * (markerW + markerGap) + 2.0f * pad + deleteGutter);
 
     const int count = static_cast<int>(m_items.size());
     const float contentH = count > 0
@@ -200,8 +215,8 @@ void ButtonMenuWindow::render(Renderer *renderer) const
         const float markerSpace = markerW + markerGap;
         const Rectf textRect =
             (m_textAlign == TextAlign::Center)
-                ? Rectf{panelX, y, menuW, itemH}
-                : Rectf{panelX + pad + markerSpace, y, menuW - 2.0f * pad - 2.0f * markerSpace, itemH};
+                ? Rectf{panelX, y, menuW - deleteGutter, itemH}
+                : Rectf{panelX + pad + markerSpace, y, menuW - 2.0f * pad - 2.0f * markerSpace - deleteGutter, itemH};
 
         HorizontalAlign align;
 
@@ -254,6 +269,25 @@ void ButtonMenuWindow::render(Renderer *renderer) const
                                  false,
                                  false);
         }
+
+        if (hasDeleteMode())
+        {
+            const Vec2f xSize = renderer->measureText(m_font, "X");
+            const Vec2f xPos = renderer->alignInRect(
+                Rectf{panelX + menuW - pad - xGlyphW, y, xGlyphW, itemH},
+                xSize,
+                HorizontalAlign::Center,
+                VerticalAlign::Middle);
+            renderer->renderText(m_font, "X", xPos, kDeleteXColor, false, false, false);
+        }
         y += itemH + itemSpacing;
+    }
+
+    if (hasDeleteMode() && !m_deleteHint.empty())
+    {
+        const Vec2f hintSize = renderer->measureText(m_font, m_deleteHint);
+        const Rectf hintRect{panelX, panelY + menuH + kHintGap * ui, menuW, kHintH * ui};
+        const Vec2f hintPos = renderer->alignInRect(hintRect, hintSize, HorizontalAlign::Center, VerticalAlign::Top);
+        renderer->renderText(m_font, m_deleteHint.c_str(), hintPos, kHintColor, false, false, false);
     }
 }

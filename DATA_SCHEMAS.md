@@ -87,6 +87,15 @@ Parsed by `SkillLoader` into `SkillData`.
 - `castOncePerArea` (bool, default: `false`)
 - `effectTypes` (array of string enums, default: `["damage"]`)
   - supported values map to: `damage`, `heal`, `buff`, `debuff`
+- `cooldown` (int, default: `0`)
+  - turns this skill is unusable after being used. The turn of use counts; the
+    counter ticks down at each start of the caster's own turn (a cooldown of
+    `2` means the skill can't be re-cast during the 2 turns after the cast turn).
+- `statKey` (string enum, default: empty — ignored unless a buff/debuff effect)
+  - supported: `attack`, `defense`, `magic`, `magicDefense`, `speed`, `evasion`
+- `statAmount` (int, default: `0`) — flat signed stat change (negative = debuff)
+- `buffTurns` (int, default: `0`) — duration in the target's own turns; the mod
+  ticks down at each start of the target's turn
 - `progressionCategory` (string enum, progression metadata: `active`, `passive`, `reaction`)
 - `requiredPromotion` (string enum, progression metadata: `Templar`, `Knight`, `Paladin`)
 - `autoGranted` (bool, progression metadata; true for current promotion placeholders)

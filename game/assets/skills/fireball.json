@@ -9,6 +9,7 @@
   "range": 4,
   "area": 1,
   "mpCost": 5,
+  "cooldown": 2,
   "effectTypes": ["damage"],
   "heightTolerance": 2,
   "requiresLineOfSight": true,

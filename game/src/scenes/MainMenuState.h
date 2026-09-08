@@ -4,6 +4,9 @@
 #include "engine/effects/ScreenTransition.h"
 #include "ui/UIManager.h"
 
+#include <vector>
+
+class ButtonMenuWindow;
 class Font;
 class Renderer;
 
@@ -29,6 +32,10 @@ public:
 
 private:
     void processUIEvents();
+    void openSaveList();
+    void refreshSaveList();
+    void closeSaveList();
+    void refreshMainMenuItems();
 
 private:
     StateMachine<Scene> &m_stateMachine;
@@ -38,4 +45,9 @@ private:
     ScreenTransition m_transition;
     bool m_fadeInOnEnter = false;
     bool m_transitioning = false;
+
+    ButtonMenuWindow *m_mainMenuWindow = nullptr;
+    ButtonMenuWindow *m_saveListWindow = nullptr;
+    std::vector<int> m_saveListSlotIndexes;
+    int m_pendingDeleteSlotIndex = -1;
 };

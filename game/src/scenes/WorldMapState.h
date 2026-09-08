@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+class ButtonMenuWindow;
 class Renderer;
 
 class WorldMapState final : public Scene
@@ -54,6 +55,10 @@ private:
     void onArriveAtNode(int nodeId);
     void processUIEvents();
     void showNodeInfo(int nodeId);
+    void openSaveList();
+    void refreshSaveList();
+    void closeSaveList();
+    void refreshWorldMapMenuItems();
 
     void startBattle(PendingBattle battle);
 
@@ -88,4 +93,9 @@ private:
 
     PendingBattle m_pendingBattle;
     UIManager m_uiManager;
+
+    ButtonMenuWindow *m_worldMapMenu = nullptr;
+    ButtonMenuWindow *m_saveListWindow = nullptr;
+    std::vector<int> m_saveListSlotIndexes;
+    int m_pendingDeleteSlotIndex = -1;
 };

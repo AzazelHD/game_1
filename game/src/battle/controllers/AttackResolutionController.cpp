@@ -5,6 +5,7 @@
 #include "engine/renderer/Color.h"
 #include "battle/unit/Unit.h"
 #include "battle/combat/CombatSystem.h"
+#include "battle/combat/SkillEffects.h"
 #include "scenes/BattleState.h"
 
 #include <cstdio>
@@ -49,10 +50,15 @@ void AttackResolutionController::updatePreview(Unit *active)
 
     HitContext hitCtx = m_owner.makeHitContext(active, focus, previewSkill);
 
-    const CombatResult preview = CombatSystem::preview(hitCtx);
-    char textBuf[96];
-    std::snprintf(textBuf, sizeof(textBuf), "DMG %d   ACC %d%%", preview.damage, static_cast<int>(preview.hitChance + 0.5f));
-    ctx.topBattleText = textBuf;
+    if (previewSkill)
+        ctx.topBattleText = skill_effects::describeSkill(*previewSkill, hitCtx);
+    else
+    {
+        const CombatResult preview = CombatSystem::preview(hitCtx);
+        char textBuf[96];
+        std::snprintf(textBuf, sizeof(textBuf), "DMG %d   ACC %d%%", preview.damage, static_cast<int>(preview.hitChance + 0.5f));
+        ctx.topBattleText = textBuf;
+    }
 }
 
 void AttackResolutionController::beginResolution(Unit *active, const SkillData *skill)
@@ -76,15 +82,18 @@ void AttackResolutionController::beginResolution(Unit *active, const SkillData *
         if (!u || u->isDead())
             continue;
         HitContext hitCtx = m_owner.makeHitContext(active, u, skill);
-        m_pendingHitResults.push_back(PendingHitResult{.target = u, .result = CombatSystem::resolve(hitCtx)});
+        const bool supportive = skill && skill_effects::isSupportive(*skill);
+        m_pendingHitResults.push_back(PendingHitResult{
+            .target = u,
+            .result = supportive ? CombatResult{} : CombatSystem::resolve(hitCtx),
+            .hitCtx = hitCtx});
     }
 
     if (skill && skill->castOncePerArea)
     {
-        // TODO: play the skill's single cast animation once here (e.g. a
-        // dragon's breath), covering the whole area — before any individual
-        // hit/miss is shown. Something like:
-        //   m_combatAnimations.enqueue(skill->id + "_cast_once", castDuration);
+        // Arena-wide cast flash (e.g. a dragon's breath) once, before the
+        // per-target hits below.
+        ctx.combatAnimations.enqueue(skill->id + "_cast_once", 0.5f);
     }
 
     ctx.pendingResolution = BattleState::PendingResolution::ResolvingHits;
@@ -102,7 +111,6 @@ void AttackResolutionController::processNextResult()
     }
 
     PendingHitResult &entry = m_pendingHitResults[m_pendingHitIndex];
-    ctx.session.applyDamage(*entry.target, entry.result);
 
     const SkillData *skill = nullptr;
     if (!m_pendingSkillId.empty())
@@ -113,6 +121,51 @@ void AttackResolutionController::processNextResult()
     }
     const bool castOnce = skill && skill->castOncePerArea;
 
+    // Supportive skills (heal/buff) apply unconditionally — no hit roll.
+    if (skill && skill_effects::isSupportive(*skill))
+    {
+        if (skill_effects::hasEffect(*skill, SkillEffectType::Heal))
+        {
+            const int heal = skill_effects::computeHealAmount(entry.hitCtx);
+            entry.target->heal(heal);
+            ctx.floatingText.enqueue("+" + std::to_string(heal), entry.target->getPosition(),
+                                     Color{120, 255, 140, 255});
+            ctx.combatAnimations.enqueue("heal", entry.target->getPosition());
+            LOG_INFO("Battle", "%s heals %s for %d HP",
+                     entry.hitCtx.attacker ? entry.hitCtx.attacker->getName().c_str() : "?",
+                     entry.target->getName().c_str(), heal);
+        }
+        if (skill_effects::hasEffect(*skill, SkillEffectType::Buff))
+        {
+            entry.target->applyStatMod(skill_effects::statKindFromKey(skill->statKey),
+                                       skill->statAmount, skill->buffTurns);
+            const bool beneficial = skill->statAmount >= 0;
+            ctx.floatingText.enqueue(skill_effects::describeStatMod(*skill),
+                                     entry.target->getPosition(),
+                                     beneficial ? Color{120, 190, 255, 255} : Color{255, 150, 70, 255});
+            ctx.combatAnimations.enqueue(beneficial ? "buff" : "debuff", entry.target->getPosition());
+            LOG_INFO("Battle", "%s applies %s to %s",
+                     entry.hitCtx.attacker ? entry.hitCtx.attacker->getName().c_str() : "?",
+                     skill_effects::describeStatMod(*skill).c_str(),
+                     entry.target->getName().c_str());
+        }
+        ++m_pendingHitIndex;
+        ctx.turnTimer = 0.4f;
+        return;
+    }
+
+    ctx.session.applyDamage(*entry.target, entry.result);
+
+    if (skill && (skill_effects::hasEffect(*skill, SkillEffectType::Buff) ||
+                  skill_effects::hasEffect(*skill, SkillEffectType::Debuff)) &&
+        entry.result.hit)
+    {
+        // Offensive skill carrying a rider debuff/buff (e.g. drain): apply the
+        // stat mod on a landed hit.
+        entry.target->applyStatMod(skill_effects::statKindFromKey(skill->statKey),
+                                   skill->statAmount, skill->buffTurns);
+    }
+
     if (entry.result.hit)
     {
         if (entry.target->isDead())
@@ -121,11 +174,7 @@ void AttackResolutionController::processNextResult()
         ctx.floatingText.enqueue(std::to_string(entry.result.damage), entry.target->getPosition(),
                                  Color{255, 90, 90, 255});
 
-        // TODO: play per-target cast animation here if !castOnce (e.g. a
-        // mage's fire bolt jumping target to target), plus a hit-impact
-        // animation on entry.target regardless of castOnce:
-        //   if (!castOnce) m_combatAnimations.enqueue(skill->id + "_cast", ...);
-        //   m_combatAnimations.enqueue("hit_impact", ...);
+        ctx.combatAnimations.enqueue("hit_impact", entry.target->getPosition());
 
         LOG_INFO("Battle", "Attack hits %s for %d damage!",
                  entry.target->getName().c_str(), entry.result.damage);
@@ -133,9 +182,7 @@ void AttackResolutionController::processNextResult()
     else
     {
         ctx.floatingText.enqueue("MISS", entry.target->getPosition(), Color{200, 200, 200, 255});
-
-        // TODO: play a dodge/evade animation on entry.target:
-        //   m_combatAnimations.enqueue("dodge", ...);
+        ctx.combatAnimations.enqueue("dodge", entry.target->getPosition());
 
         LOG_INFO("Battle", "Attack misses %s", entry.target->getName().c_str());
     }
@@ -161,7 +208,11 @@ void AttackResolutionController::finishResolution()
     if (active)
     {
         if (skill)
+        {
             active->setCurrentMp(active->getCurrentMp() - skill->mpCost);
+            if (skill->cooldown > 0)
+                active->setSkillCooldown(skill->id, skill->cooldown + 1); // turn of use counts
+        }
         active->setMajorAction(skill ? MajorAction::Skill : MajorAction::Attack);
     }
 

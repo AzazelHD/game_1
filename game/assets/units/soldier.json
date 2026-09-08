@@ -15,6 +15,5 @@
   "atkRange": 1,
   "evasion": 10,
   "jump": 2,
-  "speed": 20,
-  "skills": ["slash", "fireball"]
+  "speed": 20
 }

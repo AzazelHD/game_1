@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include <string>
+#include <unordered_map>
 #include "engine/math/Vec2.h"
 #include "battle/unit/UnitData.h"
 #include "battle/unit/UnitProgression.h"
@@ -30,6 +32,26 @@ enum class MajorAction
     Defend
 };
 
+// Core battle stats that temporary buff/debuff effects can modify.
+enum class StatKind
+{
+    Attack,
+    Defense,
+    Magic,
+    MagicDefense,
+    Speed,
+    Evasion
+};
+
+// A temporary flat stat modifier (buff/debuff) ticking down on the unit's own
+// turns. One mod per StatKind — re-applying replaces the active one.
+struct TemporaryStatMod
+{
+    StatKind stat = StatKind::Attack;
+    int amount = 0;
+    int turnsRemaining = 0;
+};
+
 class Unit
 {
 public:
@@ -43,6 +65,12 @@ public:
     // Progression
     void gainExp(int amount);
     int expToNextLevel() const;
+
+    // Grows the unit from its current level up to `targetLevel` by applying
+    // levelUp() (stat growth) step by step. Used to rebuild a roster unit at
+    // its persisted level when a battle unit is constructed from the template.
+    // Capped at getMaxLevel(); levels below 1 are ignored.
+    void growToLevel(int targetLevel);
 
     // Turn lifecycle
     // Resets all per-turn state: refills movement points to getMoveRange()
@@ -79,12 +107,12 @@ public:
     int getMaxMp() const { return m_data.maxMp + m_bonuses.maxMp + gearModifiers().maxMp; }
 
     // Getters (stats)
-    int getSpeed() const { return m_data.speed + m_bonuses.speed + gearModifiers().speed; }
-    int getAttack() const { return m_data.attack + m_bonuses.attack + gearModifiers().attack; }
-    int getDefense() const { return m_data.defense + m_bonuses.defense + gearModifiers().defense; }
-    int getMagic() const { return m_data.magic + m_bonuses.magic + gearModifiers().magic; }
-    int getMagicDefense() const { return m_data.magicDefense + m_bonuses.magicDef + gearModifiers().magicDefense; }
-    int getEvasion() const { return m_data.evasion + m_bonuses.evasion + gearModifiers().evasion; }
+    int getSpeed() const { return m_data.speed + m_bonuses.speed + gearModifiers().speed + tempMod(StatKind::Speed); }
+    int getAttack() const { return m_data.attack + m_bonuses.attack + gearModifiers().attack + tempMod(StatKind::Attack); }
+    int getDefense() const { return m_data.defense + m_bonuses.defense + gearModifiers().defense + tempMod(StatKind::Defense); }
+    int getMagic() const { return m_data.magic + m_bonuses.magic + gearModifiers().magic + tempMod(StatKind::Magic); }
+    int getMagicDefense() const { return m_data.magicDefense + m_bonuses.magicDef + gearModifiers().magicDefense + tempMod(StatKind::MagicDefense); }
+    int getEvasion() const { return m_data.evasion + m_bonuses.evasion + gearModifiers().evasion + tempMod(StatKind::Evasion); }
     int getJump() const { return m_data.jump + gearModifiers().jump; }
     int getMoveRange() const { return m_data.moveRange + m_bonuses.moveRange + gearModifiers().moveRange; }
     int getAtkRange() const { return m_data.atkRange + m_bonuses.atkRange; }
@@ -97,6 +125,7 @@ public:
     PromotionClass getPromotion() const { return m_data.promotion; }
     const std::vector<ElementAffinity> &getAffinities() const { return m_data.affinities; }
     int getTeam() const { return m_data.team; }
+    int getRosterInstanceId() const { return m_rosterInstanceId; }
 
     // Getters (actions)
     const std::vector<ActionType> &getActions() const { return m_actions; }
@@ -105,6 +134,18 @@ public:
     const UnitData &getData() const { return m_data; }
     const SkillProgression &getSkillProgression() const { return m_skillProgression; }
     SkillProgression &getSkillProgression() { return m_skillProgression; }
+
+    // Status/skill state
+    // Applies a temporary flat stat modifier (positive = buff, negative =
+    // debuff) for `turns` of the target's own turns. Replaces any existing
+    // mod on the same StatKind.
+    void applyStatMod(StatKind stat, int amount, int turns);
+    int activeStatMod(StatKind stat) const;
+    // Remaining turns a skill is on cooldown for THIS unit (0 = usable).
+    int skillCooldownLeft(const std::string &skillId) const;
+    // Sets a skill's cooldown. Callers pass cooldownTurns + 1 so the turn of
+    // use counts toward the lockout (resetTurn() decrements at turn start).
+    void setSkillCooldown(const std::string &skillId, int turns);
 
     bool promote(PromotionClass promotion);
     bool learnOrUpgradeSkill(const std::string &skillId);
@@ -119,6 +160,7 @@ public:
     void setWaitTime(int val) { m_waitTime = val; }
     void setCurrentHp(int val) { m_currentHp = std::clamp(val, 0, getMaxHp()); }
     void setCurrentMp(int val) { m_currentMp = std::clamp(val, 0, getMaxMp()); }
+    void setRosterInstanceId(int id) { m_rosterInstanceId = id; }
 
     // Spends `cost` movement points (e.g. path cost of a confirmed move).
     // Clamped to [0, getMoveRange()] — callers should validate the move is
@@ -169,6 +211,11 @@ private:
     int m_moveRangeLeft = 0; // refilled to getMoveRange() in resetTurn()
     MajorAction m_majorAction = MajorAction::None;
     UnitState m_state = UnitState::Idle;
+    int m_rosterInstanceId = -1;
+
+    // Status effects + skill cooldowns
+    std::vector<TemporaryStatMod> m_statMods;
+    std::unordered_map<std::string, int> m_skillCooldowns;
 
     // Actions
     std::vector<ActionType> m_actions;
@@ -179,6 +226,7 @@ private:
 
     // Internal
     void applyEquipmentLoadout(const EquipmentLoadout *loadout);
-    void levelUp();
+    bool levelUp();
     GearStatModifiers gearModifiers() const;
+    int tempMod(StatKind stat) const;
 };

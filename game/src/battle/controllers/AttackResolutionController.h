@@ -60,6 +60,7 @@ private:
     {
         Unit *target = nullptr;
         CombatResult result;
+        HitContext hitCtx;
     };
 
     void finishResolution();

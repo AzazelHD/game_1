@@ -30,6 +30,8 @@ enum class ActionId
 
     // Main menu
     StartGame,
+    LoadGame,
+    DeleteSave,
     OpenSettings,
     QuitGame,
 

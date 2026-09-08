@@ -16,5 +16,5 @@
   "evasion": 19,
   "jump": 2,
   "speed": 30,
-  "skills": []
+  "skills": ["valor"]
 }

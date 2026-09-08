@@ -24,6 +24,14 @@ struct RosterUnit
     std::string customName;   // empty = use the template's default name; set for named uniques (Marche, Montblanc) or renamed generics
     bool recruited = true;
     int exp = 0;
+
+    // Source of truth for the unit's level. Battle units are rebuilt fresh
+    // from their template each battle and grown to this level via
+    // Unit::growToLevel(). Surviving roster units gain +1 per battle victory
+    // (see BattleState::awardVictoryBonusXp) — levels only raise stats for
+    // now; skill progression is a later milestone.
+    int level = 1;
+
     EquippedGearIds equippedGear;
 };
 

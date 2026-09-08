@@ -1,0 +1,13 @@
+{
+  "id": "heal",
+  "name": "Heal",
+  "description": "Restores HP to an ally (base power + caster magic).",
+  "basePower": 10,
+  "isMagical": true,
+  "element": "neutral",
+  "skillAccuracy": 100,
+  "range": 3,
+  "mpCost": 3,
+  "effectTypes": ["heal"],
+  "cooldown": 1
+}

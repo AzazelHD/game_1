@@ -1,0 +1,16 @@
+{
+  "id": "valor",
+  "name": "Valor",
+  "description": "Raises an ally's attack for a few turns.",
+  "basePower": 0,
+  "isMagical": true,
+  "element": "neutral",
+  "skillAccuracy": 100,
+  "range": 2,
+  "mpCost": 2,
+  "effectTypes": ["buff"],
+  "statKey": "attack",
+  "statAmount": 3,
+  "buffTurns": 3,
+  "cooldown": 2
+}

@@ -48,10 +48,14 @@ Unit BattleSession::makeUnit(const UnitSpawn &spawn)
     Unit unit(data, raceData, genderData, spawn.startPos);
     if (spawn.rosterInstanceId >= 0)
     {
+        unit.setRosterInstanceId(spawn.rosterInstanceId);
         PartyContext &partyContext = PartyContext::instance();
         partyContext.ensureInitialized();
         if (const RosterUnit *rosterUnit = partyContext.roster().findById(spawn.rosterInstanceId))
+        {
             unit.setResolvedEquipmentLoadout(partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+            unit.growToLevel(rosterUnit->level);
+        }
     }
     return unit;
 }
@@ -146,10 +150,17 @@ Unit &BattleSession::buildUnit(const UnitSpawn &spawn)
     m_units.emplace_back(data, raceData, genderData, spawn.startPos);
     if (spawn.rosterInstanceId >= 0)
     {
+        m_units.back().setRosterInstanceId(spawn.rosterInstanceId);
         PartyContext &partyContext = PartyContext::instance();
         partyContext.ensureInitialized();
         if (const RosterUnit *rosterUnit = partyContext.roster().findById(spawn.rosterInstanceId))
+        {
             m_units.back().setResolvedEquipmentLoadout(partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+            // Level is the roster's source of truth: grow the fresh template
+            // unit up to it. (exp is kept for future XP-curve display, but no
+            // longer drives levels here.)
+            m_units.back().growToLevel(rosterUnit->level);
+        }
     }
     return m_units.back();
 }

@@ -10,12 +10,15 @@
 #include "engine/renderer/Renderer.h"
 #include "engine/statemachine/StateMachine.h"
 #include "config/GameConstants.h"
+#include "data/SaveManager.h"
 #include "scenes/MainMenuState.h"
 #include "settings/SettingsState.h"
 #include "ui/windows/ButtonMenuWindow.h"
+#include "ui/windows/ConfirmWindow.h"
 #include "ui/ActionId.h"
 #include "ui/WindowId.h"
 #include "scenes/WorldMapState.h"
+#include "systems/PartyContext.h"
 
 MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool fadeInOnEnter)
     : m_stateMachine(sm),
@@ -27,20 +30,20 @@ MainMenuState::MainMenuState(StateMachine<Scene> &sm, Renderer *renderer, bool f
 void MainMenuState::onEnter()
 {
     m_transitioning = false;
+    m_saveListWindow = nullptr;
+    m_saveListSlotIndexes.clear();
+    m_pendingDeleteSlotIndex = -1;
     m_uiManager.clear();
+    SaveManager::instance().loadIndex();
 
-    auto *menu = m_uiManager.push<ButtonMenuWindow>(WindowId::MainMenu);
-    menu->setFont(FontManager::instance().get(FontRole::Heading));
+    m_mainMenuWindow = m_uiManager.push<ButtonMenuWindow>(WindowId::MainMenu);
+    m_mainMenuWindow->setFont(FontManager::instance().get(FontRole::Heading));
 
     // Center horizontally (box width now follows the font); only fix the
     // vertical anchor below the title.
-    menu->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
-    menu->centerHorizontally(true);
-    menu->setItems({
-        ButtonMenuWindow::Item{.id = ActionId::StartGame, .label = "Start Game", .enabled = true},
-        ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
-        ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
-    });
+    m_mainMenuWindow->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
+    m_mainMenuWindow->centerHorizontally(true);
+    refreshMainMenuItems();
 
     if (m_fadeInOnEnter)
     {
@@ -106,6 +109,60 @@ void MainMenuState::processUIEvents()
     auto events = m_uiManager.drainEvents();
     for (const UIEvent &event : events)
     {
+        if (event.windowId == WindowId::SaveListDeleteConfirm && event.type == UIEventType::ConfirmResult)
+        {
+            m_uiManager.popById(WindowId::SaveListDeleteConfirm);
+            if (event.confirmed && m_pendingDeleteSlotIndex >= 0)
+            {
+                SaveManager::instance().deleteSave(m_pendingDeleteSlotIndex);
+                m_pendingDeleteSlotIndex = -1;
+                if (m_saveListWindow)
+                    refreshSaveList();
+            }
+            continue;
+        }
+
+        if (event.windowId == WindowId::SaveList)
+        {
+            if (event.type == UIEventType::ActionCanceled)
+            {
+                closeSaveList();
+            }
+            else if (event.type == UIEventType::ActionSelected)
+            {
+                const int idx = event.index;
+                if (idx < 0 || idx >= static_cast<int>(m_saveListSlotIndexes.size()))
+                    continue;
+
+                if (event.actionId == ActionId::LoadGame)
+                {
+                    m_transitioning = true;
+                    CampaignSave save;
+                    const int slotIndex = m_saveListSlotIndexes[static_cast<std::size_t>(idx)];
+                    if (SaveManager::instance().loadCampaign(slotIndex, save))
+                    {
+                        PartyContext &ctx = PartyContext::instance();
+                        ctx.ensureInitialized();
+                        if (ctx.applyCampaign(save))
+                        {
+                            m_stateMachine.replace(std::make_unique<WorldMapState>(m_stateMachine, m_renderer, save.worldNodeId));
+                            return;
+                        }
+                    }
+                    m_transitioning = false;
+                }
+                else if (event.actionId == ActionId::DeleteSave)
+                {
+                    m_pendingDeleteSlotIndex = m_saveListSlotIndexes[static_cast<std::size_t>(idx)];
+                    auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SaveListDeleteConfirm);
+                    confirm->setFont(FontManager::instance().get(FontRole::Body));
+                    confirm->setPrompt("Delete this save file?");
+                    confirm->setButtonLabels("Cancel", "Delete");
+                }
+            }
+            continue;
+        }
+
         if (event.windowId != WindowId::MainMenu || event.type != UIEventType::ActionSelected)
             continue;
 
@@ -115,7 +172,14 @@ void MainMenuState::processUIEvents()
         {
         case ActionId::StartGame:
         {
+            PartyContext::instance().ensureInitialized();
             m_stateMachine.replace(std::make_unique<WorldMapState>(m_stateMachine, m_renderer));
+            return;
+        }
+        case ActionId::LoadGame:
+        {
+            openSaveList();
+            m_transitioning = false;
             break;
         }
         case ActionId::OpenSettings:
@@ -127,7 +191,7 @@ void MainMenuState::processUIEvents()
         case ActionId::QuitGame:
         {
             App::requestQuit();
-            break;
+            return;
         }
 
         default:
@@ -137,4 +201,80 @@ void MainMenuState::processUIEvents()
         }
         }
     }
+}
+
+void MainMenuState::openSaveList()
+{
+    SaveManager::instance().loadIndex();
+
+    std::vector<ButtonMenuWindow::Item> items;
+    std::vector<int> slotIndexes;
+    for (const SaveSlotInfo &info : SaveManager::instance().slots())
+    {
+        if (info.kind != SaveKind::Campaign)
+            continue;
+        items.push_back(ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = info.label, .enabled = true});
+        slotIndexes.push_back(info.slotIndex);
+    }
+    if (items.empty())
+        return;
+
+    m_saveListSlotIndexes = std::move(slotIndexes);
+    if (m_mainMenuWindow)
+        m_mainMenuWindow->setVisible(false);
+
+    m_saveListWindow = m_uiManager.push<ButtonMenuWindow>(WindowId::SaveList);
+    m_saveListWindow->setFont(FontManager::instance().get(FontRole::Heading));
+    m_saveListWindow->setPanelPosition(Vec2f{0.0f, GameConstants::VIEW_CY - 40.0f});
+    m_saveListWindow->centerHorizontally(true);
+    m_saveListWindow->setItems(std::move(items));
+    m_saveListWindow->setDeleteMode(ActionId::DeleteSave, "X: Delete save file");
+}
+
+void MainMenuState::refreshSaveList()
+{
+    if (!m_saveListWindow)
+        return;
+
+    std::vector<ButtonMenuWindow::Item> items;
+    std::vector<int> slotIndexes;
+    for (const SaveSlotInfo &info : SaveManager::instance().slots())
+    {
+        if (info.kind != SaveKind::Campaign)
+            continue;
+        items.push_back(ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = info.label, .enabled = true});
+        slotIndexes.push_back(info.slotIndex);
+    }
+    m_saveListSlotIndexes = std::move(slotIndexes);
+    if (items.empty())
+    {
+        closeSaveList();
+        return;
+    }
+    m_saveListWindow->setItems(std::move(items));
+}
+
+void MainMenuState::closeSaveList()
+{
+    m_uiManager.popById(WindowId::SaveList);
+    m_saveListWindow = nullptr;
+    m_saveListSlotIndexes.clear();
+    m_pendingDeleteSlotIndex = -1;
+    if (m_mainMenuWindow)
+    {
+        m_mainMenuWindow->setVisible(true);
+        refreshMainMenuItems();
+    }
+}
+
+void MainMenuState::refreshMainMenuItems()
+{
+    if (!m_mainMenuWindow)
+        return;
+    m_mainMenuWindow->setItems({
+        ButtonMenuWindow::Item{.id = ActionId::StartGame, .label = "Start Game", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load Game", .enabled = SaveManager::instance().latestCampaignSlot() >= 0},
+        ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
+    });
 }

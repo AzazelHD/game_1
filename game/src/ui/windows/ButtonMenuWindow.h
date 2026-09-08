@@ -58,6 +58,18 @@ public:
     // and stay centered regardless of the resulting width.
     void centerHorizontally(bool on = true) { m_centerX = on; }
 
+    // Enables delete-style lists: each row renders a red "X" at the right edge
+    // and pressing X emits ActionSelected(deleteAction, selected_index). The
+    // hint is rendered as a footer under the panel. Passing ActionId::None
+    // disables the mode.
+    void setDeleteMode(ActionId deleteAction, std::string hintLabel)
+    {
+        m_deleteAction = deleteAction;
+        m_deleteHint = std::move(hintLabel);
+    }
+
+    bool hasDeleteMode() const { return m_deleteAction != ActionId::None; }
+
     void handleInput(const Input &input) override;
     void update(float dt) override;
     void render(Renderer *renderer) const override;
@@ -76,4 +88,6 @@ private:
     bool m_centerX = false;
     const Font *m_font = nullptr;
     TextAlign m_textAlign = TextAlign::Center;
+    ActionId m_deleteAction = ActionId::None;
+    std::string m_deleteHint;
 };

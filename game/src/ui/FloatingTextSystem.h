@@ -1,17 +1,21 @@
 #pragma once
 
+#include "engine/animation/Tween.h"
+#include "engine/math/MathUtils.h"
 #include "engine/math/Vec2.h"
 #include "engine/renderer/Color.h"
+#include "renderer/BattleWorldProjection.h"
 
 #include <string>
 #include <vector>
 
 class Renderer;
 class Font;
-class Camera;
 
 // Queues short-lived floating text (damage numbers, "MISS") anchored to a
-// world tile. Mirrors CombatAnimationSystem's enqueue/update/clear shape.
+// world tile. Each entry owns a Tween<float> that drives both the rise and the
+// fade in one eased sweep — expiry comes from the tween finishing instead of
+// the hand-rolled TTL list this used to mirror from CombatAnimationSystem.
 class FloatingTextSystem
 {
 public:
@@ -20,19 +24,13 @@ public:
         std::string text;
         Vec2i tilePos;
         Color color;
-        float ttl = 0.0f;
-        float age = 0.0f; // TODO: use for rise/fade easing once rendered
+        float ttl = 1.0f;
+        Tween<float> rise; // 0 → 1 over ttl; its eased value drives lift + fade
     };
 
     void enqueue(const std::string &text, Vec2i tilePos, Color color, float ttl = 1.0f);
     void update(float dt);
-    // TODO: not implemented yet — needs the same iso/camera transform
-    // BattleRenderer uses for units (Camera::tileToScreen + elevation
-    // offset), which this system doesn't have access to. Either give it a
-    // Camera& + tile-size/scale, or move rendering into
-    // BattleRenderer::drawScene() where that transform already exists,
-    // iterating getEntries() from here.
-    void render(Renderer *renderer, const Font *font) const;
+    void render(Renderer *renderer, const Font *font, const battleworld::AnchorContext &ctx) const;
     void clear();
 
     const std::vector<Entry> &getEntries() const { return m_entries; }

@@ -41,10 +41,17 @@ Points are **never** re-assignable. If the player wants a different variant of t
 
 - Each unit belongs to a **race**, chosen at recruitment. Race is permanent.
 - Race determines:
-  - Base stats and stat growth curves
+  - Base stats and stat growth curves (see `RACE_DESIGN.md` § Race Roster &
+    Stat Growth for the per-race base bonuses and per-level growth tables)
   - Equipment slot access (see Gear doc)
   - Possibly a small race-flavored bonus/malus, similar in scope to Nature
 - Race does **not** restrict which skills a unit can learn. All units draw from a single shared skill pool (see Skill System below).
+
+The playable roster is **6 races**: Human, Elin, Kragan, Fennari, Tok, and Gria
+(placeholder names). `Elf` is not a playable race; `Undead` is reserved for
+future monster units, not recruits. Gria can **fly** (see `RACE_DESIGN.md`
+§ Flight), which is a movement-model trait rather than a stat. See
+`RACE_DESIGN.md` for full details.
 
 ### Promotion
 

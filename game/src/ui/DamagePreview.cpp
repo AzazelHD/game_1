@@ -1,6 +1,7 @@
 #include "ui/DamagePreview.h"
 #include "battle/unit/Unit.h"
 #include "battle/combat/CombatSystem.h"
+#include "battle/combat/SkillEffects.h"
 #include "data/SkillLoader.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/renderer/Font.h"
@@ -9,7 +10,7 @@
 #include "engine/math/Vec2.h"
 #include "config/GameConstants.h"
 
-#include <algorithm>
+#include <cstdio>
 
 namespace
 {
@@ -45,11 +46,16 @@ void DamagePreview::show(const Unit &attacker, const Unit &target, const SkillDa
     ctx.side = AttackSide::Side; // will be dynamic later
     ctx.tileEvasionBonus = 0;
 
-    CombatResult preview = CombatSystem::preview(ctx);
     m_visible = true;
-    m_damage = preview.damage;
-    m_hitChance = preview.hitChance;
-    m_critPossible = false;
+    if (skill)
+        m_label = skill_effects::describeSkill(*skill, ctx);
+    else
+    {
+        char buf[64];
+        const CombatResult preview = CombatSystem::preview(ctx);
+        std::snprintf(buf, sizeof(buf), "DMG: %d   HIT: %.0f%%", preview.damage, preview.hitChance);
+        m_label = buf;
+    }
 }
 
 void DamagePreview::hide()
@@ -71,10 +77,6 @@ void DamagePreview::render(Renderer *renderer, const Font *font) const
     renderer->setDrawColor(BORDER_COLOR);
     renderer->drawRect(box);
 
-    // Build the text line(s)
-    char line1[64];
-    std::snprintf(line1, sizeof(line1), "DMG: %d   HIT: %.0f%%", m_damage, m_hitChance);
-
     // Draw text centred inside the box
-    renderer->renderTextInRect(font, line1, box, TEXT_COLOR, HorizontalAlign::Center, VerticalAlign::Middle, false, false, false);
+    renderer->renderTextInRect(font, m_label.c_str(), box, TEXT_COLOR, HorizontalAlign::Center, VerticalAlign::Middle, false, false, false);
 }

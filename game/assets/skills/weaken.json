@@ -1,0 +1,16 @@
+{
+  "id": "weaken",
+  "name": "Weaken",
+  "description": "Lowers an enemy's attack for a few turns.",
+  "basePower": 0,
+  "isMagical": true,
+  "element": "neutral",
+  "skillAccuracy": 90,
+  "range": 3,
+  "mpCost": 2,
+  "effectTypes": ["debuff"],
+  "statKey": "attack",
+  "statAmount": -3,
+  "buffTurns": 3,
+  "cooldown": 2
+}

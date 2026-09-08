@@ -192,7 +192,8 @@ Authoritative schemas live in `DATA_SCHEMAS.md`. Summary:
 - **Skills** (`assets/skills/*.json`) → `SkillData` via `SkillLoader`.
   Required: `id` (unique), `name`. Optional: `basePower`, `isMagical`,
   `element`, `skillAccuracy`, `range`, `area`, `mpCost`, `castOncePerArea`,
-  `effectTypes`, plus progression metadata (`progressionCategory`,
+  `effectTypes`, `cooldown`, `statKey`, `statAmount`, `buffTurns`,
+  plus progression metadata (`progressionCategory`,
   `requiredPromotion`, `autoGranted`, `placeholder`). `SkillLoader`
   intentionally ignores progression-only metadata — owned by
   `SkillProgression` catalog.
@@ -342,9 +343,43 @@ After any code change, before declaring done:
 5. **Render-pass spot-check** when touching `BattleState::render()` or any
    code that draws via `BattleRenderer`: text stays crisp, coordinate
    spaces match the pass (`logical` vs `native`).
+6. **Stale-save check**: if the change invalidates campaign saves (see
+   §9.1 "Save-file hygiene"), delete the old `user.dat` copies before
+   declaring done.
 
 If you cannot run the full smoke run in the current environment, say so
 explicitly in the PR/change description rather than claiming "done".
+
+### 9.1 Save-file hygiene (delete stale saves on important changes)
+
+When a change makes existing campaign saves stale, misleading, or invalid,
+**delete all old save files before handing off** and say so in the change
+description. A stale `user.dat` can hide new content or produce confusing
+state (e.g. an old roster missing newly seeded units).
+
+Treat these as "important" (invalidation) triggers:
+
+- The save format/schema changes — a required field is added/renamed
+  (`SaveManager.h` roster/inventory/party payloads) or `formatVersion` bumps.
+- The default roster seed changes (`RosterSystem::ensureDefaultUnits`) — e.g.
+  new units added, existing ones removed/renamed.
+- Progression/leveling semantics change (`RosterUnit`, `Unit::growToLevel`,
+  `BattleState::awardVictoryBonusXp`).
+- Any gameplay-level change where an old campaign would demonstrably be
+  wrong or crash — or the user explicitly asks to wipe saves.
+
+Rules of thumb:
+
+- The game writes `user.dat` (`kSaveFilePath`) in the **process working
+  directory**, so it can exist in several places: `build/debug/game/Debug/`,
+  `build/release/...`, and the repo root. Delete **every** copy.
+- One-liner: run `tools\clear_saves.bat` from `game_1` (recursively removes
+  every `user.dat` under the repo). Raw equivalent:
+  `Get-ChildItem -Path <workspaceRoot> -Recurse -Filter user.dat | Remove-Item`.
+- Only delete when a trigger above applies — the file holds the player's
+  campaign, so it is destructive. Never delete as routine cleanup.
+- After deleting, note that the next run must start a **New Game** (the
+  fresh roster/progression is seeded there).
 
 ---
 
@@ -396,24 +431,18 @@ For any non-trivial task the agent should:
 
 ---
 
-## 12. Agent Anti-Patterns (do not do this)
+## 12. Agent Anti-Patterns (pointer)
 
-- Editing `engine/` to make a game-side change easier.
-- Adding new render passes or bypassing `beginLogicalPass()`/
-  `endLogicalPass()` for world-layer effects.
-- Polling window internals from controllers instead of draining
-  `UIEvent`s.
-- Putting new logic directly into `BattleState.cpp` when a controller or
-  system exists for it.
-- Hardcoding skill IDs, item IDs, or unit names inside controllers.
-- Reverting cursor reset after attack resolution or menu re-entry.
-- Using Manhattan distance instead of real path cost for movement.
-- Adding an `include/` tree under `game/` "just in case".
-- Globbing the source tree in `game/CMakeLists.txt`.
-- Adding code comments to changed lines unless explicitly asked (matches
-  global agent instruction).
-- Implementing deferred features (progression wiring, monster units, save
-  serialization, multi-cast chains) without an explicit ask.
+The prohibitions are the rules already stated in this file; there are no
+additional ones hiding outside their sections. Before acting, keep these in
+mind (full wording is in the cited section):
+
+- Engine edits, render-pass bypass, `BattleState.cpp` piling, UI polling,
+  include/ tree, globbing → **§2**.
+- Cursor reset, Manhattan-distance movement cost → **§5**.
+- Magic strings, code comments → **§7**.
+- Deferred features (progression wiring, monster units, save serialization,
+  multi-cast chains) → **§10**.
 
 ---
 
@@ -443,22 +472,20 @@ Update `TODO.md` and `CHANGELOG.md` when finishing items. Update
 primitive the engine already exposes, **call it**. Do not reimplement
 camera math, text rendering, focus loops, tile drawing, or Tiled parsing
 in `game/src/`. The engine headers are the only supported integration
-point (see §2.1). `engine/ARCHITECTURE.md` is the full reference; this
-section is the cheat-sheet you should keep in your head.
+point (see §2.1). This section is a cheat-sheet; `engine/ARCHITECTURE.md`
+is the full reference.
 
 ### 14.1 Where the public surface lives
 
-All engine headers are under `engine/include/engine/...` and are pulled
-in via the include path set in `game/CMakeLists.txt`. The public
-namespace is the global one — `App`, `Renderer`, `Camera`, `Scene`,
-`Input`, `Vec2f`, `Color`, etc. SDL is **not** exposed through these
-headers: never `#include <SDL3/SDL.h>` from `game/src/` for normal
-runtime use.
+All engine headers are under `engine/include/engine/...`, pulled in via the
+include path set in `game/CMakeLists.txt`. The public namespace is the global
+one — `App`, `Renderer`, `Camera`, `Scene`, `Input`, `Vec2f`, `Color`, etc.
+SDL is **not** exposed through these headers: never `#include <SDL3/SDL.h>`
+from `game/src/` for normal runtime use.
 
-The engine export target is `TRPG::engine` (static library) and is
-consumed via `find_package(TRPGEngine)`. The dev path consumes the
-build-tree package from `../engine/build`; release consumes the
-installed package from `../install`.
+The engine export target is `TRPG::engine` (static library), consumed via
+`find_package(TRPGEngine)`. The dev path consumes the build-tree package from
+`../engine/build`; release consumes the installed package from `../install`.
 
 ### 14.2 Engine module summary
 

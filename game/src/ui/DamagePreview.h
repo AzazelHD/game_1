@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 class Unit;
 class Renderer;
 class Font;
@@ -10,8 +12,9 @@ struct SkillData;
 // phase and hidden otherwise.
 //
 // [x] Implemented:
-//   - show(const Unit& attacker, const Unit& target) – compute expected
-//     damage, hit%, and crit warning; store results.
+//   - show(const Unit& attacker, const Unit& target, const SkillData*) – compute
+//     expected damage/hit% for attacks, effect-aware text for skills
+//     (HEAL +N / ATK +3 (3T)); store results.
 //   - hide() – clear the preview.
 //   - render(Renderer*, const Font*) – draw a small box with the preview.
 //
@@ -30,7 +33,5 @@ public:
 
 private:
     bool m_visible = false;
-    int m_damage = 0;
-    float m_hitChance = 100.0f;  // percentage
-    bool m_critPossible = false; // reserved for future
+    std::string m_label;
 };

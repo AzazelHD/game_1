@@ -76,6 +76,62 @@ void Unit::resetTurn()
     m_moveRangeLeft = getMoveRange();
     m_majorAction = MajorAction::None;
     m_state = UnitState::Idle;
+
+    // Tick durations one step at the START of the unit's own turn: a mod set
+    // with N turns is active for N of the unit's further actions, then drops
+    // off before the (N+1)-th action menu opens.
+    for (TemporaryStatMod &mod : m_statMods)
+        if (mod.turnsRemaining > 0)
+            --mod.turnsRemaining;
+    m_statMods.erase(std::remove_if(m_statMods.begin(), m_statMods.end(),
+                                    [](const TemporaryStatMod &mod)
+                                    { return mod.turnsRemaining <= 0; }),
+                     m_statMods.end());
+
+    // Cooldowns were set to cooldown+1 turns on use; each of the unit's own
+    // turn starts shaves one off (they never refresh below 0 here).
+    for (auto &[skillId, remaining] : m_skillCooldowns)
+        if (remaining > 0)
+            --remaining;
+}
+
+// ── Status effects ──────────────────────────────────────────────────────────
+void Unit::applyStatMod(StatKind stat, int amount, int turns)
+{
+    m_statMods.erase(std::remove_if(m_statMods.begin(), m_statMods.end(),
+                                    [stat](const TemporaryStatMod &mod)
+                                    { return mod.stat == stat; }),
+                     m_statMods.end());
+    if (amount != 0 && turns > 0)
+        m_statMods.push_back(TemporaryStatMod{.stat = stat, .amount = amount, .turnsRemaining = turns});
+}
+
+int Unit::activeStatMod(StatKind stat) const
+{
+    return tempMod(stat);
+}
+
+int Unit::skillCooldownLeft(const std::string &skillId) const
+{
+    const auto it = m_skillCooldowns.find(skillId);
+    return it == m_skillCooldowns.end() ? 0 : it->second;
+}
+
+void Unit::setSkillCooldown(const std::string &skillId, int turns)
+{
+    if (turns <= 0)
+        m_skillCooldowns.erase(skillId);
+    else
+        m_skillCooldowns[skillId] = turns;
+}
+
+int Unit::tempMod(StatKind stat) const
+{
+    int sum = 0;
+    for (const TemporaryStatMod &mod : m_statMods)
+        if (mod.stat == stat)
+            sum += mod.amount;
+    return sum;
 }
 
 void Unit::gainExp(int amount)
@@ -97,11 +153,23 @@ int Unit::expToNextLevel() const
     return 100 * m_data.level * m_data.level; // grows quadratically
 }
 
-void Unit::levelUp()
+void Unit::growToLevel(int targetLevel)
+{
+    int capped = std::max(1, targetLevel);
+    if (m_data.level >= capped)
+        return;
+    while (m_data.level < capped)
+    {
+        if (!levelUp())
+            break;
+    }
+}
+
+bool Unit::levelUp()
 {
     // Max level
     if (m_data.level >= getMaxLevel())
-        return;
+        return false;
 
     m_data.level++;
     ++m_skillPoints;
@@ -131,6 +199,8 @@ void Unit::levelUp()
     // Keep gains meaningful immediately after leveling while clamping to new max.
     m_currentHp = std::min(m_data.maxHp, m_currentHp + hpGain);
     m_currentMp = std::min(m_data.maxMp, m_currentMp + mpGain);
+
+    return true;
 }
 
 bool Unit::promote(PromotionClass promotion)

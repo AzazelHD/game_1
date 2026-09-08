@@ -1,5 +1,6 @@
 #include "systems/PartyContext.h"
 
+#include "data/SaveManager.h"
 #include "inventory/Gear.h"
 #include "inventory/GearCatalog.h"
 
@@ -55,6 +56,27 @@ void PartyContext::ensureInitialized()
 #endif
 
     m_initialized = true;
+}
+
+bool PartyContext::applyCampaign(const CampaignSave &campaign)
+{
+    m_roster.setUnits(campaign.roster);
+
+    if (campaign.partyMemberIds.empty())
+        m_party.ensureDefaultFromRoster(m_roster);
+    else
+        m_party.setMembers(campaign.partyMemberIds);
+
+    m_inventory.clear();
+
+    Inventory loaded;
+    if (!loaded.fromJson(campaign.inventoryJson, [this](ItemId itemId) -> const ItemDefinition *
+                         { return m_gearCatalog.findItem(itemId); }))
+        return false;
+    m_inventory = std::move(loaded);
+
+    m_initialized = true;
+    return true;
 }
 
 void PartyContext::seedDefaultStartingInventory()

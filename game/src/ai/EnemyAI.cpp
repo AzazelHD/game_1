@@ -187,15 +187,17 @@ EnemyAI::EnemyTurnPlan EnemyAI::planTurn(Unit &unit, Grid &grid, const BattleMap
     return plan;
 }
 
-void EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap)
+EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap)
 {
+    EnemyAttackResult out;
+
     if (unit.hasActed())
-        return;
+        return out;
 
     if (!target || target->isDead())
     {
         unit.setMajorAction(MajorAction::Attack);
-        return;
+        return out;
     }
 
     RangeRule rule;
@@ -203,17 +205,15 @@ void EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const Ba
     if (AttackRange::canTarget(grid, battleMap, unit.getPosition(), target->getPosition(), rule))
     {
         HitContext ctx = makeAttackContext(unit, *target);
-        CombatResult result = CombatSystem::resolve(ctx);
+        out.result = CombatSystem::resolve(ctx);
+        out.target = target;
+        out.attacked = true;
 
-        // TODO: trigger attack animation (unit -> target) here once the
-        // engine has an animation system; apply damage/log on completion
-        // instead of immediately, to let the visual play out.
-        if (result.hit)
+        if (out.result.hit)
         {
-            target->takeDamage(result.damage);
             LOG_INFO("EnemyAI", "%s attacks %s for %d damage! (HP: %d/%d)",
                      unit.getName().c_str(), target->getName().c_str(),
-                     result.damage, target->getCurrentHp(), target->getMaxHp());
+                     out.result.damage, target->getCurrentHp(), target->getMaxHp());
         }
         else
         {
@@ -226,6 +226,7 @@ void EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const Ba
                  unit.getName().c_str(), target->getName().c_str(), unit.getAtkRange());
     }
     unit.setMajorAction(MajorAction::Attack);
+    return out;
 }
 
 void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
@@ -249,7 +250,11 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::
         unit.exhaustMovement();
     }
 
-    resolveAttack(unit, plan.target, grid, battleMap);
+    // Sync/debug path: apply the roll immediately (the live battle path goes
+    // through BattleState so it can pace + enqueue VFX).
+    const EnemyAttackResult atk = resolveAttack(unit, plan.target, grid, battleMap);
+    if (atk.attacked && atk.result.hit && atk.target)
+        atk.target->takeDamage(atk.result.damage);
 }
 
 int EnemyAI::chooseAction(const Unit &unit, const Grid &grid, const BattleMap &battleMap,

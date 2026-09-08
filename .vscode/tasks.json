@@ -37,6 +37,13 @@
       "problemMatcher": []
     },
     {
+      "label": "Explorer Game (debug)",
+      "type": "shell",
+      "command": "cmd.exe",
+      "args": ["/c", "start", "", "${workspaceFolder}\\build\\debug\\game\\Debug"],
+      "problemMatcher": []
+    },
+    {
       "label": "Native Tools (x64)",
       "type": "shell",
       "command": "cmd.exe",

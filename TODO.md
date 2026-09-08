@@ -26,6 +26,13 @@
 - [x] Split world/native effects passes: `DamagePreview` -> native pass, `CombatAnimationSystem::render` + `DebugRenderer::flush` -> world pass
 - [ ] Confirm no visual regressions (text crisp, correct coordinate spaces)
 
+## Combat Visuals (engine animation wiring)
+
+- [x] `CombatAnimationSystem` effect expiry driven by a per-effect engine `Animator` (`TimedState` "effect" → exit-time "done"); placeholder expanding-ring render on the target tile / scene center
+- [x] `FloatingTextSystem` renders damage/MISS with an eased `Tween` rise + fade over the target tile
+- [x] Wire per-target `hit_impact`/`dodge` and arena-wide `*_cast_once` into `AttackResolutionController`
+- [ ] Replace placeholder rings/balloons with real sprite/sheet VFX
+
 ## Gameplay & Content
 
 - [ ] **DialogSystem** - [x] Wrapper/controller implemented (`DialogueController`) with active-state API - [x] Input blocking while active (via UIManager blocking windows and `DialogWindow`) - [ ] Add sample pre-battle scripted dialogue sequence usage

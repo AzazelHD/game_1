@@ -13,6 +13,7 @@ namespace GameConstants
 
     // ── Battle ────────────────────────────────────────────────────────────
     constexpr int BATTLE_UNIT_CAPACITY = 64;
+    constexpr int BATTLE_VICTORY_XP = 40;
 
     // ── TurnQueue ─────────────────────────────────────────────────────────
     constexpr float TURN_BASE_WAIT_COST = 250.f;
