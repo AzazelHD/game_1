@@ -1,0 +1,15 @@
+{
+  "id": "sunder",
+  "name": "Sunder",
+  "description": "Shatters an enemy's armor and magic resistance for a few turns.",
+  "basePower": 0,
+  "isMagical": true,
+  "element": "neutral",
+  "skillAccuracy": 90,
+  "range": 3,
+  "mpCost": 3,
+  "effectTypes": ["debuff"],
+  "statuses": [
+    { "type": "armor_down", "turns": 3, "chance": 90 }
+  ]
+}

@@ -1,11 +1,13 @@
 #include "battle/systems/CombatAnimationSystem.h"
 
+#include "battle/unit/StatusEffect.h"
 #include "config/GameConstants.h"
 #include "engine/data/TileMapData.h"
 #include "engine/math/MathUtils.h"
 #include "engine/renderer/Camera.h"
 #include "engine/renderer/Color.h"
 #include "engine/renderer/Renderer.h"
+#include "engine/renderer/Texture.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,6 +19,8 @@ namespace
     // Placeholder colors until sprite VFX exist — keyed off effect-id substrings.
     Color effectColor(const std::string &id)
     {
+        if (id == "poison" || id == "burn")
+            return statusTickVisual(statusTypeFromString(id)).ringColor;
         if (id.find("heal") != std::string::npos)
             return Color{120, 255, 140, 255}; // heal — soft green
         if (id.find("buff") != std::string::npos)
@@ -111,6 +115,7 @@ void CombatAnimationSystem::render(Renderer *renderer, const battleworld::Anchor
 
     const float s = static_cast<float>(ctx.scale) * ctx.camera.getZoom();
     const float halfTW = static_cast<float>(ctx.mapData.tileWidth) * s * 0.5f;
+    const float halfTH = static_cast<float>(ctx.mapData.tileHeight) * s * 0.5f;
 
     for (const Event &ev : m_events)
     {
@@ -119,9 +124,55 @@ void CombatAnimationSystem::render(Renderer *renderer, const battleworld::Anchor
 
         const float p = ev.effectState->progress();
 
-        const Vec2f center = ev.anchored
+        const Vec2f anchor = ev.anchored
                                  ? battleworld::tileFeetAnchor(ctx, ev.tilePos)
                                  : Vec2f{GameConstants::VIEW_CX, GameConstants::VIEW_CY};
+
+        const auto vis = m_visuals.find(ev.id);
+        if (vis != m_visuals.end() && vis->second.sprite && vis->second.motion == SpriteMotion::FadeInHoldRise)
+        {
+            // Sit at the middle of the unit rather than its feet: a 0.5H iso
+            // sprite is roughly four half-tile-heights tall, so two of them up
+            // from the feet lands on the torso.
+            Vec2f center = anchor;
+            center.y -= halfTH * 2.0f;
+
+            // Fade in over the first 30%, hold, then rise and fade away.
+            const float FADE_IN_END = 0.30f;
+            const float RISE_START = 0.55f;
+            float alpha = 0.0f;
+            float rise = 0.0f;
+            if (p < FADE_IN_END)
+            {
+                alpha = p / FADE_IN_END;
+            }
+            else if (p < RISE_START)
+            {
+                alpha = 1.0f;
+            }
+            else
+            {
+                const float k = (p - RISE_START) / (1.0f - RISE_START);
+                alpha = 1.0f - k;
+                rise = k * halfTH * 1.6f;
+            }
+            center.y -= rise;
+
+            const Visual &v = vis->second;
+            const Vec2f texSize = renderer->getTextureSize(v.sprite);
+            const float w = halfTW * 2.0f * v.scale;
+            const float h = w * (texSize.y > 0.0f ? texSize.y / texSize.x : 1.0f);
+
+            renderer->setBlendMode(Renderer::BlendMode::Blend);
+            renderer->setTextureAlphaMod(v.sprite, alpha * (static_cast<float>(v.tint.a) / 255.0f));
+            renderer->drawTexture(v.sprite,
+                                  Recti{0, 0, static_cast<int>(texSize.x), static_cast<int>(texSize.y)},
+                                  Rectf{center.x - w * 0.5f, center.y - h * 0.5f, w, h});
+            // Alpha mod is global renderer state — leave it clean for the rest
+            // of the frame.
+            renderer->setTextureAlphaMod(v.sprite, 1.0f);
+            continue;
+        }
 
         // Expand outward while fading: pop at the moment of impact, then dissolve.
         const float e = easeOutCubic(p);
@@ -130,8 +181,13 @@ void CombatAnimationSystem::render(Renderer *renderer, const battleworld::Anchor
 
         Color color = effectColor(ev.id);
         color.a = static_cast<std::uint8_t>(255.0f * (1.0f - p));
-        drawRing(renderer, center, inner, outer, color);
+        drawRing(renderer, anchor, inner, outer, color);
     }
+}
+
+void CombatAnimationSystem::setVisual(const std::string &id, Visual visual)
+{
+    m_visuals[id] = visual;
 }
 
 void CombatAnimationSystem::clear()

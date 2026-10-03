@@ -3,15 +3,19 @@
   "name": "Fireball",
   "description": "Launches a ball of fire.",
   "basePower": 15,
+  "powerPerLevel": 4,
   "isMagical": true,
   "element": "fire",
   "skillAccuracy": 85,
   "range": 4,
   "area": 1,
   "mpCost": 5,
-  "cooldown": 2,
   "effectTypes": ["damage"],
-  "heightTolerance": 2,
+  "heightTolerance": -1,
+  "splashHeightTolerance": 2,
   "requiresLineOfSight": true,
-  "splashRespectsWalls": true
+  "splashRespectsWalls": true,
+  "statuses": [
+    { "type": "burn", "turns": 2, "damagePerTick": 3, "chance": 60 }
+  ]
 }

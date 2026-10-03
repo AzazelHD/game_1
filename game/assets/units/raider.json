@@ -1,0 +1,23 @@
+{
+  "name": "Raider",
+  "className": "Duelist",
+  "baseClass": "Duelist",
+  "race": "Human",
+  "gender": "Male",
+  "level": 1,
+  "maxHp": 26,
+  "maxMp": 6,
+  "attack": 11,
+  "defense": 6,
+  "magic": 2,
+  "magicDefense": 3,
+  "moveRange": 5,
+  "atkRange": 1,
+  "evasion": 14,
+  "jump": 2,
+  "speed": 22,
+  "skills": [
+    "slash",
+    "venom_strike"
+  ]
+}

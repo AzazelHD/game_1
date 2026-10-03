@@ -1,4 +1,5 @@
 #pragma once
+#include "battle/unit/SkillProgression.h"
 #include "inventory/EquipRules.h"
 
 #include <array>
@@ -9,8 +10,11 @@
 class GearCatalog;
 class Inventory;
 
-// Persistent campaign equipment references. IDs are removed from the shared
-// Inventory while equipped, so they cannot be equipped by another roster unit.
+// Persistent campaign equipment references. Equipped IDs are removed from the
+// shared Inventory while equipped (and returned on unequip), so a slot cannot
+// be double-held. Identical gear is one stacking inventory entry; each equip
+// consumes one unit, still reserving the rest for other units until the stack
+// is exhausted.
 struct EquippedGearIds
 {
     std::array<std::optional<ItemId>, kGearSlotCount> slots{};
@@ -28,9 +32,18 @@ struct RosterUnit
     // Source of truth for the unit's level. Battle units are rebuilt fresh
     // from their template each battle and grown to this level via
     // Unit::growToLevel(). Surviving roster units gain +1 per battle victory
-    // (see BattleState::awardVictoryBonusXp) — levels only raise stats for
-    // now; skill progression is a later milestone.
+    // (see BattleState::applyVictoryRewards), and each level-up also grants
+    // +1 skill point (see skillPoints).
     int level = 1;
+
+    // Progression (M4). Level-ups grant skill points, points are spent
+    // permanently to unlock skills from the progression table, and unlocked
+    // skills can be equipped to the active-skill loadout. The battle unit
+    // copies this state on construction (Unit::importRosterProgression), and
+    // the campaign save persists it.
+    BaseClass baseClass = BaseClass::Soldier;
+    int skillPoints = 0;
+    SkillProgression skills;
 
     EquippedGearIds equippedGear;
 };

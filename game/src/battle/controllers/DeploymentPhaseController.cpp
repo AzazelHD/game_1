@@ -1,6 +1,9 @@
 #include "battle/controllers/DeploymentPhaseController.h"
 
 #include "engine/renderer/Camera.h"
+#include "engine/input/Input.h"
+#include "engine/input/KeyCode.h"
+#include "engine/math/MathUtils.h"
 #include "scenes/BattleState.h"
 #include "battle/map/GameTile.h"
 #include "battle/unit/Unit.h"
@@ -13,11 +16,12 @@
 #include "battle/systems/BattleParticipantsBuilder.h"
 #include "systems/PartyContext.h"
 #include "ui/ActionId.h"
+#include "ui/ConfirmDialogs.h"
 #include "ui/UIEvent.h"
 #include "ui/WindowId.h"
-#include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/UnitDetailWindow.h"
 
+#include <climits>
 #include <unordered_set>
 
 void DeploymentPhaseController::initializeDeploymentPhase()
@@ -51,6 +55,39 @@ void DeploymentPhaseController::initializeDeploymentPhase()
     refreshDeploymentWindow();
 }
 
+void DeploymentPhaseController::autoDeployForTutorial()
+{
+    BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
+    if (ctx.flowPhase != BattleState::BattleFlowPhase::Deployment || !ctx.battleDefinition)
+        return;
+
+    // The opening tutorial duel has no deployment UI: drop the party straight
+    // onto their spawn tiles, facing the nearest enemy, then start combat. The
+    // facing picker (and its arrows/repurposed Esc) is deliberately skipped so
+    // it is never taught before it is explained.
+    for (GameTile *tile : ctx.battleMap.playerSpawns)
+    {
+        if (!tile || m_deployment.placedCount() >= m_deployment.maxUnits())
+            break;
+
+        const Vec2i pos{tile->col, tile->row};
+        if (m_deployment.isOccupied(pos))
+            continue;
+        if (!m_deployment.grabSelected())
+            break;
+
+        const int instanceId = m_deployment.grabbedEntry()->instanceId;
+        if (!m_deployment.placeGrabbed(pos))
+        {
+            m_deployment.releaseGrabbed();
+            continue;
+        }
+        presetFacingTowardNearestEnemy(instanceId, pos);
+    }
+
+    startCombatPhase();
+}
+
 void DeploymentPhaseController::syncDeploymentPreviewUnits()
 {
     BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
@@ -75,6 +112,7 @@ void DeploymentPhaseController::syncDeploymentPreviewUnits()
         if (!u)
             continue;
 
+        u->setFacing(placed.facing);
         m_deploymentPreviewUnits.push_back(u);
         if (ctx.grid.isValid(u->getPosition()))
             ctx.grid.getTile(u->getPosition()).occupied = true;
@@ -147,7 +185,11 @@ void DeploymentPhaseController::setUnitPanelPreviewFromEntry(const DeploymentEnt
         return;
     }
 
-    const bool isPlaced = m_deployment.isUnitPlaced(entry->instanceId);
+    // A unit mid-way through the facing-choice step isn't fully deployed yet,
+    // so it must not show the "already placed" marker.
+    bool isPlaced = m_deployment.isUnitPlaced(entry->instanceId);
+    if (m_isChoosingFacing && entry->instanceId == m_facingChoiceInstanceId)
+        isPlaced = false;
 
     try
     {
@@ -162,6 +204,8 @@ void DeploymentPhaseController::setUnitPanelPreviewFromEntry(const DeploymentEnt
         {
             previewUnit.setResolvedEquipmentLoadout(
                 partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+            if (!rosterUnit->customName.empty())
+                previewUnit.setDisplayName(rosterUnit->customName);
         }
         const UnitData &data = previewUnit.getData();
         ctx.unitPanelWindow->setPreview(data.name, previewUnit.getLevel(),
@@ -202,6 +246,19 @@ void DeploymentPhaseController::startCombatPhase()
             ctx.grid.getTile(u->getPosition()).occupied = true;
     }
 
+    // Carry each unit's chosen deployment facing into combat.
+    for (const DeploymentEntry &placed : m_deployment.deployed())
+    {
+        for (Unit *u : ctx.session.getUnitPtrs())
+        {
+            if (u && u->getPosition() == placed.position)
+            {
+                u->setFacing(placed.facing);
+                break;
+            }
+        }
+    }
+
     if (Unit *first = ctx.session.getCurrentUnit(); first)
         ctx.cursor.setPosition(first->getPosition());
 
@@ -227,7 +284,48 @@ void DeploymentPhaseController::update(float dt)
 {
     BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
 
-    if (!ctx.uiManager.hasBlockingWindow() && !m_deployment.isSelectionLocked())
+    if (m_isChoosingFacing)
+    {
+        Input &input = Input::instance();
+        IsoDirection dir = IsoDirection::SouthWest;
+        bool changed = false;
+        // Facing must equal the direction the cursor moves with the same key
+        // (see Cursor::readMovementInput: Up/W = col-1 = NW, Right/D = row-1 =
+        // NE, Down/S = col+1 = SE, Left/A = row+1 = SW). Arrows and WASD both
+        // work, matching the cursor controls.
+        if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::W, false))
+        {
+            dir = IsoDirection::NorthWest;
+            changed = true;
+        }
+        else if (input.isKeyPressed(KeyCode::Right, false) || input.isKeyPressed(KeyCode::D, false))
+        {
+            dir = IsoDirection::NorthEast;
+            changed = true;
+        }
+        else if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::S, false))
+        {
+            dir = IsoDirection::SouthEast;
+            changed = true;
+        }
+        else if (input.isKeyPressed(KeyCode::Left, false) || input.isKeyPressed(KeyCode::A, false))
+        {
+            dir = IsoDirection::SouthWest;
+            changed = true;
+        }
+
+        if (changed && m_deployment.setFacing(m_facingChoiceInstanceId, dir))
+        {
+            // Live-update the preview pawn so its feet arrow rotates with the
+            // input instead of waiting for a full preview rebuild.
+            if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(m_facingChoiceInstanceId))
+            {
+                if (Unit *preview = previewUnitAt(placed->position))
+                    preview->setFacing(dir);
+            }
+        }
+    }
+    else if (!ctx.uiManager.hasBlockingWindow() && !m_deployment.isSelectionLocked())
     {
         ctx.cursor.update(ctx.battleMap.cols(), ctx.battleMap.rows(), dt);
         const Vec2i pos = ctx.cursor.getPosition();
@@ -266,6 +364,58 @@ Unit *DeploymentPhaseController::previewUnitAt(Vec2i pos) const
     return unitAt(m_deploymentPreviewUnits, pos);
 }
 
+const Unit *DeploymentPhaseController::facingChoiceUnit() const
+{
+    if (!m_isChoosingFacing)
+        return nullptr;
+    if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(m_facingChoiceInstanceId))
+        return previewUnitAt(placed->position);
+    return nullptr;
+}
+
+IsoDirection DeploymentPhaseController::facingChoiceSelection() const
+{
+    if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(m_facingChoiceInstanceId))
+        return placed->facing;
+    return IsoDirection::SouthWest;
+}
+
+void DeploymentPhaseController::undoFacingChoice()
+{
+    if (!m_isChoosingFacing)
+        return;
+
+    const int id = m_facingChoiceInstanceId;
+    if (m_deployment.unplaceUnit(id) && m_deployment.grabUnit(id))
+    {
+        syncDeploymentPreviewUnits();
+        m_isChoosingFacing = false;
+        m_facingChoiceInstanceId = -1;
+        refreshDeploymentWindow();
+    }
+}
+
+void DeploymentPhaseController::presetFacingTowardNearestEnemy(int instanceId, Vec2i pos)
+{
+    const Unit *nearest = nullptr;
+    int bestDist = INT_MAX;
+    for (const Unit *u : m_deploymentPreviewUnits)
+    {
+        if (!u || u->getTeam() == 0)
+            continue;
+        const int dist = manhattanDistance(pos, u->getPosition());
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            nearest = u;
+        }
+    }
+    if (!nearest)
+        return;
+
+    (void)m_deployment.setFacing(instanceId, isoDirectionForTileDelta(nearest->getPosition() - pos));
+}
+
 void DeploymentPhaseController::releaseGrabbedUnit()
 {
     m_deployment.releaseGrabbed();
@@ -278,6 +428,8 @@ void DeploymentPhaseController::resetOnExit()
         delete u;
     m_deploymentPreviewUnits.clear();
     m_deploymentWindow = nullptr;
+    m_isChoosingFacing = false;
+    m_facingChoiceInstanceId = -1;
 }
 
 bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
@@ -302,6 +454,27 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
         return false;
 
     const bool wasGrabbed = m_deployment.hasGrabbedUnit();
+
+    // While picking a freshly-placed unit's facing, the only meaningful
+    // actions are Accept (keep it) and Back (undo the placement and put the
+    // unit back on the cursor). Q/E cycling, Details and StartCombat are
+    // deliberately swallowed.
+    if (m_isChoosingFacing)
+    {
+        if (event.actionId == ActionId::Accept)
+        {
+            m_isChoosingFacing = false;
+            m_facingChoiceInstanceId = -1;
+            refreshDeploymentWindow();
+            return true;
+        }
+        if (event.actionId == ActionId::Back)
+        {
+            undoFacingChoice();
+            return true;
+        }
+        return true;
+    }
 
     if (event.actionId == ActionId::CyclePrev)
     {
@@ -342,10 +515,22 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
                 return true;
             }
 
+            const int placedInstanceId = m_deployment.hasGrabbedUnit()
+                                             ? m_deployment.grabbedEntry()->instanceId
+                                             : -1;
             if (m_deployment.placeGrabbed(cursorPos))
             {
+                // Default the newly placed unit to face its nearest enemy so
+                // the plain Accept→Accept placement flow aims outward without
+                // forcing extra arrow presses.
+                if (placedInstanceId >= 0)
+                    presetFacingTowardNearestEnemy(placedInstanceId, cursorPos);
                 syncDeploymentPreviewUnits();
-                syncCursorToSelection();
+                if (placedInstanceId >= 0)
+                {
+                    m_facingChoiceInstanceId = placedInstanceId;
+                    m_isChoosingFacing = true;
+                }
                 refreshDeploymentWindow();
             }
             return true;
@@ -455,10 +640,7 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
         if (!m_deployment.canStartBattle())
             return true;
 
-        ctx.uiManager.popById(WindowId::BattleDeploymentConfirm);
-        auto *confirm = ctx.uiManager.push<ConfirmWindow>(WindowId::BattleDeploymentConfirm);
-        confirm->setFont(FontManager::instance().get(FontRole::Body));
-        confirm->setPrompt("Start Battle?");
+        pushStartBattleConfirm(ctx.uiManager);
         return true;
     }
 

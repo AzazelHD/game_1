@@ -143,6 +143,12 @@ bool DeploymentSystem::grabUnit(int instanceId)
     // from the roster, or picked back up from a placed tile) always moves
     // the roster selection to match it.
     m_selectedIndex = static_cast<std::size_t>(std::distance(m_partyEntries.begin(), it));
+
+    // Pick up the facing the unit had on the field so a grab→replace keeps
+    // it (facing only ever lives on the deployed entry otherwise).
+    if (const DeploymentEntry *placed = deployedEntryFor(instanceId))
+        it->facing = placed->facing;
+
     m_grabbedInstanceId = instanceId;
     return true;
 }
@@ -219,6 +225,7 @@ bool DeploymentSystem::swapGrabbedWithPlacedAt(Vec2i pos)
         .instanceId = grabbedId,
         .templatePath = templatePath,
         .position = pos,
+        .facing = grabbed->facing,
     };
     m_deployed.push_back(std::move(placedA));
 
@@ -240,6 +247,17 @@ bool DeploymentSystem::unplaceUnit(int instanceId)
         return false;
 
     m_deployed.erase(it);
+    return true;
+}
+
+bool DeploymentSystem::setFacing(int instanceId, IsoDirection facing)
+{
+    auto it = std::find_if(m_deployed.begin(), m_deployed.end(), [instanceId](const DeploymentEntry &entry)
+                           { return entry.instanceId == instanceId; });
+    if (it == m_deployed.end())
+        return false;
+
+    it->facing = facing;
     return true;
 }
 

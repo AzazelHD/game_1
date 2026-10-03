@@ -1,9 +1,28 @@
 #include "systems/RosterSystem.h"
 
+#include "data/UnitLoader.h"
 #include "inventory/GearCatalog.h"
 #include "inventory/Inventory.h"
 
 #include <algorithm>
+
+namespace
+{
+    // Loads a unit template's base class so progression eligibility can be
+    // derived without a battle instance. Soldier is the safe fallback when the
+    // template is missing or unreadable.
+    BaseClass baseClassOfTemplate(const std::string &templatePath)
+    {
+        try
+        {
+            return UnitLoader::load(templatePath).baseClass;
+        }
+        catch (...)
+        {
+            return BaseClass::Soldier;
+        }
+    }
+}
 
 void RosterSystem::setUnits(std::vector<RosterUnit> units)
 {
@@ -31,11 +50,15 @@ RosterUnit *RosterSystem::recruit(std::string templatePath, std::string customNa
 {
     m_units.push_back(RosterUnit{
         .instanceId = m_nextInstanceId++,
-        .templatePath = std::move(templatePath),
+        .templatePath = templatePath,
         .customName = std::move(customName),
         .recruited = true,
     });
-    return &m_units.back();
+
+    RosterUnit *unit = &m_units.back();
+    unit->baseClass = baseClassOfTemplate(unit->templatePath);
+    unit->skills.setClass(unit->baseClass, PromotionClass::None);
+    return unit;
 }
 
 void RosterSystem::dismiss(int instanceId)

@@ -1,5 +1,6 @@
 #include "data/SkillLoader.h"
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <fstream>
 #include <stdexcept>
 #include <filesystem>
@@ -32,6 +33,8 @@ static SkillEffectType parseEffectType(const std::string &s)
         return SkillEffectType::Buff;
     if (s == "debuff")
         return SkillEffectType::Debuff;
+    if (s == "ko")
+        return SkillEffectType::Ko;
     return SkillEffectType::Damage; // default
 }
 
@@ -48,7 +51,9 @@ SkillData SkillLoader::load(const std::string &filePath)
     skill.id = j.at("id").get<std::string>();
     skill.name = j.at("name").get<std::string>();
     skill.description = j.value("description", "");
+    skill.isBasicAttack = j.value("isBasicAttack", false);
     skill.basePower = j.value("basePower", 0);
+    skill.powerPerLevel = j.value("powerPerLevel", 0);
     skill.isMagical = j.value("isMagical", false);
     skill.element = parseElement(j.value("element", "neutral"));
     skill.skillAccuracy = j.value("skillAccuracy", 100);
@@ -57,14 +62,47 @@ SkillData SkillLoader::load(const std::string &filePath)
     skill.mpCost = j.value("mpCost", 0);
     skill.castOncePerArea = j.value("castOncePerArea", false);
 
+    skill.neverMiss = j.value("neverMiss", false);
+
+    // visualOnHit gates the consequence behind an animation. Accepted either as
+    // a flat string (duration falls back to kDefaultVisualDuration) or as an
+    // object { "id": "skull", "duration": 1.1 } when the effect needs a
+    // bespoke timing.
+    if (j.contains("visualOnHit"))
+    {
+        if (j["visualOnHit"].is_string())
+            skill.visualOnHit.id = j["visualOnHit"].get<std::string>();
+        else if (j["visualOnHit"].is_object())
+        {
+            skill.visualOnHit.id = j["visualOnHit"].value("id", "");
+            skill.visualOnHit.duration = j["visualOnHit"].value("duration", 0.0f);
+        }
+        if (!skill.visualOnHit.empty() && skill.visualOnHit.duration <= 0.0f)
+            skill.visualOnHit.duration = kDefaultSkillVisualDuration;
+    }
+
     skill.heightTolerance = j.value("heightTolerance", 0);
+    skill.splashHeightTolerance = j.value("splashHeightTolerance", -1);
     skill.requiresLineOfSight = j.value("requiresLineOfSight", false);
     skill.splashRespectsWalls = j.value("splashRespectsWalls", true);
 
-    skill.cooldown = j.value("cooldown", 0);
     skill.statKey = j.value("statKey", "");
     skill.statAmount = j.value("statAmount", 0);
     skill.buffTurns = j.value("buffTurns", 0);
+
+    if (j.contains("statuses") && j["statuses"].is_array())
+    {
+        for (const auto &e : j["statuses"])
+        {
+            StatusEffectApply apply;
+            apply.type = statusTypeFromString(e.value("type", "poison"));
+            apply.turns = e.value("turns", 0);
+            apply.damagePerTick = e.value("damagePerTick", 0);
+            apply.chance = e.value("chance", 100);
+            if (apply.turns > 0)
+                skill.statuses.push_back(apply);
+        }
+    }
 
     if (j.contains("effectTypes") && j["effectTypes"].is_array())
     {
@@ -89,9 +127,42 @@ RangeRule SkillData::toRangeRule() const
         .range = range,
         .area = area,
         .heightTolerance = heightTolerance,
+        .splashHeightTolerance = splashHeightTolerance,
         .requiresLineOfSight = requiresLineOfSight,
         .splashRespectsWalls = splashRespectsWalls,
     };
+}
+
+RangeRule SkillData::toRangeRuleFor(int unitAtkRange, int unitJump) const
+{
+    RangeRule rule = toRangeRule();
+    if (isBasicAttack)
+    {
+        rule.range = unitAtkRange;
+        // Clamp at 0 so a jump of 0 stays same-height-only rather than turning
+        // into the -1 "ignore height entirely" wildcard.
+        rule.heightTolerance = std::max(0, unitJump - 1);
+    }
+    return rule;
+}
+
+SkillData SkillData::makeBasicAttack()
+{
+    SkillData skill;
+    skill.id = kBasicAttackSkillId;
+    skill.name = "Attack";
+    skill.description = "A basic attack using the unit's own attack stat.";
+    skill.isBasicAttack = true;
+    skill.basePower = 0; // the attacker's own stat is the whole base
+    skill.powerPerLevel = 0;
+    skill.isMagical = false;
+    skill.element = Element::Neutral;
+    skill.skillAccuracy = 95;
+    skill.range = 1;
+    skill.area = 0;
+    skill.mpCost = 0;
+    skill.effectTypes.push_back(SkillEffectType::Damage);
+    return skill;
 }
 
 // ── Load all skills in a directory (with duplicate ID check) ─────────────────

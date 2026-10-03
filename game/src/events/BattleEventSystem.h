@@ -24,10 +24,17 @@ public:
 
     void emit(BattleTriggerType trigger);
 
+    // Feeds the battle's turn counter; events with `minTurn > 0` fire only
+    // once m_turn has reached it (see BattleEvent). Call before emit() of
+    // turn-gated triggers.
+    void setTurn(int turn) { m_turn = turn; }
+
 private:
     void executeAction(const BattleEventAction &action);
 
     std::vector<BattleEvent> m_events;
     std::unordered_map<std::string, int> m_variables;
+    std::vector<int> m_firedOnce; // indices of `once` events already executed
+    int m_turn = 0;
     Callbacks m_callbacks;
 };

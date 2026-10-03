@@ -7,6 +7,7 @@ set(GAME_SOURCES
 
     src/scenes/BootState.cpp
     src/scenes/MainMenuState.cpp
+    src/scenes/IntroState.cpp
     src/scenes/BattleState.cpp
     src/scenes/ResultState.cpp
     src/scenes/BattleLoader.cpp   
@@ -42,6 +43,7 @@ set(GAME_SOURCES
     src/battle/systems/DeploymentSystem.cpp
     src/battle/systems/BattleParticipantsBuilder.cpp
     src/battle/systems/CombatAnimationSystem.cpp
+    src/battle/systems/CombatVfxLibrary.cpp
     src/battle/systems/MovementCommitSystem.cpp
     src/battle/ui/UnitPanelWindow.cpp
     src/battle/ui/UnitInspectWindow.cpp
@@ -54,6 +56,9 @@ set(GAME_SOURCES
     
     src/data/UnitLoader.cpp
     src/data/SkillLoader.cpp
+    src/data/QuestLoader.cpp
+    src/data/ShopStock.cpp
+    src/data/TavernData.cpp
     src/data/SettingsManager.cpp
     
     src/config/BattleCatalog.cpp
@@ -61,6 +66,7 @@ set(GAME_SOURCES
     src/systems/RosterSystem.cpp
     src/systems/PartySystem.cpp
     src/systems/PartyContext.cpp
+    src/systems/QuestLog.cpp
     
     src/events/BattleEventSystem.cpp
 
@@ -71,6 +77,7 @@ set(GAME_SOURCES
     
     src/ui/Cursor.cpp
     src/ui/UIManager.cpp
+    src/ui/ConfirmDialogs.cpp
     src/ui/DamagePreview.cpp
     src/ui/UIScale.cpp
     src/ui/UnitPortrait.cpp
@@ -81,7 +88,9 @@ set(GAME_SOURCES
     src/ui/windows/ConfirmWindow.cpp
     src/ui/windows/DialogWindow.cpp
     src/ui/windows/InventoryWindow.cpp
+    src/ui/windows/ShopWindow.cpp
     src/ui/windows/PartyWindow.cpp
+    src/ui/windows/SkillProgressionWindow.cpp
     src/ui/windows/UnitDetailWindow.cpp
     
     )
@@ -89,6 +98,7 @@ set(GAME_SOURCES
     set(GAME_HEADERS
     src/scenes/BootState.h
     src/scenes/MainMenuState.h
+    src/scenes/IntroState.h
     src/scenes/BattleState.h
     src/scenes/ResultState.h
     src/scenes/WorldMapState.h
@@ -99,6 +109,7 @@ set(GAME_SOURCES
     src/battle/unit/UnitProgression.h
     src/battle/unit/SkillProgression.h
     src/battle/unit/RecruitmentRules.h
+    src/battle/unit/StatusEffect.h
     src/inventory/Item.h
     src/inventory/Inventory.h
     src/inventory/Gear.h
@@ -127,6 +138,7 @@ set(GAME_SOURCES
     src/battle/systems/DeploymentSystem.h
     src/battle/systems/BattleParticipantsBuilder.h
     src/battle/systems/CombatAnimationSystem.h
+    src/battle/systems/CombatVfxLibrary.h
     src/battle/systems/MovementCommitSystem.h
     src/battle/ui/UnitPanelWindow.h
     src/battle/ui/UnitInspectWindow.h
@@ -140,6 +152,10 @@ set(GAME_SOURCES
     
     src/data/UnitLoader.h
     src/data/SkillLoader.h
+    src/data/QuestData.h
+    src/data/QuestLoader.h
+    src/data/ShopStock.h
+    src/data/TavernData.h
     src/data/SettingsManager.h
     src/data/SaveManager.h
     
@@ -148,6 +164,7 @@ set(GAME_SOURCES
     src/systems/RosterSystem.h
     src/systems/PartySystem.h
     src/systems/PartyContext.h
+    src/systems/QuestLog.h
     
     src/settings/SettingsState.h
     src/settings/AudioSettings.h
@@ -161,6 +178,7 @@ set(GAME_SOURCES
     src/ui/UIEvent.h
     src/ui/UIWindow.h
     src/ui/UIManager.h
+    src/ui/ConfirmDialogs.h
     src/ui/DamagePreview.h
     src/ui/UIScale.h
     src/ui/UnitPortrait.h
@@ -173,7 +191,9 @@ set(GAME_SOURCES
     src/ui/windows/ConfirmWindow.h
     src/ui/windows/DialogWindow.h
     src/ui/windows/InventoryWindow.h
+    src/ui/windows/ShopWindow.h
     src/ui/windows/PartyWindow.h
+    src/ui/windows/SkillProgressionWindow.h
     src/ui/windows/UnitDetailWindow.h
     
     src/world/WorldGraph.h

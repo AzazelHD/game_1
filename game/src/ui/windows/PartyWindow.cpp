@@ -8,6 +8,7 @@
 #include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
+#include "systems/PartyContext.h"
 #include "ui/UITheme.h"
 #include "ui/UIUtils.h"
 #include "ui/WindowId.h"
@@ -57,9 +58,9 @@ void PartyWindow::setEntries(std::vector<Entry> entries)
 
 void PartyWindow::handleInput(const Input &input)
 {
-    if (input.isKeyPressed(KeyCode::Up, false))
+    if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::W, false))
         m_focus.focusPrevious();
-    else if (input.isKeyPressed(KeyCode::Down, false))
+    else if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::S, false))
         m_focus.focusNext();
 
     const int selected = m_focus.getSelectedIndex();
@@ -156,7 +157,7 @@ void PartyWindow::render(Renderer *renderer) const
     }
 
     renderer->renderTextInRect(m_font,
-                               "Party",
+                               "Gold: " + std::to_string(PartyContext::instance().gold()) + " G",
                                Rectf{x, y + kPanelH - 30.0f, kPanelW, 24.0f},
                                UITheme::Info,
                                HorizontalAlign::Center,

@@ -22,6 +22,10 @@ public:
     void setFont(const Font *font) { m_font = font; }
     void start(std::vector<Line> lines);
 
+    // Tutorial tips ask for a fully solo screen (no action menu, no unit
+    // portrait behind the text); story dialogue leaves lower windows visible.
+    void setBlockRenderBelow(bool block) { setBlocksRenderBelow(block); }
+
     // Which line is currently showing (typing or fully revealed). Lets an
     // external sequencer (e.g. DialogueController) keep a parallel array —
     // aligned by index to the Lines passed into start() — for data this

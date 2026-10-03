@@ -11,8 +11,7 @@
 #include "engine/renderer/FontManager.h"
 #include "engine/renderer/Renderer.h"
 #include "engine/ui/Insets.h"
-#include "engine/ui/TextWrap.h"
-#include "engine/ui/VerticalLayout.h"
+#include "engine/ui/TextBlock.h"
 #include "inventory/Gear.h"
 #include "ui/ActionId.h"
 #include "ui/UITheme.h"
@@ -107,15 +106,13 @@ void InventoryWindow::handleInput(const Input &input)
 
     if (count > 0)
     {
-        const int selected = m_focus.getSelectedIndex();
-
-        if (upHit && selected > 0)
+        if (upHit)
         {
-            m_focus.focusPrevious();
+            m_focus.focusPrevious(); // FocusGroup wraps
         }
-        else if (downHit && selected < count - 1)
+        else if (downHit)
         {
-            m_focus.focusNext();
+            m_focus.focusNext(); // FocusGroup wraps
         }
         else if (leftHit)
         {
@@ -274,29 +271,16 @@ void InventoryWindow::render(Renderer *renderer) const
     if (selected >= 0 && selected < static_cast<int>(m_rows.size()))
     {
         const ItemRow &sel = m_rows[static_cast<std::size_t>(selected)];
-        const float maxTextW = descRect.w - 24.0f;
-        const std::vector<std::string> lines = TextWrap::wrap(renderer, m_font, sel.description, maxTextW);
-        const float lineH = renderer->measureText(m_font, "Ag").y;
+        const float descW = descRect.w - 24.0f;
         constexpr float kDescLineSpacing = 3.0f;
-
-        float lineY = descRect.y + 8.0f;
-        const float maxDescY = descRect.y + descRect.h - 8.0f - lineH;
-
-        for (const std::string &line : lines)
-        {
-            if (lineY > maxDescY)
-                break;
-
-            if (!line.empty())
-            {
-                renderer->renderTextInRect(m_font, line,
-                                           Rectf{descRect.x + 12.0f, lineY, maxTextW, lineH},
-                                           UITheme::Text,
-                                           HorizontalAlign::Left, VerticalAlign::Middle,
-                                           false, false, false);
-            }
-            lineY += lineH + kDescLineSpacing;
-        }
+        TextBlock::render(*renderer,
+                          {TextBlock::Line{m_font, sel.description, UITheme::Text}},
+                          Rectf{descRect.x + 12.0f, descRect.y + 8.0f, descW, descRect.h - 16.0f},
+                          TextBlock::Anchor::TopLeft,
+                          descW,
+                          kDescLineSpacing,
+                          HorizontalAlign::Left,
+                          true);
     }
 
     // Footer Hint

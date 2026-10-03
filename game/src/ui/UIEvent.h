@@ -14,6 +14,9 @@ enum class UIEventType
     DialogFinished,
     NavigatePrevious,
     NavigateNext,
+    // The highlighted row moved without being selected. Carries the new row's
+    // index and the row's ActionId in actionId.
+    ActionChanged,
 };
 
 struct UIEvent

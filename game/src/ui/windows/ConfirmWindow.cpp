@@ -10,14 +10,13 @@
 #include "engine/renderer/Renderer.h"
 #include "engine/ui/HorizontalLayout.h"
 #include "engine/ui/Insets.h"
-#include "engine/ui/TextWrap.h"
+#include "engine/ui/TextBlock.h"
 #include "ui/WindowId.h"
 #include "ui/UITheme.h"
 #include "ui/UIScale.h"
 #include "ui/UIUtils.h"
 
 #include <algorithm>
-#include <vector>
 
 namespace
 {
@@ -105,11 +104,13 @@ void ConfirmWindow::render(Renderer *renderer) const
     const float maxBoxW = kMaxW * ui;
     const float innerMaxTextW = maxBoxW - kHorizontalPad * ui;
 
-    const std::vector<std::string> lines = TextWrap::wrap(renderer, m_font, m_prompt, innerMaxTextW);
+    const TextBlock::Layout textLayout =
+        TextBlock::measure(*renderer, {TextBlock::Line{m_font, m_prompt, UITheme::Text}},
+                           innerMaxTextW, kLineSpacing * ui);
 
     float widestLineW = 0.0f;
-    for (const std::string &line : lines)
-        widestLineW = std::max(widestLineW, renderer->measureText(m_font, line).x);
+    for (const Rectf &row : textLayout.rowRects)
+        widestLineW = std::max(widestLineW, row.w);
 
     // Worst-case (bracketed) button widths — computed here too, so the box
     // is guaranteed wide enough for them, not just for the message text.
@@ -121,7 +122,7 @@ void ConfirmWindow::render(Renderer *renderer) const
     const float w = std::clamp(widestContentW + kHorizontalPad * ui, kMinW * ui, maxBoxW);
 
     const float lineH = renderer->measureText(m_font, "Ag").y;
-    const float linesBlockH = static_cast<float>(lines.size()) * (lineH + kLineSpacing * ui);
+    const float linesBlockH = textLayout.height();
     const float h = (kTopPad * ui) + linesBlockH + (kButtonsGap * ui) + (kBottomPad * ui);
 
     const float x = (GameConstants::VIEW_W - w) * 0.5f;
@@ -133,18 +134,17 @@ void ConfirmWindow::render(Renderer *renderer) const
     renderer->setDrawColor(UITheme::PopupBorder);
     renderer->drawRect(Rectf{x, y, w, h});
 
-    float lineY = y + kTopPad * ui;
-    for (const std::string &line : lines)
-    {
-        renderer->renderTextInRect(m_font,
-                                   line,
-                                   Rectf{x, lineY, w, lineH},
-                                   UITheme::Text,
-                                   HorizontalAlign::Center,
-                                   VerticalAlign::Middle,
-                                   false, false, false);
-        lineY += lineH + kLineSpacing * ui;
-    }
+    // Message block, centered inside the final box width. maxWidth is the
+    // box's real inner width (not the max-box budget) so centered rows float
+    // against the box, not against a fixed 480px cap.
+    const float innerBoxW = w - kHorizontalPad * ui;
+    TextBlock::render(*renderer,
+                      {TextBlock::Line{m_font, m_prompt, UITheme::Text}},
+                      Rectf{x + (w - innerBoxW) * 0.5f, y + kTopPad * ui, innerBoxW, linesBlockH},
+                      TextBlock::Anchor::TopLeft,
+                      innerBoxW,
+                      kLineSpacing * ui,
+                      HorizontalAlign::Center);
 
     const HorizontalLayout::Container cancelContainer{
         .items = {{cancelW, lineH, Insets{}}},

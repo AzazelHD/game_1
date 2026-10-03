@@ -14,6 +14,7 @@
 #include "ui/UnitPortrait.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -24,6 +25,60 @@ namespace
     // Cursor colours.
     constexpr FColor COL_BLACK = {0.0f, 0.0f, 0.0f, 1.0f};
     constexpr FColor COL_RED = {1.0f, 0.0f, 0.0f, 1.0f};
+
+    // Facing dial colours — the active dot is yellow so the choose-facing
+    // indicator reads clearly against the unit tints; the alternatives are
+    // dimmed gray.
+    constexpr Color COL_FACING_ACTIVE = {255, 210, 40, 255}; // yellow
+    constexpr Color COL_FACING_DIM = {120, 120, 120, 150};   // gray
+
+    // Screen-space unit direction for a given iso facing (2:1 tiles) — the
+    // four dial dots sit on these diagonals.
+    Vec2f facingScreenDir(IsoDirection facing)
+    {
+        switch (facing)
+        {
+        case IsoDirection::SouthEast: return Vec2f{1.0f, 0.5f};
+        case IsoDirection::SouthWest: return Vec2f{-1.0f, 0.5f};
+        case IsoDirection::NorthEast: return Vec2f{1.0f, -0.5f};
+        case IsoDirection::NorthWest: return Vec2f{-1.0f, -0.5f};
+        }
+        return Vec2f{};
+    }
+
+    // Fills a small disc — the renderer's smooth fan-based primitive keeps the
+    // rim round even at the dial's 2-4 px dot size.
+    void drawDot(Renderer *renderer, Vec2f center, float radius, Color color)
+    {
+        if (!renderer)
+            return;
+        renderer->setBlendMode(Renderer::BlendMode::Blend);
+        renderer->setDrawColor(color);
+        renderer->fillCircle(center, radius);
+    }
+
+    // The choose-facing indicator (Tactics-Ogre/FFTA style): four small dots
+    // above the head, laid out on the isometric diagonals. The dot matching
+    // `facing` is a solid yellow; the other three are dimmed gray. Drawn
+    // ONLY while a facing choice is active — never on idle/placed units.
+    // `headCenter` is the sprite's centre (top edge of the head) and
+    // `spacing` is the dial radius in pixels.
+    void drawFacingDial(Renderer *renderer, Vec2f headCenter, IsoDirection facing, float spacing)
+    {
+        if (!renderer)
+            return;
+
+        const float activeR = spacing * 0.30f;
+        const float dimR = spacing * 0.20f;
+        const IsoDirection dirs[4] = {IsoDirection::NorthEast, IsoDirection::SouthEast,
+                                      IsoDirection::SouthWest, IsoDirection::NorthWest};
+        for (const IsoDirection d : dirs)
+        {
+            const Vec2f pos = headCenter + facingScreenDir(d) * spacing;
+            drawDot(renderer, pos, (d == facing) ? activeR : dimR,
+                    (d == facing) ? COL_FACING_ACTIVE : COL_FACING_DIM);
+        }
+    }
 }
 
 BattleRenderer::BattleRenderer(Renderer *renderer)
@@ -85,18 +140,35 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
                                    ctx.battleMap, overlayColor);
             }
 
-            drawCursorAt(row, col, ax, ay, s, halfTW, halfTH,
-                         ctx.cursor, ctx.battleMap,
-                         ctx.cursorHoverOffset * s, ctx.cursorTriW, ctx.cursorTriH);
+            if (!ctx.hideCursor)
+                drawCursorAt(row, col, ax, ay, s, halfTW, halfTH,
+                             ctx.cursor, ctx.battleMap,
+                             ctx.cursorHoverOffset * s, ctx.cursorTriW, ctx.cursorTriH);
 
             drawUnitAt(row, col, ax, ay, s, halfTW, halfTH,
                        unitRender,
                        ctx.battleMap,
                        ctx.debugRenderer,
-                       ctx.movementAnimation);
+                       ctx.movementAnimation,
+                       ctx.facingChoiceUnit);
+
+            if (ctx.facingChoiceUnit)
+            {
+                drawFacingPickerAt(row, col, ax, ay, s, halfTW, halfTH,
+                                   unitRender, ctx.battleMap, ctx.facingChoiceUnit,
+                                   ctx.facingChoiceSelection);
+            }
+
+            if (ctx.movementAnimation && ctx.movementAnimation->isAnimating())
+            {
+                const Vec2f visualTile = ctx.movementAnimation->getVisualTilePos();
+                const int animCol = static_cast<int>(std::floor(visualTile.x + 0.5f));
+                const int animRow = static_cast<int>(std::floor(visualTile.y + 0.5f));
+                if (animCol == col && animRow == row)
+                    drawAnimatingUnit(ctx, s, halfTW, halfTH, unitRender);
+            }
         }
     }
-    drawAnimatingUnit(ctx, s, halfTW, halfTH, unitRender);
 }
 
 void BattleRenderer::drawBackground(FColor top, FColor bottom) const
@@ -193,7 +265,8 @@ void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
                                 const std::vector<UnitRenderProxy> &units,
                                 const BattleMap &battleMap,
                                 DebugRenderer *debugRenderer,
-                                const MovementAnimationController *movementAnimation) const
+                                const MovementAnimationController *movementAnimation,
+                                const Unit *facingChoiceUnit) const
 {
     if (!debugRenderer)
         return;
@@ -223,20 +296,6 @@ void BattleRenderer::drawUnitAt(int row, int col, float ax, float ay,
         return;
 
     const GameTile &gt = battleMap.at(col, row);
-
-    Color color;
-    switch (unit->team)
-    {
-    case 0:
-        color = {64, 128, 255, 220};
-        break;
-    case 1:
-        color = {64, 255, 64, 220};
-        break;
-    default:
-        color = {255, 64, 64, 220};
-        break;
-    }
 
     const float elev = static_cast<float>(gt.height) * halfTH;
     const float floatOffset = 6.0f * s;
@@ -274,20 +333,6 @@ void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx,
 
     const float elev = ctx.movementAnimation->getVisualHeight() * halfTH;
 
-    Color color;
-    switch (proxy->team)
-    {
-    case 0:
-        color = {64, 128, 255, 220};
-        break;
-    case 1:
-        color = {64, 255, 64, 220};
-        break;
-    default:
-        color = {255, 64, 64, 220};
-        break;
-    }
-
     const float floatOffset = 6.0f * s;
     const float cx = ax;
     const float cy = ay - elev - halfTH - floatOffset;
@@ -297,6 +342,44 @@ void BattleRenderer::drawAnimatingUnit(const BattleRendererContext &ctx,
     // art exists — pick facing/frame from the segment's direction of
     // travel, and a distinct airborne pose for a hop's non-paused portion.
     UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, radius * 2.0f, proxy->team, proxy->debugLabel);
+}
+
+void BattleRenderer::drawFacingPickerAt(int row, int col, float ax, float ay,
+                                        float s, float halfTW, float halfTH,
+                                        const std::vector<UnitRenderProxy> &units,
+                                        const BattleMap &battleMap,
+                                        const Unit *facingChoiceUnit,
+                                        IsoDirection selection) const
+{
+    const UnitRenderProxy *unit = nullptr;
+    for (const auto &u : units)
+    {
+        if (!u.alive)
+            continue;
+        if (u.pos.x == col && u.pos.y == row)
+        {
+            unit = &u;
+            break;
+        }
+    }
+    if (!unit)
+        return;
+
+    // Only the unit actually choosing a facing gets the indicator — never
+    // another unit that happens to occupy a different tile on the map.
+    if (unit->unit != facingChoiceUnit)
+        return;
+
+    const GameTile &gt = battleMap.at(col, row);
+    const float elev = static_cast<float>(gt.height) * halfTH;
+    const float floatOffset = 6.0f * s;
+    const float cy = ay - elev - halfTH - floatOffset;
+    const float radius = halfTW * 0.6f;
+
+    // The same iso dial as the resting indicator, but the highlighted dot
+    // follows the currently selected direction. The unit's own dial is
+    // suppressed while it is choosing.
+    drawFacingDial(m_renderer, Vec2f{ax, cy - radius}, selection, radius * 0.45f);
 }
 
 // ── Cursor rendering (using passed parameters) ──────────────────────────────

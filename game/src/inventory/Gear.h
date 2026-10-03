@@ -71,8 +71,9 @@ public:
           m_statModifiers(statModifiers),
           m_specialEffect(specialEffect)
     {
-        stackable = false;
-        maxStackSize = 1;
+        // Identical gear stacks in the shared inventory (e.g. two rings show
+        // up as a single "x2" entry). Each equip consumes one unit of the
+        // stack, and unequip returns it.
     }
 
     virtual ~Gear() = default;

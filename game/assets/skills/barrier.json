@@ -1,0 +1,15 @@
+{
+  "id": "barrier",
+  "name": "Barrier",
+  "description": "Hardens an ally's armor and magic resistance for a few turns.",
+  "basePower": 0,
+  "isMagical": true,
+  "element": "neutral",
+  "skillAccuracy": 100,
+  "range": 2,
+  "mpCost": 3,
+  "effectTypes": ["buff"],
+  "statuses": [
+    { "type": "barrier", "turns": 3, "chance": 100 }
+  ]
+}

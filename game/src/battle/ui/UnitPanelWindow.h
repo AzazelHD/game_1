@@ -14,7 +14,6 @@ public:
     explicit UnitPanelWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
-    void setTurnInfo(const Unit *activeUnit, int round);
     void setSingle(const Unit *unit, int team);
     void setDuel(const Unit *left, const Unit *right, bool rightIsEnemy);
     void setPreview(std::string name, int level, int hp, int mp, int team, bool isPlaced = false);
@@ -26,12 +25,7 @@ public:
     void render(Renderer *renderer) const override;
 
 private:
-    void renderTurnBanner(Renderer *renderer) const;
-
     const Font *m_font = nullptr;
-
-    const Unit *m_turnUnit = nullptr;
-    int m_round = 0;
 
     const Unit *m_leftUnit = nullptr;
     const Unit *m_rightUnit = nullptr;

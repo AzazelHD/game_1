@@ -1,0 +1,16 @@
+{
+  "candidates": [
+    {
+      "templatePath": "assets/units/soldier.json",
+      "customName": "Kael",
+      "cost": 150,
+      "flavor": "A veteran of the border wars, Kael fights with disciplined precision."
+    },
+    {
+      "templatePath": "assets/units/elf_archer.json",
+      "customName": "Liandra",
+      "cost": 200,
+      "flavor": "An elven ranger who left the forest settlements seeking purpose beyond the treeline."
+    }
+  ]
+}

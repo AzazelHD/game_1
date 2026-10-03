@@ -1,5 +1,7 @@
 #pragma once
 
+#include "battle/unit/SkillProgression.h"
+#include "data/UnitLoader.h"
 #include "inventory/Inventory.h"
 #include "systems/PartySystem.h"
 #include "systems/RosterSystem.h"
@@ -12,6 +14,8 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -22,9 +26,11 @@ struct CampaignSave
     int formatVersion = 1;
     int worldNodeId = 4;
     int nextInstanceId = 0;
+    int gold = 0;
     std::vector<RosterUnit> roster;
     std::vector<int> partyMemberIds;
     nlohmann::json inventoryJson;
+    nlohmann::json questLogJson; // QuestLog::toJson(); empty object = no quests
     std::string label;
 };
 
@@ -39,7 +45,7 @@ struct SaveSlotInfo
 {
     int slotIndex = -1;            // file number, stable per save data file
     SaveKind kind = SaveKind::Campaign;
-    std::string label;             // human-readable (e.g. "Node 4" / "Battle: node 6")
+    std::string label;             // human-readable (e.g. "2026-09-14 09:41")
     std::uint64_t timestamp = 0;   // unix seconds
     nlohmann::json payload;        // campaign or battle payload for this entry
 };
@@ -116,6 +122,107 @@ namespace
         return true;
     }
 
+    BaseClass baseClassFromInt(int v)
+    {
+        return (v >= 0 && v < static_cast<int>(BaseClass::Duelist) + 1)
+                   ? static_cast<BaseClass>(v)
+                   : BaseClass::Soldier;
+    }
+
+    PromotionClass promotionFromInt(int v)
+    {
+        return (v >= 0 && v < static_cast<int>(PromotionClass::Fencer) + 1)
+                   ? static_cast<PromotionClass>(v)
+                   : PromotionClass::None;
+    }
+
+    // M4 progression persistence. learned = { skillId: level }, equipped =
+    // { active: [], passive: [], reaction: [] }.
+    nlohmann::json skillsToJson(const SkillProgression &skills)
+    {
+        nlohmann::json j = nlohmann::json::object();
+        j["baseClass"] = static_cast<int>(skills.getBaseClass());
+        j["promotion"] = static_cast<int>(skills.getPromotion());
+
+        nlohmann::json learned = nlohmann::json::object();
+        for (const auto &[id, level] : skills.learnedSkills())
+            learned[id] = level;
+        j["learned"] = std::move(learned);
+
+        auto listOf = [](const std::unordered_set<std::string> &set)
+        {
+            nlohmann::json arr = nlohmann::json::array();
+            for (const std::string &id : set)
+                arr.push_back(id);
+            return arr;
+        };
+        j["equipped"] = nlohmann::json::object({
+            {"active", listOf(skills.equippedActive())},
+            {"passive", listOf(skills.equippedPassive())},
+            {"reaction", listOf(skills.equippedReaction())},
+        });
+        return j;
+    }
+
+    // Populates a RosterUnit's baseClass + skills from a roster entry.
+    // Accepts both v4 entries (with the "skills" object) and v3 entries
+    // (no progression fields) — the latter derive class from the template and
+    // start at zero points with nothing learned.
+    void rosterSkillsFromJson(const nlohmann::json &entry, RosterUnit &u)
+    {
+        if (entry.contains("baseClass"))
+            u.baseClass = baseClassFromInt(entry.at("baseClass").get<int>());
+        else
+        {
+            try
+            {
+                u.baseClass = UnitLoader::load(u.templatePath).baseClass;
+            }
+            catch (...)
+            {
+                u.baseClass = BaseClass::Soldier;
+            }
+        }
+
+        if (!entry.contains("skills") || !entry.at("skills").is_object())
+        {
+            u.skills.setClass(u.baseClass, PromotionClass::None);
+            return;
+        }
+
+        const nlohmann::json &s = entry.at("skills");
+        std::unordered_map<std::string, int> learned;
+        if (s.contains("learned") && s.at("learned").is_object())
+        {
+            for (auto it = s.at("learned").begin(); it != s.at("learned").end(); ++it)
+                learned[it.key()] = it.value().get<int>();
+        }
+
+        auto setOf = [](const nlohmann::json &arr)
+        {
+            std::unordered_set<std::string> set;
+            if (arr.is_array())
+                for (const auto &item : arr)
+                    set.insert(item.get<std::string>());
+            return set;
+        };
+        std::unordered_set<std::string> active;
+        std::unordered_set<std::string> passive;
+        std::unordered_set<std::string> reaction;
+        if (s.contains("equipped") && s.at("equipped").is_object())
+        {
+            const nlohmann::json &e = s.at("equipped");
+            active = setOf(e.value("active", nlohmann::json::array()));
+            passive = setOf(e.value("passive", nlohmann::json::array()));
+            reaction = setOf(e.value("reaction", nlohmann::json::array()));
+        }
+
+        const BaseClass classFromSave = s.contains("baseClass") ? baseClassFromInt(s.at("baseClass").get<int>()) : u.baseClass;
+        const PromotionClass promoFromSave = s.contains("promotion") ? promotionFromInt(s.at("promotion").get<int>()) : PromotionClass::None;
+        u.skills.restore(classFromSave, promoFromSave, learned, active, passive, reaction);
+        u.baseClass = classFromSave;
+    }
+
     bool campaignFromJson(const nlohmann::json &j, CampaignSave &out)
     {
         if (!j.contains("roster"))
@@ -125,6 +232,7 @@ namespace
         out.formatVersion = j.value("formatVersion", 1);
         out.worldNodeId = j.value("worldNodeId", 4);
         out.label = j.value("label", std::string());
+        out.gold = j.value("gold", 0);
 
         for (const nlohmann::json &entry : j.at("roster"))
         {
@@ -137,6 +245,9 @@ namespace
             u.level = entry.value("level", 1);
             if (u.instanceId < 0 || u.templatePath.empty())
                 return false;
+
+            u.skillPoints = entry.value("skillPoints", 0);
+            rosterSkillsFromJson(entry, u);
 
             if (entry.contains("equippedGear"))
             {
@@ -162,6 +273,8 @@ namespace
         out.partyMemberIds = j.value("party", std::vector<int>{});
         if (j.contains("inventory"))
             out.inventoryJson = j.at("inventory");
+        if (j.contains("questLog"))
+            out.questLogJson = j.at("questLog");
 
         for (const RosterUnit &u : out.roster)
             out.nextInstanceId = std::max(out.nextInstanceId, u.instanceId + 1);
@@ -177,6 +290,7 @@ namespace
         out.formatVersion = j.value("formatVersion", 1);
         out.worldNodeId = j.value("worldNodeId", 4);
         out.label = j.value("label", std::string());
+        out.gold = j.value("gold", 0);
 
         for (const nlohmann::json &entry : j.at("roster"))
         {
@@ -189,6 +303,8 @@ namespace
             u.level = entry.value("level", 1);
             if (u.instanceId < 0 || u.templatePath.empty())
                 return false;
+            u.skillPoints = entry.value("skillPoints", 0);
+            rosterSkillsFromJson(entry, u);
             if (entry.contains("equippedGearSlots"))
             {
                 const auto &arr = entry.at("equippedGearSlots");
@@ -208,11 +324,27 @@ namespace
         out.partyMemberIds = j.value("party", std::vector<int>{});
         if (j.contains("inventory"))
             out.inventoryJson = j.at("inventory");
+        if (j.contains("questLog"))
+            out.questLogJson = j.at("questLog");
         for (const RosterUnit &u : out.roster)
             out.nextInstanceId = std::max(out.nextInstanceId, u.instanceId + 1);
 
         battleOut = j.at("battle");
         return true;
+    }
+
+    std::string formatSaveLabel(std::uint64_t timestamp)
+    {
+        std::time_t t = static_cast<std::time_t>(timestamp);
+        std::tm local{};
+#if defined(_WIN32)
+        localtime_s(&local, &t);
+#else
+        localtime_r(&t, &local);
+#endif
+        char buf[40] = {};
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &local);
+        return std::string(buf);
     }
 }
 
@@ -226,7 +358,7 @@ namespace
 //   {
 //     "v": 1,
 //     "entries": [
-//       { "slot": 0, "kind": 0, "label": "Node 4", "ts": 123, "data": { ... } }
+//      { "slot": 0, "kind": 0, "label": "2026-09-14 09:41", "ts": 123, "data": { ... } }
 //     ]
 //   }
 //
@@ -257,7 +389,8 @@ public:
 
     // ── Campaign save ─────────────────────────────────────────────────────
     bool saveCampaign(const RosterSystem &roster, const PartySystem &party,
-                      const Inventory &inventory, int worldNodeId);
+                      const Inventory &inventory, int worldNodeId, int gold,
+                      const nlohmann::json &questLogJson = nlohmann::json::object());
 
     // Loads the newest campaign save. Returns false when none exists or
     // the file is corrupt.
@@ -366,12 +499,14 @@ inline int SaveManager::allocateNewSlot()
 }
 
 inline bool SaveManager::saveCampaign(const RosterSystem &roster, const PartySystem &party,
-                                      const Inventory &inventory, int worldNodeId)
+                                      const Inventory &inventory, int worldNodeId, int gold,
+                                      const nlohmann::json &questLogJson)
 {
     nlohmann::json j;
-    j["formatVersion"] = 1;
+    j["formatVersion"] = 4;
     j["kind"] = 0;
     j["worldNodeId"] = worldNodeId;
+    j["gold"] = gold;
 
     // Roster
     nlohmann::json rosterJson = nlohmann::json::array();
@@ -384,6 +519,9 @@ inline bool SaveManager::saveCampaign(const RosterSystem &roster, const PartySys
         entry["recruited"] = u.recruited;
         entry["exp"] = u.exp;
         entry["level"] = u.level;
+        entry["skillPoints"] = u.skillPoints;
+        entry["baseClass"] = static_cast<int>(u.baseClass);
+        entry["skills"] = skillsToJson(u.skills);
 
         nlohmann::json gearJson;
         nlohmann::json slots = nlohmann::json::array();
@@ -407,13 +545,17 @@ inline bool SaveManager::saveCampaign(const RosterSystem &roster, const PartySys
     // Inventory
     j["inventory"] = inventory.toJson();
 
+    // Quest log (M2): active + completed quest ids.
+    j["questLog"] = questLogJson;
+
     // Queue bookkeeping — newest first.
     const int slot = allocateNewSlot();
     SaveSlotInfo info;
     info.slotIndex = slot;
     info.kind = SaveKind::Campaign;
-    info.label = "Node " + std::to_string(worldNodeId);
-    info.timestamp = static_cast<std::uint64_t>(std::time(nullptr));
+    const std::uint64_t now = static_cast<std::uint64_t>(std::time(nullptr));
+    info.label = formatSaveLabel(now);
+    info.timestamp = now;
     info.payload = std::move(j);
 
     m_slots.insert(m_slots.begin(), std::move(info));
@@ -464,9 +606,10 @@ inline bool SaveManager::saveBattle(const CampaignSave &campaign, const nlohmann
     }
 
     nlohmann::json j;
-    j["formatVersion"] = 1;
+    j["formatVersion"] = 4;
     j["kind"] = 1;
     j["worldNodeId"] = campaign.worldNodeId;
+    j["gold"] = campaign.gold;
 
     nlohmann::json rosterJson = nlohmann::json::array();
     for (const RosterUnit &u : campaign.roster)
@@ -478,6 +621,9 @@ inline bool SaveManager::saveBattle(const CampaignSave &campaign, const nlohmann
         entry["recruited"] = u.recruited;
         entry["exp"] = u.exp;
         entry["level"] = u.level;
+        entry["skillPoints"] = u.skillPoints;
+        entry["baseClass"] = static_cast<int>(u.baseClass);
+        entry["skills"] = skillsToJson(u.skills);
         nlohmann::json slots = nlohmann::json::array();
         for (const auto &slot : u.equippedGear.slots)
             slots.push_back(optIdToJson(slot));
@@ -491,14 +637,16 @@ inline bool SaveManager::saveBattle(const CampaignSave &campaign, const nlohmann
     j["roster"] = std::move(rosterJson);
     j["party"] = campaign.partyMemberIds;
     j["inventory"] = campaign.inventoryJson;
+    j["questLog"] = campaign.questLogJson;
     j["battle"] = battlePayload;
 
     const int slot = allocateNewSlot();
     SaveSlotInfo info;
     info.slotIndex = slot;
     info.kind = SaveKind::Battle;
-    info.label = "Battle: Node " + std::to_string(campaign.worldNodeId);
-    info.timestamp = static_cast<std::uint64_t>(std::time(nullptr));
+    const std::uint64_t now = static_cast<std::uint64_t>(std::time(nullptr));
+    info.label = formatSaveLabel(now);
+    info.timestamp = now;
     info.payload = std::move(j);
 
     m_slots.insert(m_slots.begin(), std::move(info));

@@ -1,0 +1,25 @@
+{
+  "name": "Bandit Chief",
+  "className": "Soldier",
+  "baseClass": "Soldier",
+  "race": "Human",
+  "gender": "Male",
+  "level": 1,
+  "maxHp": 85,
+  "maxMp": 30,
+  "attack": 18,
+  "defense": 10,
+  "magic": 6,
+  "magicDefense": 7,
+  "moveRange": 4,
+  "atkRange": 2,
+  "evasion": 12,
+  "jump": 2,
+  "speed": 18,
+  "skills": [
+    "slash",
+    "sunder",
+    "venom_strike",
+    "fireball"
+  ]
+}

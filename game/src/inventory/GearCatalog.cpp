@@ -22,6 +22,16 @@ const ItemDefinition *GearCatalog::findItem(ItemId itemId) const
     return find(itemId);
 }
 
+const Gear *GearCatalog::findByKey(const std::string &keyValue) const
+{
+    for (const auto &entry : m_gears)
+    {
+        if (entry.second->key == keyValue)
+            return entry.second.get();
+    }
+    return nullptr;
+}
+
 EquipmentLoadout GearCatalog::resolve(const EquippedGearIds &equipped) const
 {
     EquipmentLoadout resolved;

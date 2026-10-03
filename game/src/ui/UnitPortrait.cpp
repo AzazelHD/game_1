@@ -83,14 +83,7 @@ void UnitPortrait::drawPlaceholderSprite(Renderer *renderer,
     Color fillColor = teamFrameColor(team);
     fillColor.a = alpha;
     renderer->setDrawColor(fillColor);
-
-    const int r = static_cast<int>(std::ceil(radius));
-    for (int y = -r; y <= r; ++y)
-    {
-        const float dx = std::sqrt(std::max(0.0f, radius * radius - static_cast<float>(y * y)));
-        renderer->drawLine(Vec2f{center.x - dx, center.y + static_cast<float>(y)},
-                           Vec2f{center.x + dx, center.y + static_cast<float>(y)});
-    }
+    renderer->fillCircle(center, radius);
 
     if (!font || letter.empty())
         return;

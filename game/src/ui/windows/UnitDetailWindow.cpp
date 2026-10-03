@@ -16,7 +16,7 @@
 #include "engine/ui/FocusGroup.h"
 #include "engine/ui/HorizontalLayout.h"
 #include "engine/ui/Insets.h"
-#include "engine/ui/TextWrap.h"
+#include "engine/ui/TextBlock.h"
 #include "engine/ui/VerticalLayout.h"
 #include "inventory/GearCatalog.h"
 #include "inventory/Inventory.h"
@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <string>
 #include <utility>
 
@@ -180,6 +181,11 @@ void UnitDetailWindow::rebuildStaticRows()
                         {
                             if (index == 0)
                                 setState(UIState::SlotSelect);
+                            else if (index == 1 && m_isInteractive)
+                                emit(UIEvent{.type = UIEventType::ActionSelected,
+                                             .windowId = id(),
+                                             .actionId = ActionId::OpenSkills,
+                                             .index = index});
                         });
         actionPtrs.push_back(row.get());
         m_actionRows.push_back(std::move(row));
@@ -314,35 +320,33 @@ void UnitDetailWindow::rebuildCandidatesList()
 {
     m_candidates.clear();
     const int selectedSlot = m_slotFocus.getSelectedIndex();
-    if (!m_inventory || selectedSlot < 0 || selectedSlot >= static_cast<int>(m_slots.size()))
+    if (!m_inventory || !m_catalog || selectedSlot < 0 ||
+        selectedSlot >= static_cast<int>(m_slots.size()))
         return;
 
-    std::unordered_set<ItemId> seen;
     const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlot)];
     const EquipmentLoadout candidateLoadout = loadoutWithoutSelectedSlot();
 
-    for (const ItemStack &stack : m_inventory->stacks())
+    // Slot matching: either the gear's tagged slot matches the selected slot,
+    // or (for the Offhand case) the gear is a valid off-hand candidate under
+    // the current main-hand state. Without the second clause dual-wield
+    // weapons (Sword/Mace, slot==Weapon) would never appear in the Offhand
+    // item list.
+    const auto isEligible = [&](const Gear *gear) -> bool
     {
-        if (!seen.insert(stack.itemId).second)
-            continue;
-
-        const Gear *gear = m_catalog->find(stack.itemId);
-        if (!gear)
-            continue;
-
-        // Slot matching: either the gear's tagged slot matches the
-        // selected slot, or (for the Offhand case) the gear is a valid
-        // off-hand candidate under the current main-hand state. Without
-        // the second clause dual-wield weapons (Sword/Mace, slot==Weapon)
-        // would never appear in the Offhand item list, which is the bug
-        // Part J reports.
         const bool slotMatches = (slot.slot == gear->slot());
         const bool offhandCandidate = (slot.slot == GearSlot::Offhand &&
                                        EquipRules::isOffhandEligibleGear(*gear, candidateLoadout));
-        if (!slotMatches && !offhandCandidate)
-            continue;
+        return (slotMatches || offhandCandidate) &&
+               EquipRules::canEquip(m_unit->getRace(), *gear, candidateLoadout);
+    };
 
-        if (!EquipRules::canEquip(m_unit->getRace(), *gear, candidateLoadout))
+    std::unordered_set<ItemId> freeItemIds;
+    for (const ItemStack &stack : m_inventory->stacks())
+    {
+        freeItemIds.insert(stack.itemId);
+        const Gear *gear = m_catalog->find(stack.itemId);
+        if (!gear || !isEligible(gear))
             continue;
 
         m_candidates.push_back(ItemCandidate{
@@ -351,6 +355,53 @@ void UnitDetailWindow::rebuildCandidatesList()
             .quantity = stack.quantity,
         });
     }
+
+    // Owned but fully equipped: every copy is on a unit, so there is nothing
+    // free to equip. List them anyway as grayed "x0" rows so the player can
+    // see that they own the item but it is all in use. The rows stay
+    // focusable; Enter on them is a no-op (see confirmItemSelection).
+    if (m_isInteractive && m_roster)
+    {
+        std::unordered_set<ItemId> equippedElsewhere;
+        for (const RosterUnit &unit : m_roster->units())
+        {
+            for (const std::optional<ItemId> &id : unit.equippedGear.slots)
+                if (id.has_value())
+                    equippedElsewhere.insert(*id);
+            for (const std::optional<ItemId> &id : unit.equippedGear.accessories)
+                if (id.has_value())
+                    equippedElsewhere.insert(*id);
+        }
+
+        for (ItemId itemId : equippedElsewhere)
+        {
+            if (freeItemIds.contains(itemId))
+                continue; // has free copies — already listed as equippable
+            const Gear *gear = m_catalog->find(itemId);
+            if (!gear || !isEligible(gear))
+                continue;
+            m_candidates.push_back(ItemCandidate{
+                .itemId = itemId,
+                .gear = gear,
+                .quantity = 0,
+            });
+        }
+    }
+
+    // Free copies first, then the owned-but-fully-equipped rows, all sorted
+    // alphabetically by display name so a grayed "x0" row stays in its natural
+    // spot instead of being shuffled to the end.
+    const auto nameLess = [](const ItemCandidate &a, const ItemCandidate &b)
+    {
+        const std::string an = a.gear ? a.gear->displayName : std::string();
+        const std::string bn = b.gear ? b.gear->displayName : std::string();
+        const auto ciLess = [](char x, char y)
+        {
+            return std::tolower(static_cast<unsigned char>(x)) < std::tolower(static_cast<unsigned char>(y));
+        };
+        return std::lexicographical_compare(an.begin(), an.end(), bn.begin(), bn.end(), ciLess);
+    };
+    std::sort(m_candidates.begin(), m_candidates.end(), nameLess);
 
     m_itemRows.clear();
     m_itemRows.reserve(m_candidates.size());
@@ -362,6 +413,8 @@ void UnitDetailWindow::rebuildCandidatesList()
         auto row = std::make_unique<Button>(Rectf{0.0f, 0.0f, 0.0f, 0.0f}, "");
         row->setOnClick([this]()
                         { confirmItemSelection(); });
+        // x0 rows stay focusable (the cursor can land on them) — the Enter
+        // no-op guard lives in confirmItemSelection().
         itemPtrs.push_back(row.get());
         m_itemRows.push_back(std::move(row));
     }
@@ -412,6 +465,9 @@ void UnitDetailWindow::confirmItemSelection()
 
     const SlotEntry &slot = m_slots[static_cast<std::size_t>(selectedSlot)];
     const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(selectedItem)];
+    if (candidate.quantity == 0)
+        return; // grayed owned-but-in-use row: no free copies to equip
+
     const bool changed = m_roster->equip(m_rosterInstanceId, slot.slot, slot.accessoryIndex,
                                          candidate.itemId, *m_inventory, *m_catalog, m_unit->getRace());
 
@@ -480,13 +536,11 @@ void UnitDetailWindow::handleInput(const Input &input)
 
         if (upHit)
         {
-            if (m_slotFocus.getSelectedIndex() > 0)
-                m_slotFocus.focusPrevious();
+            m_slotFocus.focusPrevious(); // FocusGroup wraps
         }
         else if (downHit)
         {
-            if (m_slotFocus.getSelectedIndex() < static_cast<int>(m_slots.size()) - 1)
-                m_slotFocus.focusNext();
+            m_slotFocus.focusNext(); // FocusGroup wraps
         }
         else if (input.isKeyPressed(KeyCode::Details, false)) // Tab on equipped slot
         {
@@ -541,15 +595,13 @@ void UnitDetailWindow::handleInput(const Input &input)
 
         if (count > 0)
         {
-            const int selected = m_itemFocus.getSelectedIndex();
-
-            if (upHit && selected > 0)
+            if (upHit)
             {
-                m_itemFocus.focusPrevious();
+                m_itemFocus.focusPrevious(); // FocusGroup wraps
             }
-            else if (downHit && selected < count - 1)
+            else if (downHit)
             {
-                m_itemFocus.focusNext();
+                m_itemFocus.focusNext(); // FocusGroup wraps
             }
             else if (leftHit)
             {
@@ -671,6 +723,23 @@ void UnitDetailWindow::renderIdentityHeader(Renderer *renderer, Vec2f contentPos
     renderer->renderTextInRect(m_font, "EXP  " + std::to_string(m_exp),
                                Rectf{identityRect.x, identityRect.y + 54.0f, identityRect.w, 24.0f},
                                UITheme::Info, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+
+    if (m_unit && !m_unit->getStatuses().empty())
+    {
+        std::string statusText;
+        for (const ActiveStatus &status : m_unit->getStatuses())
+        {
+            if (!statusText.empty())
+                statusText += "   ";
+            statusText += statusInfo(status.type).abbr;
+            statusText += " " + std::to_string(status.turnsRemaining);
+            if (status.damagePerTick > 0)
+                statusText += " (" + std::to_string(status.damagePerTick) + "/t)";
+        }
+        renderer->renderTextInRect(m_font, "Status  " + statusText,
+                                   Rectf{identityRect.x, identityRect.y + 88.0f, identityRect.w, 24.0f},
+                                   Color{255, 170, 90, 255}, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+    }
 }
 
 void UnitDetailWindow::renderStatsColumn(Renderer *renderer, Vec2f colPos, float columnW, const Unit *previewUnit) const
@@ -783,7 +852,10 @@ void UnitDetailWindow::renderDetailsPanel(Renderer *renderer) const
     {
         const Rectf &row = actionRows[index];
         const bool isSelected = (static_cast<int>(index) == m_actionFocus.getSelectedIndex());
-        const bool isEnabled = (index == 0); // Equip and Gear are active; Abilities & Dismiss are placeholders
+        // Equip and Abilities are active actions; Abilities only opens the
+        // Skills panel from the interactive (roster-backed) window. Dismiss
+        // is still a placeholder.
+        const bool isEnabled = (index == 0) || (index == 1 && m_isInteractive);
 
         if (isSelected)
         {
@@ -977,6 +1049,9 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
         {
             const ItemCandidate &candidate = m_candidates[static_cast<std::size_t>(index)];
             const bool selected = (m_itemFocus.getSelectedIndex() == index);
+            const bool hasFree = candidate.quantity > 0;
+            const Color textColor = hasFree ? (selected ? UITheme::SelectedText : UITheme::Text)
+                                            : Color{120, 120, 120, 255};
 
             if (selected)
             {
@@ -986,11 +1061,12 @@ void UnitDetailWindow::renderItemSelectPanel(Renderer *renderer) const
 
             renderer->renderTextInRect(m_font, candidate.gear->displayName,
                                        Rectf{rightColX + 10.0f, itemY, columnW * 0.7f - 10.0f, kCandidateRowH},
-                                       selected ? UITheme::SelectedText : UITheme::Text,
+                                       textColor,
                                        HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
             renderer->renderTextInRect(m_font, "x" + std::to_string(candidate.quantity),
                                        Rectf{rightColX + columnW * 0.7f, itemY, columnW * 0.3f - 10.0f, kCandidateRowH},
-                                       selected ? UITheme::SelectedText : UITheme::Info,
+                                       hasFree ? (selected ? UITheme::SelectedText : UITheme::Info)
+                                               : Color{120, 120, 120, 255},
                                        HorizontalAlign::Right, VerticalAlign::Middle, false, false, false);
 
             itemY += kCandidateRowH + 2.0f;
@@ -1056,14 +1132,15 @@ void UnitDetailWindow::renderItemDescriptionCard(Renderer *renderer,
     // Wrapped description
     if (!gear->description.empty())
     {
-        const std::vector<std::string> descLines = TextWrap::wrap(renderer, m_font, gear->description, cardW - 20.0f);
-        const float lineH = renderer->measureText(m_font, "Ag").y;
-        for (const auto &line : descLines)
-        {
-            renderer->renderTextInRect(m_font, line, Rectf{cardX + 8.0f, lineY, cardW - 20.0f, lineH},
-                                       UITheme::Text, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-            lineY += lineH + 2.0f;
-        }
+        const float descW = cardW - 20.0f;
+        const float descH = TextBlock::render(*renderer,
+                                              {TextBlock::Line{m_font, gear->description, UITheme::Text}},
+                                              Rectf{cardX + 8.0f, lineY, descW, rightColumn.y + rightColumn.h - lineY - 8.0f},
+                                              TextBlock::Anchor::TopLeft,
+                                              descW,
+                                              2.0f,
+                                              HorizontalAlign::Left);
+        lineY += descH;
         lineY += 8.0f;
     }
 

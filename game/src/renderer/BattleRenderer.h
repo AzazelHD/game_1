@@ -75,7 +75,19 @@ public:
                     const std::vector<UnitRenderProxy> &units,
                     const BattleMap &battleMap,
                     DebugRenderer *debugRenderer,
-                    const MovementAnimationController *movementAnimation) const;
+                    const MovementAnimationController *movementAnimation,
+                    const Unit *facingChoiceUnit = nullptr) const;
+
+    // Draws the "choose facing" indicator: the unit's iso facing dial above the
+    // head, with the highlighted dot showing the current facing selection.
+    // Only draws when the unit occupying the tile is the facing-choice unit.
+    void drawFacingPickerAt(int row, int col, float ax, float ay,
+                            float s,
+                            float halfTW, float halfTH,
+                            const std::vector<UnitRenderProxy> &units,
+                            const BattleMap &battleMap,
+                            const Unit *facingChoiceUnit,
+                            IsoDirection selection) const;
 
     void drawAnimatingUnit(const BattleRendererContext &ctx,
                            float s,

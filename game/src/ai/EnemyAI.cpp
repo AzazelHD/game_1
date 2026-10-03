@@ -124,21 +124,6 @@ namespace
         }
         return best;
     }
-
-    // Build a minimal HitContext for a basic physical attack.
-    HitContext makeAttackContext(const Unit &attacker, const Unit &target)
-    {
-        HitContext ctx;
-        ctx.attacker = &attacker;
-        ctx.target = &target;
-        ctx.basePower = attacker.getAttack();
-        ctx.isMagical = false;
-        ctx.element = Element::Neutral;
-        ctx.skillAccuracy = 100; // base accuracy for a normal attack
-        ctx.side = AttackSide::Front;
-        ctx.tileEvasionBonus = 0;
-        return ctx;
-    }
 } // namespace
 
 EnemyAI::EnemyTurnPlan EnemyAI::planTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
@@ -187,7 +172,8 @@ EnemyAI::EnemyTurnPlan EnemyAI::planTurn(Unit &unit, Grid &grid, const BattleMap
     return plan;
 }
 
-EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap)
+EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &grid, const BattleMap &battleMap,
+                                        const SkillData &basicAttack)
 {
     EnemyAttackResult out;
 
@@ -200,11 +186,15 @@ EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &g
         return out;
     }
 
-    RangeRule rule;
-    rule.range = unit.getAtkRange();
+    const RangeRule rule = basicAttack.toRangeRuleFor(unit.getAtkRange(), unit.getJump());
     if (AttackRange::canTarget(grid, battleMap, unit.getPosition(), target->getPosition(), rule))
     {
-        HitContext ctx = makeAttackContext(unit, *target);
+        const Vec2i delta = target->getPosition() - unit.getPosition();
+        if (delta.x != 0 || delta.y != 0)
+            unit.setFacing(isoDirectionForTileDelta(delta));
+
+        HitContext ctx = CombatSystem::hitContextFor(basicAttack, unit, *target);
+        CombatSystem::applyTileBonuses(ctx, battleMap);
         out.result = CombatSystem::resolve(ctx);
         out.target = target;
         out.attacked = true;
@@ -229,7 +219,8 @@ EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &g
     return out;
 }
 
-void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits)
+void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::vector<Unit *> &allUnits,
+                       const SkillData &basicAttack)
 {
     if (unit.hasMoved() && unit.hasActed())
         return;
@@ -242,9 +233,13 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::
     {
         if (plan.wantsToMove)
         {
-            grid.getTile(unit.getPosition()).occupied = false;
+            const Vec2i from = unit.getPosition();
+            const Vec2i delta = plan.destination - from;
+            grid.getTile(from).occupied = false;
             unit.setPosition(plan.destination);
             grid.getTile(plan.destination).occupied = true;
+            if (delta.x != 0 || delta.y != 0)
+                unit.setFacing(isoDirectionForTileDelta(delta));
             LOG_INFO("EnemyAI", "%s moves to (%d,%d)", unit.getName().c_str(), plan.destination.x, plan.destination.y);
         }
         unit.exhaustMovement();
@@ -252,20 +247,19 @@ void EnemyAI::takeTurn(Unit &unit, Grid &grid, const BattleMap &battleMap, std::
 
     // Sync/debug path: apply the roll immediately (the live battle path goes
     // through BattleState so it can pace + enqueue VFX).
-    const EnemyAttackResult atk = resolveAttack(unit, plan.target, grid, battleMap);
+    const EnemyAttackResult atk = resolveAttack(unit, plan.target, grid, battleMap, basicAttack);
     if (atk.attacked && atk.result.hit && atk.target)
         atk.target->takeDamage(atk.result.damage);
 }
 
 int EnemyAI::chooseAction(const Unit &unit, const Grid &grid, const BattleMap &battleMap,
-                          std::vector<Unit *> &allUnits)
+                          std::vector<Unit *> &allUnits, const SkillData &basicAttack)
 {
     Unit *target = findBestTarget(unit, allUnits);
     if (!target)
         return 2;
 
-    RangeRule rule;
-    rule.range = unit.getAtkRange();
+    const RangeRule rule = basicAttack.toRangeRuleFor(unit.getAtkRange(), unit.getJump());
     if (AttackRange::canTarget(grid, battleMap, unit.getPosition(), target->getPosition(), rule))
         return 1;
     if (!unit.hasMoved())

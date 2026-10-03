@@ -1,0 +1,18 @@
+{
+  "id": "first_watch",
+  "title": "Claim the First Watch",
+  "brief": "Drive off the scouts at the watchtower and secure the approach.",
+  "description": "The road ahead is surveyed by an enemy picket. Win the skirmish at the watchtower to open the way inland.",
+  "isMain": true,
+  "client": "Helmsman Osten",
+  "objective": {
+    "type": "victory",
+    "nodeId": 2
+  },
+  "reward": {
+    "gold": 80,
+    "xp": 20,
+    "items": []
+  },
+  "unlocks": [6]
+}

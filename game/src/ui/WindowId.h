@@ -5,7 +5,6 @@ enum class WindowId
     None,
 
     // Battle windows
-    BattleActionConfirm,
     BattleActionMenu,
     BattleSystemMenu,
     BattleDeployment,
@@ -25,6 +24,7 @@ enum class WindowId
     PartyMenu,
     PartyInspect,
     PartyDetail,
+    PartySkills,
     Equipment,
     Inventory,
 
@@ -37,6 +37,27 @@ enum class WindowId
     // World map
     WorldMap,
     WorldMapEncounterConfirm,
+    WorldMapJournal,
+    WorldMapNodeEvents,
     WorldMapNodeInfo,
     WorldMapNodeMenu,
+    WorldMapQuestComplete,
+
+    // Town — shop
+    Shop,
+    ShopBuy,
+    ShopSell,
+    ShopConfirm,
+
+    // Town — tavern
+    Tavern,
+    TavernQuestBoard,
+    TavernQuestAccept,
+    TavernQuestDetail,
+    TavernRecruitList,
+    TavernRecruitConfirm,
+    TavernTalk,
+
+    // Town — hub talk
+    TownTalk,
 };

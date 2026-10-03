@@ -1,0 +1,20 @@
+{
+  "lines": [
+    {
+      "speaker": "Barkeep",
+      "text": "The Eastern Reach has been quiet lately. Too quiet, if you ask me."
+    },
+    {
+      "speaker": "Kael",
+      "text": "I served under Commander Aldric before the withdrawal. Good soldier, shame about how it ended."
+    },
+    {
+      "speaker": "Liandra",
+      "text": "The forest spirits have gone silent. Something stirs in the deep woods."
+    },
+    {
+      "speaker": "Barkeep",
+      "text": "First night through, things haven't been the same. But we endure."
+    }
+  ]
+}

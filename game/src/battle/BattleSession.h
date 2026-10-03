@@ -22,6 +22,7 @@ struct UnitSpawn
     Vec2i startPos;
     int team = 0;
     int rosterInstanceId = -1;     // player roster identity; -1 for non-roster spawns
+    int level = 1;                 // template level for non-roster spawns (enemies)
     bool isCritical = false;       // defeat if this unit dies
     bool isBoss = false;           // victory if this unit dies
     bool disappearOnDeath = false; // if true, slot is freed and can be reused
@@ -102,8 +103,16 @@ public:
     // the old applyResult() did, would advance the queue once per target hit.
     void applyDamage(Unit &target, const CombatResult &result);
 
-    // Re-checks victory/defeat conditions. Call after applyDamage() (or any
-    // other state change that could end the battle).
+    // Kills `target` outright for a Ko-effect skill. Deliberately a separate
+    // entry point from applyDamage() so a KO never flows through the damage
+    // path (and so no damage number is ever reported for it), but it still runs
+    // the same result evaluation, so a KO can end the battle exactly like a
+    // killing blow does.
+    void applyKo(Unit &target);
+
+    // Re-evaluates victory/defeat against the current board state. Cheap and
+    // idempotent, so it is safe to call from both of the only two moments that
+    // can resolve a battle: a unit dying, and a new turn starting.
     void checkResult() { checkBattleResult(); }
 
 private:

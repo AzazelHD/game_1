@@ -5,150 +5,100 @@
 
 namespace
 {
-    const std::vector<ProgressionSkillDefinition> kSkills = []
-    {
-        std::vector<ProgressionSkillDefinition> skills = {
-            ProgressionSkillDefinition{
-                .id = "placeholder_soldier_mastery",
-                .name = "Placeholder Soldier Mastery",
-                .category = ProgressionSkillCategory::Active,
-                .maxLevel = 5,
-                .pointCosts = {1, 1, 2, 2, 3},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .placeholder = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_soldier_vitality",
-                .name = "Placeholder Soldier Vitality",
-                .category = ProgressionSkillCategory::Passive,
-                .maxLevel = 3,
-                .pointCosts = {1, 1, 2},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .placeholder = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_soldier_counter",
-                .name = "Placeholder Soldier Counter",
-                .category = ProgressionSkillCategory::Reaction,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .placeholder = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_templar_aegis",
-                .name = "Placeholder Aegis",
-                .category = ProgressionSkillCategory::Passive,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .requiredPromotion = PromotionClass::Templar,
-                .placeholder = true,
-                .autoGranted = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_templar_smite",
-                .name = "Placeholder Smite",
-                .category = ProgressionSkillCategory::Active,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .requiredPromotion = PromotionClass::Templar,
-                .placeholder = true,
-                .autoGranted = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_knight_guard",
-                .name = "Placeholder Guard",
-                .category = ProgressionSkillCategory::Passive,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .requiredPromotion = PromotionClass::Knight,
-                .placeholder = true,
-                .autoGranted = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_knight_strike",
-                .name = "Placeholder Strike",
-                .category = ProgressionSkillCategory::Active,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .requiredPromotion = PromotionClass::Knight,
-                .placeholder = true,
-                .autoGranted = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_paladin_grace",
-                .name = "Placeholder Grace",
-                .category = ProgressionSkillCategory::Passive,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .requiredPromotion = PromotionClass::Paladin,
-                .placeholder = true,
-                .autoGranted = true,
-            },
-            ProgressionSkillDefinition{
-                .id = "placeholder_paladin_rebuke",
-                .name = "Placeholder Rebuke",
-                .category = ProgressionSkillCategory::Reaction,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {BaseClass::Soldier},
-                .requiredPromotion = PromotionClass::Paladin,
-                .placeholder = true,
-                .autoGranted = true,
-            },
-        };
-
-        // PLACEHOLDER CONTENT: promotion skills are auto-granted and have no
-        // point cost/levels. Elf and Elin intentionally share Archer/Mage
-        // promotion names until Elin-specific flavor is designed.
-        const auto addPromotionPair = [&skills](BaseClass baseClass,
-                                                PromotionClass promotion,
-                                                const char *key,
-                                                const char *name)
-        {
-            skills.push_back(ProgressionSkillDefinition{
-                .id = std::string("placeholder_") + key + "_technique",
-                .name = std::string("Placeholder ") + name + " Technique",
-                .category = ProgressionSkillCategory::Active,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {baseClass},
-                .requiredPromotion = promotion,
-                .placeholder = true,
-                .autoGranted = true,
-            });
-            skills.push_back(ProgressionSkillDefinition{
-                .id = std::string("placeholder_") + key + "_instinct",
-                .name = std::string("Placeholder ") + name + " Instinct",
-                .category = ProgressionSkillCategory::Passive,
-                .maxLevel = 1,
-                .pointCosts = {1},
-                .eligibleBaseClasses = {baseClass},
-                .requiredPromotion = promotion,
-                .placeholder = true,
-                .autoGranted = true,
-            });
-        };
-
-        addPromotionPair(BaseClass::Archer, PromotionClass::Sharpshooter, "sharpshooter", "Sharpshooter");
-        addPromotionPair(BaseClass::Archer, PromotionClass::Ranger, "ranger", "Ranger");
-        addPromotionPair(BaseClass::Archer, PromotionClass::Windrunner, "windrunner", "Windrunner");
-        addPromotionPair(BaseClass::Mage, PromotionClass::Elementalist, "elementalist", "Elementalist");
-        addPromotionPair(BaseClass::Mage, PromotionClass::Enchanter, "enchanter", "Enchanter");
-        addPromotionPair(BaseClass::Mage, PromotionClass::Warden, "warden", "Warden");
-        addPromotionPair(BaseClass::Scout, PromotionClass::Infiltrator, "infiltrator", "Infiltrator");
-        addPromotionPair(BaseClass::Scout, PromotionClass::Trapper, "trapper", "Trapper");
-        addPromotionPair(BaseClass::Scout, PromotionClass::Pathfinder, "pathfinder", "Pathfinder");
-        addPromotionPair(BaseClass::Duelist, PromotionClass::BladeDancer, "blade_dancer", "Blade Dancer");
-        addPromotionPair(BaseClass::Duelist, PromotionClass::Assassin, "assassin", "Assassin");
-        addPromotionPair(BaseClass::Duelist, PromotionClass::Fencer, "fencer", "Fencer");
-        return skills;
-    }();
+    // M4 progression table — REAL active skills from the combat skill
+    // catalog (assets/skills/*.json). For Active skills the definition id is
+    // the combat skill id, so a learned+equipped skill grafts directly onto
+    // the battle unit's skill list.
+    //
+    // Recipes per base class:
+    //   Soldier: slash, valor, barrier, weaken, sunder, venom_strike
+    //   Mage:    fireball, heal, barrier, weaken, thunder_jolt
+    //   Duelist: slash, weaken, sunder, venom_strike
+    //   Archer:  valor, weaken
+    //   Scout:   slash, fireball, valor, weaken, sunder, venom_strike, thunder_jolt
+    const std::vector<ProgressionSkillDefinition> kSkills = {
+        ProgressionSkillDefinition{
+            .id = "slash",
+            .name = "Slash",
+            .description = "A basic physical attack (+3 power per level).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 3,
+            .pointCosts = {1, 1, 2},
+            .eligibleBaseClasses = {BaseClass::Soldier, BaseClass::Duelist, BaseClass::Scout},
+        },
+        ProgressionSkillDefinition{
+            .id = "fireball",
+            .name = "Fireball",
+            .description = "Launches a ball of fire (2x2 splash, +4 per level).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 3,
+            .pointCosts = {1, 1, 2},
+            .eligibleBaseClasses = {BaseClass::Mage, BaseClass::Scout},
+        },
+        ProgressionSkillDefinition{
+            .id = "heal",
+            .name = "Heal",
+            .description = "Restores an ally's HP (+4 power per level).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 3,
+            .pointCosts = {1, 1, 2},
+            .eligibleBaseClasses = {BaseClass::Mage},
+        },
+        ProgressionSkillDefinition{
+            .id = "valor",
+            .name = "Valor",
+            .description = "Raises an ally's attack.",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 1,
+            .pointCosts = {1},
+            .eligibleBaseClasses = {BaseClass::Soldier, BaseClass::Archer, BaseClass::Scout},
+        },
+        ProgressionSkillDefinition{
+            .id = "weaken",
+            .name = "Weaken",
+            .description = "Lowers an enemy's attack (ATK- 3 turns).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 1,
+            .pointCosts = {1},
+            .eligibleBaseClasses = {BaseClass::Mage, BaseClass::Duelist, BaseClass::Archer},
+        },
+        ProgressionSkillDefinition{
+            .id = "barrier",
+            .name = "Barrier",
+            .description = "Raises an ally's armor & magic res (BRR 3 turns).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 1,
+            .pointCosts = {1},
+            .eligibleBaseClasses = {BaseClass::Soldier, BaseClass::Mage},
+        },
+        ProgressionSkillDefinition{
+            .id = "sunder",
+            .name = "Sunder",
+            .description = "Shatters an enemy's armor & magic res (ARM- 3 turns).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 1,
+            .pointCosts = {1},
+            .eligibleBaseClasses = {BaseClass::Soldier, BaseClass::Duelist, BaseClass::Scout},
+        },
+        ProgressionSkillDefinition{
+            .id = "venom_strike",
+            .name = "Venom Strike",
+            .description = "A poisoned slash (PSN 4/turn, 3 turns; +2 power per level).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 3,
+            .pointCosts = {1, 1, 2},
+            .eligibleBaseClasses = {BaseClass::Soldier, BaseClass::Duelist, BaseClass::Scout},
+        },
+        ProgressionSkillDefinition{
+            .id = "thunder_jolt",
+            .name = "Thunder Jolt",
+            .description = "Electrifies an enemy into a stun (1 turn; +2 power per level).",
+            .category = ProgressionSkillCategory::Active,
+            .maxLevel = 3,
+            .pointCosts = {1, 1, 2},
+            .eligibleBaseClasses = {BaseClass::Mage, BaseClass::Scout},
+        },
+    };
 
     bool containsBaseClass(const ProgressionSkillDefinition &skill, BaseClass baseClass)
     {
@@ -322,4 +272,18 @@ bool SkillProgression::unequip(const std::string &skillId)
     if (!skill)
         return false;
     return equippedFor(skill->category).erase(skillId) != 0;
+}
+
+void SkillProgression::restore(BaseClass baseClass, PromotionClass promotion,
+                               const std::unordered_map<std::string, int> &learned,
+                               const std::unordered_set<std::string> &equippedActive,
+                               const std::unordered_set<std::string> &equippedPassive,
+                               const std::unordered_set<std::string> &equippedReaction)
+{
+    m_baseClass = baseClass;
+    m_promotion = promotion;
+    m_levels = learned;
+    m_equippedActive = equippedActive;
+    m_equippedPassive = equippedPassive;
+    m_equippedReaction = equippedReaction;
 }

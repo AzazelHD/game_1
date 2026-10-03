@@ -64,7 +64,18 @@ private:
     BattleState &m_owner;
     class UIWindow *m_inspectWindow = nullptr;
 
+    // Whether a skill description is currently shown in the top battle text.
+    // A row move then re-targets that text instead of leaving a stale
+    // description up. Reset whenever the skill list is (re)opened.
+    bool m_skillDetailVisible = false;
+
     std::vector<BattleMenuItem> m_skillMenuItems;
     std::vector<BattleMenuItem> m_actionMenuItems;
     std::vector<BattleMenuItem> m_systemMenuItems;
+
+    // Last skill the active unit aimed, per unit — so Esc'ing out of
+    // target-selection reopens the skill list with the same row hovered
+    // instead of resetting to the first skill.
+    const Unit *m_lastSkillUnit = nullptr;
+    int m_lastSkillIndex = -1;
 };

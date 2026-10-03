@@ -58,6 +58,14 @@ void Unit::takeDamage(int amount)
     }
 }
 
+void Unit::kill()
+{
+    if (isDead())
+        return;
+    m_currentHp = 0;
+    m_state = UnitState::Dead;
+}
+
 void Unit::heal(int amount)
 {
     if (isDead())
@@ -87,12 +95,6 @@ void Unit::resetTurn()
                                     [](const TemporaryStatMod &mod)
                                     { return mod.turnsRemaining <= 0; }),
                      m_statMods.end());
-
-    // Cooldowns were set to cooldown+1 turns on use; each of the unit's own
-    // turn starts shaves one off (they never refresh below 0 here).
-    for (auto &[skillId, remaining] : m_skillCooldowns)
-        if (remaining > 0)
-            --remaining;
 }
 
 // ── Status effects ──────────────────────────────────────────────────────────
@@ -111,27 +113,179 @@ int Unit::activeStatMod(StatKind stat) const
     return tempMod(stat);
 }
 
-int Unit::skillCooldownLeft(const std::string &skillId) const
-{
-    const auto it = m_skillCooldowns.find(skillId);
-    return it == m_skillCooldowns.end() ? 0 : it->second;
-}
-
-void Unit::setSkillCooldown(const std::string &skillId, int turns)
-{
-    if (turns <= 0)
-        m_skillCooldowns.erase(skillId);
-    else
-        m_skillCooldowns[skillId] = turns;
-}
-
 int Unit::tempMod(StatKind stat) const
 {
     int sum = 0;
     for (const TemporaryStatMod &mod : m_statMods)
         if (mod.stat == stat)
             sum += mod.amount;
-    return sum;
+    return sum + statusStatContribution(stat);
+}
+
+namespace
+{
+    // Percentage stat effect baked in per buff/debuff status type. Buffs scale
+    // off the BASE stat (data + race/gender bonuses), curses off the TOTAL
+    // stat (base + gear) — see Unit::statusStatContribution.
+    struct StatusStatEffect
+    {
+        StatKind stat;
+        int pct;       // signed: +25, −10
+        bool ofTotal;  // false = % of base stat, true = % of total stat
+    };
+
+    constexpr StatusStatEffect kBarrierEffects[] = {
+        {StatKind::Defense, 25, false},
+        {StatKind::MagicDefense, 25, false},
+    };
+    constexpr StatusStatEffect kAttackUpEffects[] = {
+        {StatKind::Attack, 25, false},
+    };
+    constexpr StatusStatEffect kArmorDownEffects[] = {
+        {StatKind::Defense, -10, true},
+        {StatKind::MagicDefense, -10, true},
+    };
+    constexpr StatusStatEffect kAttackDownEffects[] = {
+        {StatKind::Attack, -10, true},
+    };
+
+    struct StatusStatEffects
+    {
+        const StatusStatEffect *effects;
+        std::size_t count;
+    };
+
+    const StatusStatEffects kStatusEffectsByType[] = {
+        {nullptr, 0}, // Poison
+        {nullptr, 0}, // Burn
+        {nullptr, 0}, // Stun
+        {nullptr, 0}, // Sleep
+        {kBarrierEffects, 2},   // Barrier
+        {kAttackUpEffects, 1},  // AttackUp
+        {kArmorDownEffects, 2}, // ArmorDown
+        {kAttackDownEffects, 1} // AttackDown
+    };
+} // namespace
+
+int Unit::statusStatContribution(StatKind stat) const
+{
+    int total = 0;
+    for (const ActiveStatus &status : m_statuses)
+    {
+        const StatusStatEffects &effects = kStatusEffectsByType[static_cast<std::size_t>(status.type)];
+        for (std::size_t i = 0; i < effects.count; ++i)
+        {
+            const StatusStatEffect &effect = effects.effects[i];
+            if (effect.stat != stat)
+                continue;
+
+            // Buffs read the base stat; curses read the total (base + gear),
+            // deliberately excluding temp/status mods so the basis stays stable.
+            int basis;
+            switch (stat)
+            {
+            case StatKind::Attack: basis = effect.ofTotal ? m_data.attack + m_bonuses.attack + gearModifiers().attack
+                                                          : m_data.attack; break;
+            case StatKind::Defense: basis = effect.ofTotal ? m_data.defense + m_bonuses.defense + gearModifiers().defense
+                                                           : m_data.defense; break;
+            case StatKind::Magic: basis = effect.ofTotal ? m_data.magic + m_bonuses.magic + gearModifiers().magic
+                                                         : m_data.magic; break;
+            case StatKind::MagicDefense: basis = effect.ofTotal ? m_data.magicDefense + m_bonuses.magicDef + gearModifiers().magicDefense
+                                                                : m_data.magicDefense; break;
+            case StatKind::Speed: basis = effect.ofTotal ? m_data.speed + m_bonuses.speed + gearModifiers().speed
+                                                         : m_data.speed; break;
+            case StatKind::Evasion: basis = effect.ofTotal ? m_data.evasion + m_bonuses.evasion + gearModifiers().evasion
+                                                           : m_data.evasion; break;
+            default: basis = 0; break;
+            }
+
+            const int magnitude = (std::abs(effect.pct) * basis + 50) / 100; // round half up
+            total += effect.pct < 0 ? -magnitude : magnitude;
+        }
+    }
+    return total;
+}
+
+// ── Battle status effects ────────────────────────────────────────────────────
+void Unit::applyStatus(StatusType type, int turns, int damagePerTick)
+{
+    if (turns <= 0)
+        return;
+
+    const StatusInfo &info = statusInfo(type);
+    for (ActiveStatus &status : m_statuses)
+    {
+        if (status.type != type)
+            continue;
+        if (info.stacks)
+            status.damagePerTick += damagePerTick;
+        status.turnsRemaining = std::max(status.turnsRemaining, turns);
+        return;
+    }
+    m_statuses.push_back(ActiveStatus{.type = type, .turnsRemaining = turns, .damagePerTick = damagePerTick});
+}
+
+void Unit::removeStatus(const StatusType &type)
+{
+    m_statuses.erase(std::remove_if(m_statuses.begin(), m_statuses.end(),
+                                    [&type](const ActiveStatus &status)
+                                    { return status.type == type; }),
+                     m_statuses.end());
+}
+
+bool Unit::hasStatus(StatusType type) const
+{
+    return std::any_of(m_statuses.begin(), m_statuses.end(),
+                       [type](const ActiveStatus &status)
+                       { return status.type == type; });
+}
+
+int Unit::statusTurns(StatusType type) const
+{
+    for (const ActiveStatus &status : m_statuses)
+        if (status.type == type)
+            return status.turnsRemaining;
+    return 0;
+}
+
+Unit::StatusTickResult Unit::tickStatuses()
+{
+    StatusTickResult result;
+    if (m_statuses.empty())
+        return result;
+
+    // 1. Accumulate DoT damage from every status still active this turn, then
+    //    resolve turn locks BEFORE counting down — a Stun/Sleep applied with
+    //    N turns must consume exactly N of the target's turns.
+    for (const ActiveStatus &status : m_statuses)
+    {
+        if (status.damagePerTick > 0)
+        {
+            result.dotDamage += status.damagePerTick;
+            result.dotType = status.type;
+        }
+        if (!result.skippedTurn && statusInfo(status.type).skipsTurn)
+        {
+            result.skippedTurn = true;
+            result.skipType = status.type;
+        }
+    }
+
+    // 2. Deal DoT damage (does not wake sleepers — sleep breaks on real
+    //    damage only, see BattleSession::applyDamage).
+    if (result.dotDamage > 0)
+        takeDamage(result.dotDamage);
+
+    // 3. Count down remaining durations and drop expired statuses.
+    for (ActiveStatus &status : m_statuses)
+        if (status.turnsRemaining > 0)
+            --status.turnsRemaining;
+    m_statuses.erase(std::remove_if(m_statuses.begin(), m_statuses.end(),
+                                    [](const ActiveStatus &status)
+                                    { return status.turnsRemaining <= 0; }),
+                     m_statuses.end());
+
+    return result;
 }
 
 void Unit::gainExp(int amount)
@@ -216,6 +370,22 @@ bool Unit::promote(PromotionClass promotion)
 bool Unit::learnOrUpgradeSkill(const std::string &skillId)
 {
     return m_skillProgression.learnOrUpgrade(skillId, m_skillPoints);
+}
+
+void Unit::importRosterProgression(int skillPoints, const SkillProgression &progression)
+{
+    m_skillPoints = skillPoints;
+    m_skillProgression = progression;
+
+    // Equipped Active skills become battle actions. The progression id IS the
+    // combat skill id for active skills, so it can be appended straight onto
+    // the unit's skill list — the in-battle Skills menu and combat resolution
+    // read skillIds + skillDB and need nothing else.
+    for (const std::string &skillId : m_skillProgression.equippedActive())
+    {
+        if (std::find(m_data.skillIds.begin(), m_data.skillIds.end(), skillId) == m_data.skillIds.end())
+            m_data.skillIds.push_back(skillId);
+    }
 }
 
 GearStatModifiers Unit::gearModifiers() const

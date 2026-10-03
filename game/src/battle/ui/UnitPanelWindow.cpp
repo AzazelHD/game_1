@@ -19,12 +19,6 @@ UnitPanelWindow::UnitPanelWindow(WindowId id)
 {
 }
 
-void UnitPanelWindow::setTurnInfo(const Unit *activeUnit, int round)
-{
-    m_turnUnit = activeUnit;
-    m_round = round;
-}
-
 void UnitPanelWindow::setSingle(const Unit *unit, int team)
 {
     m_hasPreview = false;
@@ -82,8 +76,6 @@ void UnitPanelWindow::render(Renderer *renderer) const
     UIScale::refresh();
     const float ui = UIScale::factor();
 
-    renderTurnBanner(renderer);
-
     const float leftX = 16.0f * ui;
     const float baseY = GameConstants::VIEW_H - 132.0f * ui;
 
@@ -127,36 +119,6 @@ void UnitPanelWindow::render(Renderer *renderer) const
                                       m_previewMp,
                                       m_previewMp,
                                       Vec2f{leftX, baseY},
-                                      UnitPortrait::PortraitStyle{.team = m_previewTeam, .mirrored = false, .transparent = false, .showPlacedMarker = m_previewPlaced});
+                                       UnitPortrait::PortraitStyle{.team = m_previewTeam, .mirrored = false, .transparent = false, .showPlacedMarker = m_previewPlaced});
     }
-}
-
-void UnitPanelWindow::renderTurnBanner(Renderer *renderer) const
-{
-    if (!m_turnUnit)
-        return;
-
-    UIScale::refresh();
-    const float ui = UIScale::factor();
-
-    const float w = 360.0f * ui;
-    const float h = 30.0f * ui;
-    const float x = (GameConstants::VIEW_W - w) * 0.5f;
-    const float y = 8.0f * ui;
-
-    renderer->setBlendMode(Renderer::BlendMode::Blend);
-    renderer->setDrawColor(UITheme::Panel);
-    renderer->fillRect(Rectf{x, y, w, h});
-    renderer->setDrawColor(UITheme::Border);
-    renderer->drawRect(Rectf{x, y, w, h});
-
-    char buf[128];
-    if (m_round > 0)
-        std::snprintf(buf, sizeof(buf), "Round %d - %s", m_round, m_turnUnit->getName().c_str());
-    else
-        std::snprintf(buf, sizeof(buf), "%s's Turn", m_turnUnit->getName().c_str());
-
-    const Vec2f textSize = renderer->measureText(m_font, buf);
-    const Vec2f textPos = renderer->alignInRect(Rectf{x, y, w, h}, textSize, HorizontalAlign::Center, VerticalAlign::Top);
-    renderer->renderText(m_font, buf, Vec2f{textPos.x, y + 10.0f * ui}, UITheme::Text, false, false, false);
 }

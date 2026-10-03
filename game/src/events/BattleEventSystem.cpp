@@ -1,5 +1,7 @@
 #include "events/BattleEventSystem.h"
 
+#include <algorithm>
+
 void BattleEventSystem::initialize(const BattleDefinition &definition, Callbacks callbacks)
 {
     m_events = definition.events;
@@ -9,13 +11,22 @@ void BattleEventSystem::initialize(const BattleDefinition &definition, Callbacks
 
 void BattleEventSystem::emit(BattleTriggerType trigger)
 {
-    for (const BattleEvent &ev : m_events)
+    for (std::size_t index = 0; index < m_events.size(); ++index)
     {
+        const BattleEvent &ev = m_events[index];
         if (ev.trigger != trigger)
+            continue;
+        if (ev.minTurn > m_turn)
+            continue;
+        if (ev.once &&
+            std::find(m_firedOnce.begin(), m_firedOnce.end(), index) != m_firedOnce.end())
             continue;
 
         for (const BattleEventAction &action : ev.actions)
             executeAction(action);
+
+        if (ev.once)
+            m_firedOnce.push_back(static_cast<int>(index));
     }
 }
 

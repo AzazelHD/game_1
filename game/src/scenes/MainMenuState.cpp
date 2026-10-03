@@ -14,9 +14,10 @@
 #include "scenes/MainMenuState.h"
 #include "settings/SettingsState.h"
 #include "ui/windows/ButtonMenuWindow.h"
-#include "ui/windows/ConfirmWindow.h"
+#include "ui/ConfirmDialogs.h"
 #include "ui/ActionId.h"
 #include "ui/WindowId.h"
+#include "scenes/IntroState.h"
 #include "scenes/WorldMapState.h"
 #include "systems/PartyContext.h"
 
@@ -74,6 +75,7 @@ void MainMenuState::handleInput()
 
 void MainMenuState::update(float dt)
 {
+
     // This is purely for background visuals, fading animations, or UI transitions.
     if (m_transition.isActive())
     {
@@ -153,11 +155,9 @@ void MainMenuState::processUIEvents()
                 }
                 else if (event.actionId == ActionId::DeleteSave)
                 {
-                    m_pendingDeleteSlotIndex = m_saveListSlotIndexes[static_cast<std::size_t>(idx)];
-                    auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SaveListDeleteConfirm);
-                    confirm->setFont(FontManager::instance().get(FontRole::Body));
-                    confirm->setPrompt("Delete this save file?");
-                    confirm->setButtonLabels("Cancel", "Delete");
+                        m_pendingDeleteSlotIndex = m_saveListSlotIndexes[static_cast<std::size_t>(idx)];
+                        pushDeleteSaveConfirm(m_uiManager);
+
                 }
             }
             continue;
@@ -172,9 +172,30 @@ void MainMenuState::processUIEvents()
         {
         case ActionId::StartGame:
         {
-            PartyContext::instance().ensureInitialized();
-            m_stateMachine.replace(std::make_unique<WorldMapState>(m_stateMachine, m_renderer));
+            PartyContext &ctx = PartyContext::instance();
+            ctx.ensureInitialized();
+            // A New Game must never inherit a previous campaign's gold/roster/
+            // party/inventory — reset the singleton to a fresh state first
+            // (gold persists across New Game was the bug this fixes).
+            ctx.resetForNewGame();
+            m_stateMachine.replace(std::make_unique<IntroState>(m_stateMachine, m_renderer));
             return;
+        }
+        case ActionId::ContinueGame:
+        {
+            // Resume straight into the most recent campaign save — no save
+            // list. Mirrors the load-save path below (loadLatestCampaign is
+            // SaveManager's newest-campaign helper).
+            CampaignSave save;
+            PartyContext &ctx = PartyContext::instance();
+            ctx.ensureInitialized();
+            if (SaveManager::instance().loadLatestCampaign(save) && ctx.applyCampaign(save))
+            {
+                m_stateMachine.replace(std::make_unique<WorldMapState>(m_stateMachine, m_renderer, save.worldNodeId));
+                return;
+            }
+            m_transitioning = false;
+            break;
         }
         case ActionId::LoadGame:
         {
@@ -271,10 +292,17 @@ void MainMenuState::refreshMainMenuItems()
 {
     if (!m_mainMenuWindow)
         return;
-    m_mainMenuWindow->setItems({
-        ButtonMenuWindow::Item{.id = ActionId::StartGame, .label = "Start Game", .enabled = true},
-        ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load Game", .enabled = SaveManager::instance().latestCampaignSlot() >= 0},
-        ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
-        ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
-    });
+
+    // Continue sits at the very top whenever any save exists — being the
+    // first enabled row, FocusGroup lands the cursor on it automatically
+    // (auto-focus for free). It stays grayed out until a campaign save
+    // (battle-save-only states can't be resumed from here).
+    std::vector<ButtonMenuWindow::Item> items;
+    if (SaveManager::instance().hasSave())
+        items.push_back(ButtonMenuWindow::Item{.id = ActionId::ContinueGame, .label = "Continue", .enabled = SaveManager::instance().latestCampaignSlot() >= 0});
+    items.push_back(ButtonMenuWindow::Item{.id = ActionId::StartGame, .label = "New Game", .enabled = true});
+    items.push_back(ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load Game", .enabled = SaveManager::instance().latestCampaignSlot() >= 0});
+    items.push_back(ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true});
+    items.push_back(ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true});
+    m_mainMenuWindow->setItems(std::move(items));
 }

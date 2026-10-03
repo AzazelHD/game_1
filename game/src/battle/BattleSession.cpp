@@ -55,7 +55,14 @@ Unit BattleSession::makeUnit(const UnitSpawn &spawn)
         {
             unit.setResolvedEquipmentLoadout(partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
             unit.growToLevel(rosterUnit->level);
+            unit.importRosterProgression(rosterUnit->skillPoints, rosterUnit->skills);
+            if (!rosterUnit->customName.empty())
+                unit.setDisplayName(rosterUnit->customName);
         }
+    }
+    else if (spawn.level > 1)
+    {
+        unit.growToLevel(spawn.level);
     }
     return unit;
 }
@@ -131,9 +138,25 @@ void BattleSession::applyDamage(Unit &target, const CombatResult &result)
     else
         target.takeDamage(result.damage);
 
-    // Death already flips the unit's state inside takeDamage() — nothing
-    // else to do here. Left as a hook point for wave-mode replacement logic
-    // (BattleState is responsible for calling replaceUnit() if wave mode).
+    // A landed attack wakes a sleeping unit — Sleep only persists against DoT
+    // ticks (Unit::tickStatuses applies damage without breaking sleep).
+    if (result.damage > 0)
+        target.removeStatus(StatusType::Sleep);
+
+    // Single funnel for every point where HP can drop, so a death can never
+    // slip past the result evaluation. Covers player attacks, enemy attacks,
+    // and AoE hits on multiple targets. Idempotent and cheap, so calling it
+    // per-target is fine.
+    checkBattleResult();
+}
+
+void BattleSession::applyKo(Unit &target)
+{
+    // Bypasses applyDamage() on purpose: a KO has no damage value, so it must
+    // not wake a sleeping unit or be reported as a hit for any amount. It still
+    // ends up in the same single result funnel.
+    target.kill();
+    checkBattleResult();
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +183,17 @@ Unit &BattleSession::buildUnit(const UnitSpawn &spawn)
             // unit up to it. (exp is kept for future XP-curve display, but no
             // longer drives levels here.)
             m_units.back().growToLevel(rosterUnit->level);
+            // Copy the roster's learned/equipped skills + unspent points so the
+            // battle unit's Skills menu reflects what was bought on the map and
+            // any mid-battle purchase persists next visit.
+            m_units.back().importRosterProgression(rosterUnit->skillPoints, rosterUnit->skills);
+            if (!rosterUnit->customName.empty())
+                m_units.back().setDisplayName(rosterUnit->customName);
         }
+    }
+    else if (spawn.level > 1)
+    {
+        m_units.back().growToLevel(spawn.level);
     }
     return m_units.back();
 }

@@ -1,0 +1,49 @@
+{
+  "shots": [
+    {
+      "top": [70, 46, 112],
+      "bottom": [10, 8, 24],
+      "duration": 5.5,
+      "lines": [
+        { "speaker": "Narrator", "text": "They say the road east whispers of wars that never truly ended." },
+        { "speaker": "Narrator", "text": "The town where you woke keeps a watch it no longer trusts." }
+      ]
+    },
+    {
+      "top": [52, 50, 108],
+      "bottom": [8, 8, 20],
+      "duration": 5.5,
+      "lines": [
+        { "speaker": "Narrator", "text": "Recruits are thin." },
+        { "speaker": "Narrator", "text": "Yet a company is mustered all the same - six swords and a stubborn hope." }
+      ]
+    },
+    {
+      "top": [102, 44, 80],
+      "bottom": [14, 6, 18],
+      "duration": 5.5,
+      "lines": [
+        { "speaker": "Narrator", "text": "Beyond the treeline, an enemy camp grows stronger by the day." },
+        { "speaker": "Narrator", "text": "Two duties are already yours: hold the watchtower, and break the line when the road opens." }
+      ]
+    },
+    {
+      "top": [48, 40, 96],
+      "bottom": [8, 7, 18],
+      "duration": 5.0,
+      "lines": [
+        { "speaker": "Narrator", "text": "Your first contracts wait on the tavern board." },
+        { "speaker": "Narrator", "text": "Press J on the world map to read the journey so far." }
+      ]
+    },
+    {
+      "top": [64, 40, 86],
+      "bottom": [6, 4, 14],
+      "duration": 4.0,
+      "lines": [
+        { "speaker": "", "text": "THE FRONTIER" },
+        { "speaker": "Narrator", "text": "(This tale is still being written - and can be skipped with Esc.)" }
+      ]
+    }
+  ]
+}

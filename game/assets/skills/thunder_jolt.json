@@ -1,0 +1,16 @@
+{
+  "id": "thunder_jolt",
+  "name": "Thunder Jolt",
+  "description": "A jolt of lightning that stuns the target.",
+  "basePower": 8,
+  "powerPerLevel": 2,
+  "isMagical": true,
+  "element": "lightning",
+  "skillAccuracy": 75,
+  "range": 3,
+  "mpCost": 4,
+  "effectTypes": ["damage"],
+  "statuses": [
+    { "type": "stun", "turns": 1, "chance": 60 }
+  ]
+}

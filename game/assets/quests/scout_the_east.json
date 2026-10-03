@@ -1,0 +1,20 @@
+{
+  "id": "scout_the_east",
+  "title": "Scout the Eastern Reach",
+  "brief": "Travel east and reach the frontier tower.",
+  "description": "A detached patrol was last seen near the eastern tower. Reach the tower to confirm the way is clear.",
+  "isMain": false,
+  "offeredAtTavern": true,
+  "client": "Townsfolk Council",
+  "cost": 10,
+  "objective": {
+    "type": "reach",
+    "nodeId": 0
+  },
+  "reward": {
+    "gold": 40,
+    "xp": 10,
+    "items": []
+  },
+  "unlocks": []
+}

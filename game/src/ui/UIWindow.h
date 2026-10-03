@@ -1,8 +1,10 @@
 #pragma once
 
 #include "ui/UIEvent.h"
+#include "ui/WindowId.h"
 
 #include <functional>
+#include <string>
 
 class Input;
 class Renderer;
@@ -30,6 +32,12 @@ public:
     // of push/pop-ing (and thereby destroying/reconstructing) it every time.
     bool isVisible() const { return m_visible; }
     void setVisible(bool visible) { m_visible = visible; }
+
+    // Opt in at runtime to also hide every window underneath this one. Used by
+    // tutorial tips, which must be the only thing on screen: a unit-detail
+    // window left open from deployment would otherwise render its portrait
+    // behind the tip.
+    void setBlocksRenderBelow(bool blocks) { m_blocksRenderBelow = blocks; }
 
     virtual void handleInput(const Input &input) = 0;
     virtual void update(float dt) = 0;

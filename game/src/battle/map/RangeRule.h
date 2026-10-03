@@ -15,6 +15,13 @@ struct RangeRule
     // -1 = ignore height entirely; 0 = same height only; N = within N levels.
     int heightTolerance = 0;
 
+    // Max absolute height difference allowed between an AoE splash tile and
+    // the CENTER tile. -1 = ignore height on splash tiles entirely; 0 = same
+    // height as the center only; N = within N levels. Lets a mage fireball be
+    // cast onto elevated/low ground while still only scorching tiles of
+    // comparable height (default -1 preserves legacy splash behavior).
+    int splashHeightTolerance = -1;
+
     bool requiresLineOfSight = false;
 
     // When true, each AoE splash tile is individually LOS-checked from

@@ -9,15 +9,16 @@
 #include "data/UnitLoader.h"
 #include "battle/unit/Unit.h"
 #include "battle/unit/UnitProgression.h"
+#include "battle/map/AttackRange.h"
 #include "battle/map/MovementRange.h"
-#include "scenes/MainMenuState.h"
+#include "battle/combat/SkillEffects.h"
 #include "scenes/BattleState.h"
+#include "ui/ConfirmDialogs.h"
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
 #include "ui/UIManager.h"
 #include "ui/WindowId.h"
 #include "ui/windows/ButtonMenuWindow.h"
-#include "ui/windows/ConfirmWindow.h"
 #include "ui/windows/UnitDetailWindow.h"
 #include "systems/PartyContext.h"
 #include "battle/ui/UnitInspectWindow.h"
@@ -46,7 +47,7 @@ ButtonMenuWindow *BattleMenuController::pushButtonMenu(WindowId id,
     std::vector<ButtonMenuWindow::Item> uiItems;
     uiItems.reserve(items.size());
     for (const auto &item : items)
-        uiItems.push_back({.label = item.label, .enabled = item.enabled});
+        uiItems.push_back({.label = item.label, .enabled = item.enabled, .detail = item.detail});
     menu->setItems(std::move(uiItems));
 
     return menu;
@@ -77,6 +78,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
             }
             ctx.humanTurnPhase = BattleState::HumanTurnPhase::MoveTarget;
             m_owner.battleMenu().closeAllMenus();
+            m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Move);
         }});
 
     items.push_back(BattleMenuItem{
@@ -88,13 +90,23 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
             Unit *active = ctx.session.getCurrentUnit();
             if (active)
             {
-                ctx.currentRangeRule = RangeRule{};
-                ctx.selectedSkillId.clear();
-                m_owner.computeAttackRangeTiles();
+                // The Attack button is just a shortcut that selects the shared
+                // basic-attack skill — the same targeting path every other skill
+                // takes. Its reach comes from the unit's atkRange and its height
+                // tolerance from its jump (see SkillData::toRangeRuleFor).
+                auto it = ctx.skillDB.find(kBasicAttackSkillId);
+                if (it != ctx.skillDB.end())
+                {
+                    ctx.currentRangeRule =
+                        it->second.toRangeRuleFor(active->getAtkRange(), active->getJump());
+                    ctx.selectedSkillId = it->first;
+                    m_owner.computeAttackRangeTiles();
+                }
                 ctx.cursor.setPosition(active->getPosition());
             }
             ctx.humanTurnPhase = BattleState::HumanTurnPhase::AttackTarget;
             m_owner.battleMenu().closeAllMenus();
+            m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Attack);
         }});
 
     Unit *active = ctx.session.getCurrentUnit();
@@ -122,6 +134,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
             m_owner.battleMenu().closeAllMenus();
             m_owner.advanceToNextUnit();
             ctx.turnState = BattleState::TurnState::Idle;
+            m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Defend);
         }});
 
     items.push_back(BattleMenuItem{
@@ -130,9 +143,10 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
         .onSelect = [this]()
         {
             auto ctx = m_owner.makeMenuContext();
+            ctx.topBattleText = "Choose facing: Arrows + Accept";
+            ctx.humanTurnPhase = BattleState::HumanTurnPhase::ChooseFacing;
             m_owner.battleMenu().closeAllMenus();
-            m_owner.advanceToNextUnit();
-            ctx.turnState = BattleState::TurnState::Idle;
+            m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Wait);
         }});
 
     m_actionMenuItems = std::move(items);
@@ -151,8 +165,14 @@ void BattleMenuController::showSkillMenu()
     if (!active)
         return;
 
+    // Remember selection only for the same unit (a different caster's list
+    // should start fresh on its first skill).
+    if (active != m_lastSkillUnit)
+        m_lastSkillIndex = -1;
+
     m_skillMenuItems.clear();
 
+    std::size_t menuIndex = 0;
     for (const std::string &skillId : active->getSkillIds())
     {
         auto it = ctx.skillDB.find(skillId);
@@ -160,39 +180,58 @@ void BattleMenuController::showSkillMenu()
             continue;
 
         const SkillData &skill = it->second;
-        std::string label;
-        const int cooldownLeft = active->skillCooldownLeft(skillId);
-        if (cooldownLeft > 0)
-            label = skill.name + " [CD " + std::to_string(cooldownLeft) + "]";
-        else
-            label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
-        bool canUse = (active->getCurrentMp() >= skill.mpCost) && (cooldownLeft <= 0);
+        // The basic attack has its own action-menu button and belongs to every
+        // unit, so it never appears in a unit's skill list.
+        if (skill.isBasicAttack)
+            continue;
+
+        std::string label = skill.name + " (MP:" + std::to_string(skill.mpCost) + ")";
+        bool canUse = active->getCurrentMp() >= skill.mpCost;
 
         m_skillMenuItems.push_back(BattleMenuItem{
             .label = label,
             .enabled = canUse,
-            .onSelect = [this, skillId]()
+            .onSelect = [this, skillId, menuIndex, active]()
             {
+                m_lastSkillUnit = active;
+                m_lastSkillIndex = static_cast<int>(menuIndex);
                 auto ctx = m_owner.makeMenuContext();
                 auto it = ctx.skillDB.find(skillId);
                 if (it != ctx.skillDB.end())
                 {
-                    ctx.currentRangeRule = it->second.toRangeRule();
+                    if (Unit *active = ctx.session.getCurrentUnit())
+                        ctx.currentRangeRule =
+                            it->second.toRangeRuleFor(active->getAtkRange(), active->getJump());
                     ctx.selectedSkillId = skillId;
                     m_owner.computeAttackRangeTiles();
                 }
                 if (Unit *active = ctx.session.getCurrentUnit())
                     ctx.cursor.setPosition(active->getPosition());
                 ctx.humanTurnPhase = BattleState::HumanTurnPhase::AttackTarget;
+                ctx.topBattleText.clear();
+                m_skillDetailVisible = false;
                 ctx.uiManager.popById(WindowId::BattleSkillMenu);
                 m_owner.battleMenu().closeAllMenus();
-            }});
+            },
+            // Revealed with Details (Tab) on the highlighted row. The riders
+            // matter before you commit, and there is nowhere else for them:
+            // the damage preview only shows damage and accuracy.
+            .detail = skill_effects::describeSkillDetail(skill)});
+        ++menuIndex;
     }
+
+    // Any previously shown description belonged to the old list, and the menu
+    // is about to reopen on a different selection.
+    m_skillDetailVisible = false;
 
     ButtonMenuConfig config;
     config.textAlign = ButtonMenuWindow::TextAlign::Left;
     config.anchorBottomRight = true;
-    pushButtonMenu(WindowId::BattleSkillMenu, config, m_skillMenuItems);
+    ButtonMenuWindow *menu = pushButtonMenu(WindowId::BattleSkillMenu, config, m_skillMenuItems);
+    menu->setInitialSelectedIndex(m_lastSkillIndex);
+    if (menu->hasDetails())
+        menu->setHintLine("Tab: Details");
+    m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Skill);
 }
 
 void BattleMenuController::showSystemMenu()
@@ -209,10 +248,7 @@ void BattleMenuController::showSystemMenu()
             .onSelect = [this]()
             {
                 auto ctx = m_owner.makeMenuContext();
-                ctx.uiManager.popById(WindowId::BattleDeploymentConfirm);
-                auto *confirm = ctx.uiManager.push<ConfirmWindow>(WindowId::BattleDeploymentConfirm);
-                confirm->setFont(FontManager::instance().get(FontRole::Body));
-                confirm->setPrompt("Start Battle?");
+                pushStartBattleConfirm(ctx.uiManager);
             }};
     }
     else
@@ -229,8 +265,12 @@ void BattleMenuController::showSystemMenu()
         .enabled = true,
         .onSelect = [this]()
         {
-            auto ctx = m_owner.makeMenuContext();
-            ctx.sm.replace(std::make_unique<MainMenuState>(ctx.sm, ctx.renderer));
+            // Abandoning the battle counts as a defeat: show the defeat
+            // banner, then the normal end-of-battle flow returns the player
+            // to the world map at the node they entered from (never the
+            // title screen). In a tutorial this also escapes the retry-on-
+            // defeat loop (see BattleState::quitFromSystemMenu).
+            m_owner.quitFromSystemMenu();
         }};
 
     m_systemMenuItems = {std::move(firstItem), std::move(quitItem)};
@@ -396,11 +436,54 @@ bool BattleMenuController::handleUIEvent(const UIEvent &event, Unit *active)
         return true;
     }
 
+    // Tab (Details) toggles the highlighted skill's description in the top
+    // battle text. Both the key press and a row move arrive as Details events:
+    // the press toggles, a row change re-targets an already-visible
+    // description. Without this the top text keeps showing whatever skill was
+    // highlighted when Tab was first pressed.
+    if (event.windowId == WindowId::BattleSkillMenu && event.actionId == ActionId::Details &&
+        (event.type == UIEventType::ActionSelected || event.type == UIEventType::ActionChanged))
+    {
+        const int index = event.index;
+        if (index < 0 || index >= static_cast<int>(m_skillMenuItems.size()))
+            return true;
+
+        const std::string &detail = m_skillMenuItems[index].detail;
+        if (detail.empty())
+            return true;
+
+        if (event.type == UIEventType::ActionSelected)
+        {
+            // Tab again on the same skill dismisses it.
+            if (ctx.topBattleText == detail)
+            {
+                ctx.topBattleText.clear();
+                m_skillDetailVisible = false;
+            }
+            else
+            {
+                ctx.topBattleText = detail;
+                m_skillDetailVisible = true;
+            }
+            Input::instance().consumeKey(KeyCode::Details);
+        }
+        else if (m_skillDetailVisible)
+        {
+            ctx.topBattleText = detail;
+        }
+        return true;
+    }
+
     if (event.windowId == WindowId::BattleSkillMenu && event.type == UIEventType::ActionCanceled)
     {
-        // Pop just this level — battle.actionmenu underneath was never
-        // touched, so it's revealed exactly as it was.
+        // The skill submenu was opened on top of a popped action menu (the
+        // Skills item's handler pops BattleActionMenu, then shows this), so
+        // popping just this level would strand phase=ActionMenu with nothing
+        // open — the "ESC during skill selection" dead state. Re-open the
+        // battle action menu underneath instead.
         ctx.uiManager.popById(WindowId::BattleSkillMenu);
+        ctx.selectedSkillId.clear();
+        m_owner.openBattleMenu(m_owner.canActiveUnitMove(), active && !active->hasActed(), true, KeyCode::Back);
         return true;
     }
 
@@ -449,7 +532,6 @@ void BattleMenuController::closeAllMenus()
     auto ctx = m_owner.makeMenuContext();
     ctx.uiManager.popById(WindowId::BattleActionMenu);
     ctx.uiManager.popById(WindowId::BattleSystemMenu);
-    ctx.uiManager.popById(WindowId::BattleActionConfirm);
     ctx.uiManager.popById(WindowId::BattleInspect);
     m_inspectWindow = nullptr;
 }

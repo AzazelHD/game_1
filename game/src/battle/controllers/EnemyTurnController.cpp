@@ -21,8 +21,7 @@ EnemyDecision EnemyTurnController::chooseAction(BattleSession &session, Unit *en
 
 EnemyTurnResult EnemyTurnController::finishAction(BattleSession &session, int playersAliveBefore)
 {
-    session.checkResult();
-
+    // BattleSession::applyDamage() already evaluated the result after the hit.
     int playersAliveAfter = 0;
     for (const Unit &u : session.getUnits())
     {

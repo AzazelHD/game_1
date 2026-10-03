@@ -38,6 +38,7 @@ std::vector<UnitSpawn> BattleParticipantsBuilder::build(const BattleDefinition &
             .unitFilePath = enemy.templatePath,
             .startPos = pos,
             .team = enemy.team,
+            .level = enemy.level,
         });
     }
 

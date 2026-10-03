@@ -42,8 +42,9 @@ public:
     // of the sequence) and starts the hit-by-hit playback.
     void beginResolution(Unit *active, const SkillData *skill);
 
-    // Advances the hit-by-hit playback by one target; calls the internal
-    // finish step once all targets are processed.
+    // Advances the hit-by-hit playback by one target. Each target is played in
+    // two phases - see the comment on PendingHitResult::visualPlayed - so this
+    // may be called several times for the same target.
     void processNextResult();
 
     // Abandons the current attack (e.g. player backs out of AttackConfirm/
@@ -56,12 +57,38 @@ public:
     [[nodiscard]] const std::string &pendingSkillId() const { return m_pendingSkillId; }
 
 private:
+    // One target's rolled outcome. `result` is fixed when the resolution begins
+    // so the whole sequence is deterministic.
     struct PendingHitResult
     {
         Unit *target = nullptr;
         CombatResult result;
         HitContext hitCtx;
+
+        // A skill's `visualOnHit` makes each target a two-phase playback:
+        //
+        //   phase 1 - play the skill's visual on the target and park the turn
+        //             timer for its duration. The index is NOT advanced, so the
+        //             target stays on screen, alive and undamaged while the
+        //             effect plays.
+        //   phase 2 - the timer fires processNextResult() again; visualPlayed is
+        //             already true, so this call falls straight through to the
+        //             consequence (damage, KO, heal, status).
+        //
+        // This is what lets any future skill animation gate its own outcome, and
+        // it needs no per-skill special-casing.
+        bool visualPlayed = false;
     };
+
+    // Phase 2 pieces, one per kind of consequence. Each builds the resolution
+    // context itself (a cheap aggregate of references), which keeps this header
+    // free of BattleState's nested context type.
+    void applySupportiveOutcome(const PendingHitResult &entry, const SkillData &skill);
+    void applyOffensiveOutcome(const PendingHitResult &entry, const SkillData *skill);
+    void applyStatusRiders(const PendingHitResult &entry, const SkillData &skill);
+
+    // Hands playback to the next target after the standard beat.
+    void advanceToNextTarget();
 
     void finishResolution();
 

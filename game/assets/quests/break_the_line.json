@@ -1,0 +1,18 @@
+{
+  "id": "break_the_line",
+  "title": "Break the Enemy Line",
+  "brief": "Win the decisive battle at the main camp and break the enemy line.",
+  "description": "The enemy main force has entrenched at the camp. A victory here opens the final approaches to the frontier.",
+  "isMain": true,
+  "client": "Marshal Iveta",
+  "objective": {
+    "type": "victory",
+    "nodeId": 6
+  },
+  "reward": {
+    "gold": 150,
+    "xp": 40,
+    "items": []
+  },
+  "unlocks": []
+}

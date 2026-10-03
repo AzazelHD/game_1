@@ -14,6 +14,7 @@
 #include "ui/UIScale.h"
 #include "ui/UITheme.h"
 #include "ui/UIUtils.h"
+#include "ui/ConfirmDialogs.h"
 #include "ui/WindowId.h"
 #include "ui/windows/ConfirmWindow.h"
 #include "settings/ui/SettingsRowWindow.h"
@@ -203,8 +204,5 @@ void GraphicsSettings::discardGraphicsChanges()
 void GraphicsSettings::showExitConfirm()
 {
     m_showExitConfirm = true;
-    auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::SettingsExitConfirm);
-    confirm->setFont(FontManager::instance().get(FontRole::Heading));
-    confirm->setPrompt("You have unsaved graphics changes.\nSave them before leaving?");
-    confirm->setButtonLabels("Discard", "Save");
+    pushSettingsExitConfirm(m_uiManager, "You have unsaved graphics changes.\nSave them before leaving?");
 }

@@ -16,7 +16,6 @@
 namespace
 {
     constexpr float kMenuW = 260.0f;
-    constexpr float kMenuH = 224.0f;
     constexpr float kItemH = 24.0f;
     constexpr float kItemSpacing = 6.0f;
     constexpr float kPad = 12.0f;
@@ -75,22 +74,72 @@ void ButtonMenuWindow::setItems(std::vector<Item> items)
     m_focus.resetFromPointers(std::move(focusableItems));
 }
 
+void ButtonMenuWindow::setInitialSelectedIndex(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_items.size()) || !m_items[index].enabled)
+        return;
+
+    int enabledBefore = 0;
+    for (int i = 0; i < index; ++i)
+        if (m_items[i].enabled)
+            ++enabledBefore;
+
+    for (int i = 0; i < enabledBefore; ++i)
+        m_focus.focusNext();
+    keepSelectionVisible();
+}
+
 void ButtonMenuWindow::handleInput(const Input &input)
 {
     if (m_items.empty())
         return;
 
-    if (input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::Left, false))
+    const bool upDown = input.isKeyDown(KeyCode::Up) || input.isKeyDown(KeyCode::Left) ||
+                        input.isKeyDown(KeyCode::W) || input.isKeyDown(KeyCode::A);
+    const bool downDown = input.isKeyDown(KeyCode::Down) || input.isKeyDown(KeyCode::Right) ||
+                          input.isKeyDown(KeyCode::S) || input.isKeyDown(KeyCode::D);
+
+    const bool upFresh = input.isKeyPressed(KeyCode::Up, false) || input.isKeyPressed(KeyCode::Left, false) ||
+                         input.isKeyPressed(KeyCode::W, false) || input.isKeyPressed(KeyCode::A, false);
+    const bool downFresh = input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::Right, false) ||
+                           input.isKeyPressed(KeyCode::S, false) || input.isKeyPressed(KeyCode::D, false);
+
+    const bool upRepeat = m_upRepeat.tick(m_lastDt, upDown);
+    const bool downRepeat = m_downRepeat.tick(m_lastDt, downDown);
+
+    if (upFresh)
     {
-        m_focus.focusPrevious();
+        const int before = m_focus.getSelectedIndex();
+        m_focus.focusPrevious(); // FocusGroup wraps at the top
         keepSelectionVisible();
+        notifyRowChanged(before);
         return;
     }
 
-    if (input.isKeyPressed(KeyCode::Down, false) || input.isKeyPressed(KeyCode::Right, false))
+    if (downFresh)
+    {
+        const int before = m_focus.getSelectedIndex();
+        m_focus.focusNext(); // FocusGroup wraps at the bottom
+        keepSelectionVisible();
+        notifyRowChanged(before);
+        return;
+    }
+
+    const int selected = m_focus.getSelectedIndex();
+
+    if (upRepeat && canClampStep(selected, -1))
+    {
+        m_focus.focusPrevious();
+        keepSelectionVisible();
+        notifyRowChanged(selected);
+        return;
+    }
+
+    if (downRepeat && canClampStep(selected, +1))
     {
         m_focus.focusNext();
         keepSelectionVisible();
+        notifyRowChanged(selected);
         return;
     }
 
@@ -109,10 +158,81 @@ void ButtonMenuWindow::handleInput(const Input &input)
         return;
     }
 
+    // Details (Tab) on a row that has some: hand the owner the row index and
+    // let it decide how to present the text.
+    if (input.isKeyPressed(KeyCode::Details, false) && hasDetails())
+    {
+        emit(UIEvent{.type = UIEventType::ActionSelected,
+                     .windowId = id(),
+                     .actionId = ActionId::Details,
+                     .index = m_focus.getSelectedIndex()});
+        return;
+    }
+
     if (input.isKeyPressed(KeyCode::Accept, false))
     {
         (void)m_focus.activateSelected();
     }
+}
+
+bool ButtonMenuWindow::canClampStep(int selected, int direction) const
+{
+    if (selected < 0 || selected >= static_cast<int>(m_items.size()))
+        return false;
+
+    // While a key is HELD (repeat), we must stop at the top/bottom instead of
+    // wrapping. canClampStep is true when a focusable item still exists beyond
+    // the current selection in that direction.
+    for (int i = selected + direction; i >= 0 && i < static_cast<int>(m_items.size()); i += direction)
+    {
+        if (m_items[i].enabled)
+            return true;
+    }
+    return false;
+}
+
+void ButtonMenuWindow::notifyRowChanged(int previousIndex)
+{
+    if (previousIndex == m_focus.getSelectedIndex())
+        return;
+    emit(UIEvent{.type = UIEventType::ActionChanged,
+                 .windowId = id(),
+                 .actionId = ActionId::Details,
+                 .index = m_focus.getSelectedIndex()});
+}
+
+bool ButtonMenuWindow::hasDetails() const
+{
+    return std::any_of(m_items.begin(), m_items.end(),
+                       [](const Item &item) { return !item.detail.empty(); });
+}
+
+std::string ButtonMenuWindow::detailAt(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(m_items.size()))
+        return {};
+    return m_items[static_cast<std::size_t>(index)].detail;
+}
+
+ButtonMenuWindow::MenuGeometry ButtonMenuWindow::computeGeometry(float ui, int count, float itemH) const
+{
+    const float itemSpacing = kItemSpacing * ui;
+    const float pad = kPad * ui;
+    const float contentH = count > 0
+                               ? (static_cast<float>(count) * (itemH + itemSpacing) - itemSpacing + kBottomPadExtra * ui)
+                               : itemH;
+    const float naturalH = 2.0f * pad + contentH;
+
+    // Non-scrollable menus grow until the content just fits (small breathing
+    // margin); scrollable ones stay bounded and roll the extra rows instead.
+    const float growCap = GameConstants::VIEW_H - 8.0f * ui;
+    const float scrollCap = GameConstants::VIEW_H - 40.0f * ui;
+    const bool isScrollMenu = m_scrollable || naturalH > growCap;
+    const float menuH = isScrollMenu ? std::min(naturalH, scrollCap) : naturalH;
+    const int visibleCount = isScrollMenu
+                                 ? std::max(1, static_cast<int>((menuH - 2.0f * pad + itemSpacing) / (itemH + itemSpacing)))
+                                 : count;
+    return {menuH, visibleCount, isScrollMenu};
 }
 
 void ButtonMenuWindow::keepSelectionVisible()
@@ -121,23 +241,34 @@ void ButtonMenuWindow::keepSelectionVisible()
     if (count <= 0)
         return;
 
-    const float contentH = count > 0
-                               ? (static_cast<float>(count) * (kItemH + kItemSpacing) - kItemSpacing + kBottomPadExtra)
-                               : kItemH;
-    const float menuH = std::clamp(2.0f * kPad + contentH, 64.0f, kMenuH);
-    const int visibleCount = std::max(1, static_cast<int>((menuH - 2.0f * kPad + kItemSpacing) / (kItemH + kItemSpacing)));
+    UIScale::refresh();
+    const float ui = UIScale::factor();
+    const int visible = std::max(1, count);
+    const float itemH = std::max(kItemH * ui, m_lastItemH);
+    const MenuGeometry geo = computeGeometry(ui, visible, itemH);
+    if (!geo.isScrollMenu)
+    {
+        m_scroll = 0;
+        return;
+    }
+
     const int selected = m_focus.getSelectedIndex();
     if (selected < 0)
         return;
 
     if (selected < m_scroll)
         m_scroll = selected;
-    if (selected >= m_scroll + visibleCount)
-        m_scroll = selected - visibleCount + 1;
+    if (selected >= m_scroll + std::max(1, geo.visibleCount))
+        m_scroll = selected - std::max(1, geo.visibleCount) + 1;
 }
 
-void ButtonMenuWindow::update(float /*dt*/)
+void ButtonMenuWindow::update(float dt)
 {
+    // Cache dt so handleInput (which the engine dispatches *before* update
+    // on the same frame) can drive the hold-to-repeat trackers.
+    m_lastDt = dt;
+    m_upRepeat.start(0.35f, 0.09f);
+    m_downRepeat.start(0.35f, 0.09f);
 }
 
 void ButtonMenuWindow::render(Renderer *renderer) const
@@ -173,14 +304,11 @@ void ButtonMenuWindow::render(Renderer *renderer) const
                                  maxTextW + 2.0f * (markerW + markerGap) + 2.0f * pad + deleteGutter);
 
     const int count = static_cast<int>(m_items.size());
-    const float contentH = count > 0
-                               ? (static_cast<float>(count) * (itemH + itemSpacing) - itemSpacing + kBottomPadExtra * ui)
-                               : itemH;
-    // Grow to fit content, but never taller than the screen.
-    const float menuH = std::min(2.0f * pad + contentH, GameConstants::VIEW_H - 40.0f * ui);
-    const int visibleCount = std::max(1, static_cast<int>((menuH - 2.0f * pad + itemSpacing) / (itemH + itemSpacing)));
-    const int start = std::clamp(m_scroll, 0, std::max(0, count - 1));
-    const int end = std::min(count, start + visibleCount);
+    m_lastItemH = itemH;
+    const MenuGeometry geo = computeGeometry(ui, count, itemH);
+    const float menuH = geo.menuH;
+    const int start = geo.isScrollMenu ? std::clamp(m_scroll, 0, std::max(0, count - 1)) : 0;
+    const int end = std::min(count, start + std::max(1, geo.visibleCount));
 
     const float panelX = m_centerX             ? (GameConstants::VIEW_W - menuW) * 0.5f
                          : m_useCustomPanelPos ? m_panelPos.x
@@ -289,5 +417,13 @@ void ButtonMenuWindow::render(Renderer *renderer) const
         const Rectf hintRect{panelX, panelY + menuH + kHintGap * ui, menuW, kHintH * ui};
         const Vec2f hintPos = renderer->alignInRect(hintRect, hintSize, HorizontalAlign::Center, VerticalAlign::Top);
         renderer->renderText(m_font, m_deleteHint.c_str(), hintPos, kHintColor, false, false, false);
+    }
+
+    if (!m_hintLine.empty())
+    {
+        const Vec2f hintSize = renderer->measureText(m_font, m_hintLine);
+        const Rectf hintRect{panelX, panelY + menuH + kHintGap * ui, menuW, kHintH * ui};
+        const Vec2f hintPos = renderer->alignInRect(hintRect, hintSize, HorizontalAlign::Center, VerticalAlign::Top);
+        renderer->renderText(m_font, m_hintLine.c_str(), hintPos, kHintColor, false, false, false);
     }
 }

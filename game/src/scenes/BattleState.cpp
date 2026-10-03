@@ -44,10 +44,12 @@
 #include "ui/windows/DialogWindow.h"
 #include "data/SkillLoader.h"
 #include "data/UnitLoader.h"
+#include "engine/ui/TextBlock.h"
 
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <vector>
 
 // Sprite sheet dimensions for 0.5H_IsoTiles.png.
 //   Sprite size  : 48 × 36 px
@@ -58,6 +60,20 @@
 namespace
 {
     constexpr float SPRITE_H = 36.0f;
+
+    // Invalid-target feedback: a deliberately faint, quick hint that the press
+    // did not work — enough to register, not enough to read as damage.
+    constexpr float INVALID_FLASH_DURATION = 0.18f;
+    constexpr float INVALID_FLASH_SHAKE = 1.5f;
+    // Peak opacity right at the screen border. Kept low so the flash is a soft
+    // edge glow rather than a red wash.
+    constexpr float INVALID_FLASH_ALPHA = 0.30f;
+    // Border thickness as a fraction of the screen's short edge.
+    constexpr float INVALID_FLASH_BAND = 0.05f;
+    // Strips per border. SDL only interpolates linearly between vertices, so a
+    // squared falloff needs a few levels to bend through rather than one ramp.
+    constexpr int INVALID_FLASH_STRIPS = 3;
+    constexpr Color INVALID_FLASH_COLOR = {220, 60, 60, 255};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +104,27 @@ void BattleState::onEnter()
     m_floatingText.clear();
     m_pendingRewardXp = 0;
     m_rewardXpAwarded = false;
+    m_rewardGold = 0;
+    m_rewardXpEach = 0;
+    m_rewardDropNames.clear();
+    m_rewardDropCounts.clear();
+    m_rewardLevelUps.clear();
     m_flowPhase = BattleFlowPhase::Deployment;
+    m_battleTutorialPending = true;
+    m_battleEndPending = false;
+    m_battleEndPendingWin = false;
+    m_battleEndFading = false;
+    m_battleLeaveTutorialRetry = false;
+    m_battleLeaveWin = false;
+    m_tutorialQuitRequested = false;
+    m_tutorialDeployTipShown = false;
+    m_tipActionMenuShown = false;
+    m_tipMoveShown = false;
+    m_tipAttackShown = false;
+    m_tipDefendShown = false;
+    m_tipWaitShown = false;
+    m_tipSkillShown = false;
+    m_openActionMenuAfterTip = false;
     m_showDefeatOverlay = false;
     m_showVictoryOverlay = false;
     m_pendingResolution = PendingResolution::None;
@@ -137,6 +173,13 @@ void BattleState::onEnter()
     m_tilesPerRow = loaded.tilesPerRow;
     m_spriteH = loaded.spriteH;
 
+    // Built-in combat VFX (the skull today, and whatever the library grows
+    // next). Loaded once here (the animation system only borrows the pointers)
+    // and released in onExit(). Skills reference these by id from their
+    // `visualOnHit`, so this is the only place combat animations get wired up.
+    if (m_renderer)
+        m_combatVfx.load(*m_renderer, m_combatAnimations);
+
     Vec2f origin = loaded.mapOrigin;
 
     m_camera.setTileSize(m_mapData.tileWidth, m_mapData.tileHeight);
@@ -159,6 +202,9 @@ void BattleState::onEnter()
     m_debugRenderer->setEnabled(true);
 
     // ── 8. Load skill database ─────────────────────────────────────────────
+    // The basic attack is seeded in code first so the "Attack" button always
+    // has a real skill to select; a basic_attack.json, if present, overrides it.
+    m_skillDB[SkillData::makeBasicAttack().id] = SkillData::makeBasicAttack();
     try
     {
         auto skills = SkillLoader::loadAll("assets/skills");
@@ -199,6 +245,13 @@ void BattleState::onEnter()
                                  { startBattleEnd(win); },
                              });
 
+    // The opening tutorial duel skips deployment: the party is placed for the
+    // player and combat starts immediately, so the facing picker (and its
+    // repurposed Esc) is never shown before facing has been taught. Real
+    // battles still use the full deployment phase.
+    if (m_request.tutorial)
+        m_deploymentPhase.autoDeployForTutorial();
+
     // ── 9. Start fade‑in transition ──
     m_transition.start({
         .transition = ScreenTransitions::FadeIn,
@@ -209,8 +262,22 @@ void BattleState::onEnter()
 
 void BattleState::openBattleMenu(bool canMove, bool canAttack, bool canWait, KeyCode trigger)
 {
-    m_battleMenu.showBattleMenu(canMove, canAttack, canWait);
     Input::instance().consumeKey(trigger);
+
+    // Tutorial duels teach the action menu *before* it appears: the tip is a
+    // blocking dialog, so hold the menu back and let processUIEvents() open it
+    // once the tip is dismissed. Otherwise the menu would sit visible behind
+    // the tip and the player would be reading the two together.
+    if (maybeShowTutorialTip(TutorialTip::ActionMenu))
+    {
+        m_openActionMenuAfterTip = true;
+        m_tipMenuCanMove = canMove;
+        m_tipMenuCanAttack = canAttack;
+        m_tipMenuCanWait = canWait;
+        return;
+    }
+
+    m_battleMenu.showBattleMenu(canMove, canAttack, canWait);
 }
 
 void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::function<void()> onComplete)
@@ -234,6 +301,14 @@ void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::funct
     unit->spendMovePoints(pathCost);
     m_canUndoLastMove = true;
     m_eventSystem.emit(BattleTriggerType::OnTileEnter);
+
+    // Face the direction of travel from the last committed path segment.
+    if (result.path.size() >= 2)
+    {
+        const Vec2i prev = result.path[result.path.size() - 2];
+        const Vec2i last = result.path.back();
+        unit->setFacing(isoDirectionForTileDelta(last - prev));
+    }
 
     m_humanTurnPhase = HumanTurnPhase::ActionMenu;
 
@@ -275,6 +350,7 @@ BattleState::HumanTurnContext BattleState::makeHumanTurnContext()
         .pendingAttack = m_attackResolution.pendingAttack(),
         .pendingSkillId = m_attackResolution.pendingSkillId(),
         .uiManager = m_uiManager,
+        .turnState = m_turnState,
     };
 }
 
@@ -353,6 +429,7 @@ BattleState::MenuContext BattleState::makeMenuContext()
         .deploymentPhase = m_deploymentPhase,
         .sm = m_sm,
         .renderer = m_renderer,
+        .topBattleText = m_topBattleText,
     };
 }
 
@@ -373,6 +450,23 @@ void BattleState::processUIEvents(Unit *active)
         {
             m_dialogueController.notifyDialogFinished();
             m_uiManager.popById(WindowId::BattleDialog);
+
+            // The Accept/Back press that advanced the dialog past its last beat
+            // is still "live" for the rest of this frame. Whatever the dialog
+            // was covering can read that same edge — most visibly the Wait
+            // tip, which opens on top of ChooseFacing: dismissing the tip would
+            // otherwise also confirm the facing the tip just told us to choose.
+            // Same reasoning as consuming Accept after a menu item fires.
+            Input::instance().consumeKey(KeyCode::Accept);
+            Input::instance().consumeKey(KeyCode::Back);
+
+            // The action menu was held back so the tip could explain it first
+            // (see openBattleMenu); now that the tip is gone, show it.
+            if (m_openActionMenuAfterTip)
+            {
+                m_openActionMenuAfterTip = false;
+                m_battleMenu.showBattleMenu(m_tipMenuCanMove, m_tipMenuCanAttack, m_tipMenuCanWait);
+            }
             continue;
         }
 
@@ -381,53 +475,6 @@ void BattleState::processUIEvents(Unit *active)
 
         if (m_battleMenu.handleUIEvent(event, active))
             continue;
-
-        if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigatePrevious)
-        {
-            m_attackResolution.cycleFocus(-1);
-            m_attackResolution.updatePreview(active);
-            if (Unit *focus = m_attackResolution.pendingAttack().focusedTarget())
-                m_cursor.setPosition(focus->getPosition());
-            continue;
-        }
-
-        if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::NavigateNext)
-        {
-            m_attackResolution.cycleFocus(1);
-            m_attackResolution.updatePreview(active);
-            if (Unit *focus = m_attackResolution.pendingAttack().focusedTarget())
-                m_cursor.setPosition(focus->getPosition());
-            continue;
-        }
-
-        if (event.windowId == WindowId::BattleActionConfirm && event.type == UIEventType::ConfirmResult)
-        {
-            m_uiManager.popById(WindowId::BattleActionConfirm);
-
-            if (!event.confirmed)
-            {
-                m_attackResolution.cancel();
-                continue;
-            }
-
-            const SkillData *skill = nullptr;
-            if (!m_attackResolution.pendingSkillId().empty())
-            {
-                auto it = m_skillDB.find(m_attackResolution.pendingSkillId());
-                if (it != m_skillDB.end())
-                    skill = &it->second;
-            }
-
-            // TODO: display skill animation
-            m_pendingActionLabel = skill ? skill->name : "Attack";
-            m_topBattleText = m_pendingActionLabel;
-            m_pendingActor = active;
-            m_pendingTarget = m_attackResolution.pendingAttack().focusedTarget();
-            m_pendingResolution = PendingResolution::PlayerConfirmedAttack;
-            m_turnTimer = 0.5f;
-            m_turnState = TurnState::WaitingForAnimation;
-            continue;
-        }
 
         if (event.type == UIEventType::ActionCanceled)
         {
@@ -445,6 +492,108 @@ void BattleState::processUIEvents(Unit *active)
 void BattleState::preparePendingAttack(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill)
 {
     m_attackResolution.prepare(active, targetPos, directTarget, skill);
+}
+
+void BattleState::flashInvalidTarget()
+{
+    m_invalidFlashTimer = INVALID_FLASH_DURATION;
+}
+
+void BattleState::maybeShowBattleControlsTutorial()
+{
+    PartyContext &ctx = PartyContext::instance();
+    if (ctx.battleControlsTutorialShown())
+        return;
+    if (m_playerControlMode != PlayerControlMode::Human)
+        return;
+
+    ctx.markBattleControlsTutorialShown();
+
+    // Tutorial duels don't dump a static block of controls at the player —
+    // they teach contextually via maybeShowTutorialTip() as the player acts.
+    if (m_request.tutorial)
+    {
+        maybeShowTutorialTip(TutorialTip::Welcome);
+        return;
+    }
+
+    std::vector<DialogWindow::Line> lines;
+    lines.push_back(DialogWindow::Line{.speaker = "Controls", .text = "Move the cursor: WASD / Arrow keys.  Open the action menu for the active unit: Accept (Enter / Space)."});
+    lines.push_back(DialogWindow::Line{.speaker = "Controls", .text = "Menu options: Move, Attack, Skills, Defend, Wait.  Confirm choices: Accept.  Cancel / back out: Esc."});
+    lines.push_back(DialogWindow::Line{.speaker = "Controls", .text = "Inspect any unit on the field with Details (Tab).  Defend or Wait ends your turn."});
+
+    auto *dialog = m_uiManager.push<DialogWindow>(WindowId::BattleDialog);
+    dialog->setFont(FontManager::instance().get(FontRole::Body));
+    dialog->start(std::move(lines));
+}
+
+bool BattleState::maybeShowTutorialTip(TutorialTip tip)
+{
+    if (!m_request.tutorial)
+        return false;
+
+    const char *text = nullptr;
+    switch (tip)
+    {
+    case TutorialTip::Deploy:
+        if (m_tutorialDeployTipShown)
+            return false;
+        m_tutorialDeployTipShown = true;
+        text = "Deployment — place your unit on a highlighted tile, then press Esc and choose Start Battle.";
+        break;
+    case TutorialTip::Welcome:
+        text = "Follow the tips — they appear as you act. Dismiss each one with Accept (Enter / Space).";
+        break;
+    case TutorialTip::ActionMenu:
+        if (m_tipActionMenuShown)
+            return false;
+        m_tipActionMenuShown = true;
+        text = "Your unit's turn. Pick one: Move, Attack, Skills, Defend, Wait. Accept confirms, Esc backs out.";
+        break;
+    case TutorialTip::Move:
+        if (m_tipMoveShown)
+            return false;
+        m_tipMoveShown = true;
+        text = "Move — any highlighted tile is in range. Accept walks there; opening the menu undoes a move.";
+        break;
+    case TutorialTip::Attack:
+        if (m_tipAttackShown)
+            return false;
+        m_tipAttackShown = true;
+        text = "Attack — the highlighted area is your reach. Advance onto an enemy and confirm the strike.";
+        break;
+    case TutorialTip::Defend:
+        if (m_tipDefendShown)
+            return false;
+        m_tipDefendShown = true;
+        text = "Defend — your unit hunkers down and takes far less damage until its next turn.";
+        break;
+    case TutorialTip::Wait:
+        if (m_tipWaitShown)
+            return false;
+        m_tipWaitShown = true;
+        text = "Wait — end your turn. Choose a facing with the arrows, then confirm with Accept.";
+        break;
+    case TutorialTip::Skill:
+        if (m_tipSkillShown)
+            return false;
+        m_tipSkillShown = true;
+        text = "Skills — special moves that cost MP. Pick one, aim like an attack, and confirm.";
+        break;
+    }
+
+    if (!text)
+        return false;
+
+    m_uiManager.popById(WindowId::BattleDialog);
+    auto *dialog = m_uiManager.push<DialogWindow>(WindowId::BattleDialog);
+    dialog->setFont(FontManager::instance().get(FontRole::Body));
+    // A tutorial tip is the only thing on screen: nothing underneath it renders,
+    // so a unit-detail window still open from deployment can't show a portrait
+    // behind the text.
+    dialog->setBlockRenderBelow(true);
+    dialog->start({DialogWindow::Line{.speaker = "Tutorial", .text = text}});
+    return true;
 }
 
 void BattleState::startStoryDialogue(std::vector<DialogueBeat> beats, std::function<void()> onComplete)
@@ -507,6 +656,8 @@ void BattleState::onExit()
 
     delete m_tileset;
     m_tileset = nullptr;
+    m_combatAnimations.clear();
+    m_combatVfx.unload();
 
     m_battleMap.clear();
 }
@@ -521,21 +672,110 @@ void BattleState::handleInput()
 
     if (m_showDefeatOverlay || m_showVictoryOverlay)
     {
+        // Fading out: input is locked; the onComplete handler swaps the scene.
+        if (m_battleEndFading)
+            return;
+
         if (input.isKeyPressed(KeyCode::Accept, false) ||
             input.isKeyPressed(KeyCode::Back, false) ||
             input.isKeyPressed(KeyCode::Advance, false))
         {
             const bool won = m_showVictoryOverlay;
-            if (m_onBattleFinished)
-                m_onBattleFinished(won);
-            else
-                m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer, true));
+            const bool tutorialRetry = !won && m_request.tutorial && !m_tutorialQuitRequested;
+            m_battleLeaveWin = won;
+            m_battleLeaveTutorialRetry = tutorialRetry;
+            m_battleEndFading = true;
+
+            // Take the panel down first so the fade-out dims the battlefield
+            // itself, instead of leaving a bright VICTORY box sitting on top
+            // of a darkening screen for the whole transition.
+            m_showVictoryOverlay = false;
+            m_showDefeatOverlay = false;
+            m_transition.start({
+                .transition = ScreenTransitions::FadeOut,
+                .duration = 0.5f,
+                .easing = easeInOut,
+                .onComplete = [this]()
+                {
+                    m_battleEndFading = false;
+                    if (m_battleLeaveTutorialRetry)
+                    {
+                        // Tutorial duels re-run until won so a fresh game can't
+                        // strand the player at a loss. Use the system-menu Quit
+                        // to skip back to the world map instead.
+                        m_battleLeaveTutorialRetry = false;
+                        m_sm.replace(std::make_unique<BattleState>(m_sm, m_renderer, m_request, m_onBattleFinished));
+                    }
+                    else if (m_onBattleFinished)
+                        m_onBattleFinished(m_battleLeaveWin);
+                    else
+                        m_sm.replace(std::make_unique<MainMenuState>(m_sm, m_renderer, true));
+                }});
         }
         return;
     }
 
     if (m_transition.isActive())
         return;
+
+    // ── Cast confirmation ────────────────────────────────────────────────
+    // The player has locked a tile: the splash is fixed and the preview box is
+    // up. Q/E walk the focus through every unit caught in it so each one can
+    // be read in turn, Accept casts, Back unlocks the tile again. The preview
+    // box IS the confirmation — there is deliberately no confirm window here.
+    if (m_flowPhase == BattleFlowPhase::Combat &&
+        m_humanTurnPhase == HumanTurnPhase::AttackConfirm &&
+        m_turnState == TurnState::ProcessingTurn)
+    {
+        Unit *actor = m_session.getCurrentUnit();
+
+        if (input.isKeyPressed(KeyCode::Q, false) || input.isKeyPressed(KeyCode::E, false))
+        {
+            const int dir = input.isKeyPressed(KeyCode::E, false) ? 1 : -1;
+            m_attackResolution.cycleFocus(dir);
+            m_attackResolution.updatePreview(actor);
+            Input::instance().consumeKey(KeyCode::Q);
+            Input::instance().consumeKey(KeyCode::E);
+            return;
+        }
+
+        if (input.isKeyPressed(KeyCode::Back, false))
+        {
+            // Undo the lock: put the cursor back on the blast centre the player
+            // originally chose, so re-targeting starts from that tile instead
+            // of wherever the last focused AoE target happened to be.
+            const Vec2i center = m_attackResolution.pendingAttack().center();
+            m_attackResolution.cancel();
+            m_cursor.setPosition(center);
+            m_damagePreview.hide();
+            m_humanTurnPhase = HumanTurnPhase::AttackTarget;
+            Input::instance().consumeKey(KeyCode::Back);
+            return;
+        }
+
+        if (input.isKeyPressed(KeyCode::Accept, false))
+        {
+            const SkillData *skill = nullptr;
+            if (!m_attackResolution.pendingSkillId().empty())
+            {
+                auto it = m_skillDB.find(m_attackResolution.pendingSkillId());
+                if (it != m_skillDB.end())
+                    skill = &it->second;
+            }
+
+            // TODO: display skill animation
+            m_pendingActionLabel = skill ? skill->name : "Attack";
+            m_topBattleText = m_pendingActionLabel;
+            m_pendingActor = actor;
+            m_pendingTarget = m_attackResolution.pendingAttack().focusedTarget();
+            m_pendingResolution = PendingResolution::PlayerConfirmedAttack;
+            m_damagePreview.hide();
+            m_turnTimer = 0.5f;
+            m_turnState = TurnState::WaitingForAnimation;
+            Input::instance().consumeKey(KeyCode::Accept);
+            return;
+        }
+    }
 
     if (input.isKeyPressed(KeyCode::Back, false))
     {
@@ -580,6 +820,13 @@ void BattleState::handleInput()
             return;
         }
 
+        if (m_flowPhase == BattleFlowPhase::Deployment && m_deploymentPhase.isChoosingFacing())
+        {
+            // ESC during facing choice undoes the placement — no system menu.
+            m_deploymentPhase.undoFacingChoice();
+            return;
+        }
+
         if (m_flowPhase == BattleFlowPhase::Deployment)
         {
             m_battleMenu.showSystemMenu();
@@ -590,6 +837,7 @@ void BattleState::handleInput()
         if (m_humanTurnPhase == HumanTurnPhase::MoveTarget ||
             m_humanTurnPhase == HumanTurnPhase::AttackTarget)
         {
+            const bool wasAttackTarget = (m_humanTurnPhase == HumanTurnPhase::AttackTarget);
             m_attackResolution.cancel();
             m_humanTurnPhase = HumanTurnPhase::ActionMenu;
 
@@ -597,7 +845,23 @@ void BattleState::handleInput()
             if (active)
                 m_cursor.setPosition(active->getPosition());
             const bool canAttack = active && !active->hasActed();
-            openBattleMenu(canActiveUnitMove(), canAttack, true, KeyCode::Back);
+
+            // "Regret" while aiming a learned skill: drop back to the skill
+            // submenu. The basic attack is also aimed through the same phase,
+            // but it has no submenu of its own, so it returns to the action
+            // menu like it always did.
+            const bool aimingLearnedSkill =
+                wasAttackTarget && isLearnedSkillSelected();
+            if (aimingLearnedSkill)
+            {
+                m_selectedSkillId.clear();
+                m_battleMenu.showSkillMenu();
+                Input::instance().consumeKey(KeyCode::Back);
+            }
+            else
+            {
+                openBattleMenu(canActiveUnitMove(), canAttack, true, KeyCode::Back);
+            }
             return;
         }
 
@@ -624,8 +888,8 @@ void BattleState::handleInput()
             {
                 m_battleMenu.closeAllMenus();
                 m_humanTurnPhase = HumanTurnPhase::ActionMenu;
-                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
-                m_session.checkResult();
+                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs(),
+                                  basicAttackSkill());
                 m_cursor.setPosition(active->getPosition());
                 m_turnTimer = 0.15f;
                 m_turnState = TurnState::WaitingForAnimation;
@@ -668,19 +932,60 @@ void BattleState::update(float dt)
     m_combatAnimations.update(dt);
     m_floatingText.update(dt);
 
+    // Invalid-target flash/shake decay. Kept here rather than in the confirm
+    // path so it plays out even while the cursor is being moved again.
+    if (m_invalidFlashTimer > 0.0f)
+    {
+        m_invalidFlashTimer = std::max(0.0f, m_invalidFlashTimer - dt);
+        const float t = 1.0f - (m_invalidFlashTimer / INVALID_FLASH_DURATION);
+        const float amp = INVALID_FLASH_SHAKE * (1.0f - t);
+        m_shakeOffset = Vec2f{std::sin(t * 20.0f) * amp, std::cos(t * 27.0f) * amp * 0.5f};
+    }
+    else
+    {
+        m_shakeOffset = Vec2f{0.0f, 0.0f};
+    }
+
     if (m_transition.isActive())
     {
         m_transition.update(dt);
         return;
     }
 
+    // A won/lost battle only raises its overlay once the last damage number and
+    // hit ring have finished. Runs before the overlay early-return so the flip
+    // still happens on the frame the VFX drain.
+    if (m_battleEndPending)
+    {
+        updatePendingBattleEnd();
+        if (m_showVictoryOverlay || m_showDefeatOverlay)
+            return;
+    }
+
+    // One-shot per battle (and once per new game via the PartyContext flag):
+    // the first time combat really starts, explain the controls. The dialog
+    // is a blocking window, so no tactical input runs until the player closes
+    // it — see handleInput()'s hasBlockingWindow() guard.
+    if (m_battleTutorialPending && m_flowPhase == BattleFlowPhase::Combat)
+    {
+        m_battleTutorialPending = false;
+        maybeShowBattleControlsTutorial();
+    }
+
     if (m_flowPhase == BattleFlowPhase::Deployment)
     {
+        if (m_request.tutorial && !m_tutorialDeployTipShown)
+            maybeShowTutorialTip(TutorialTip::Deploy);
         m_deploymentPhase.update(dt);
         return;
     }
 
     if (m_showDefeatOverlay || m_showVictoryOverlay)
+        return;
+
+    // Still waiting on the finishing blow's VFX: freeze the turn machine and
+    // input rather than letting the next unit start behind the pause.
+    if (m_battleEndPending)
         return;
 
 #ifdef _DEBUG
@@ -690,10 +995,10 @@ void BattleState::update(float dt)
         if (active)
         {
             int action = m_autoPlayActionIndex;
-            if (action == 0 || action == 1) // Move or Attack → let the AI do its thing
+            if (action == 0 || action == 1) // Move or Attack — let the AI do its thing
             {
-                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
-                m_session.checkResult(); // same reasoning as the EnemyAction branch above
+                EnemyAI::takeTurn(*active, m_grid, m_battleMap, m_session.getUnitPtrs(),
+                                  basicAttackSkill());
                 m_cursor.setPosition(active->getPosition());
                 m_turnTimer = 0.15f;
                 m_turnState = TurnState::WaitingForAnimation;
@@ -732,7 +1037,15 @@ void BattleState::update(float dt)
     // ── CURSOR UPDATE ────────────────────────────────────────────────────────
     // This internally reads the arrow keys/WASD, handles the Fire Emblem-style
     // hold-to-repeat delays, and clamps itself within the map bounds!
-    m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
+    // While choosing a facing the cursor is frozen (and hidden) so the arrow
+    // keys exclusively drive the facing picker instead.
+    // While a tile is locked in (cast confirmation) the cursor is frozen: the
+    // splash is already built around that tile and Q/E move the preview focus
+    // instead, so letting the arrow keys wander would only move a sprite that
+    // no longer means anything.
+    if (m_humanTurnPhase != HumanTurnPhase::ChooseFacing &&
+        m_humanTurnPhase != HumanTurnPhase::AttackConfirm)
+        m_cursor.update(m_battleMap.cols(), m_battleMap.rows(), dt);
 
     // Track unit under cursor
     Vec2i cursorPos = m_cursor.getPosition();
@@ -856,22 +1169,44 @@ void BattleState::update(float dt)
 
 void BattleState::startBattleEnd(bool playerWon)
 {
-    if (m_transition.isActive())
+    if (m_transition.isActive() || m_battleEndPending ||
+        m_showVictoryOverlay || m_showDefeatOverlay)
         return;
 
-    m_playerWon = playerWon;
     m_battleMenu.closeAllMenus();
-    m_uiManager.popById(WindowId::BattleActionConfirm);
     m_uiManager.popById(WindowId::BattleDialog);
+    m_openActionMenuAfterTip = false;
 
-    if (playerWon)
+    // Defer the overlay (and its rewards/event emission) until the queued
+    // damage numbers and hit rings have played out — otherwise the victory
+    // screen lands on top of the finishing blow's VFX and cuts them off.
+    m_battleEndPending = true;
+    m_battleEndPendingWin = playerWon;
+    m_turnState = TurnState::Idle;
+}
+
+// Called every frame while a battle end is pending: flips the overlay on once
+// no floating text / combat VFX are left in flight.
+void BattleState::updatePendingBattleEnd()
+{
+    if (!m_battleEndPending)
+        return;
+
+    if (m_combatAnimations.isActive() || !m_floatingText.getEntries().empty())
+        return;
+
+    m_battleEndPending = false;
+
+    if (m_battleEndPendingWin)
     {
+        m_playerWon = true;
         m_showVictoryOverlay = true;
-        awardVictoryBonusXp();
+        applyVictoryRewards();
         m_eventSystem.emit(BattleTriggerType::OnVictory);
     }
     else
     {
+        m_playerWon = false;
         m_showDefeatOverlay = true;
         m_eventSystem.emit(BattleTriggerType::OnDefeat);
     }
@@ -894,7 +1229,15 @@ bool BattleState::checkDefeat() const
     return m_session.getResult() == BattleResult::Defeat;
 }
 
-void BattleState::awardVictoryBonusXp()
+void BattleState::quitFromSystemMenu()
+{
+    // Marks a tutorial quit so the defeat-overlay dismiss skips the retry
+    // loop and hands control back to the world map (see handleInput()).
+    m_tutorialQuitRequested = true;
+    startBattleEnd(false);
+}
+
+void BattleState::applyVictoryRewards()
 {
     if (m_rewardXpAwarded)
         return;
@@ -903,7 +1246,54 @@ void BattleState::awardVictoryBonusXp()
     PartyContext &ctx = PartyContext::instance();
     ctx.ensureInitialized();
 
-    const int gained = GameConstants::BATTLE_VICTORY_XP + m_pendingRewardXp;
+    // Currency — one grant per battle, added to the campaign purse.
+    const int gold = m_battleDefinition ? m_battleDefinition->rewards.gold : 0;
+    if (gold > 0)
+        ctx.addGold(gold);
+    m_rewardGold = gold;
+
+    // Drops — one copy per declared gear key, resolved through the catalog.
+    m_rewardDropNames.clear();
+    m_rewardDropCounts.clear();
+    if (m_battleDefinition)
+    {
+        for (const std::string &key : m_battleDefinition->rewards.items)
+        {
+            const Gear *gear = ctx.gearCatalog().findByKey(key);
+            if (!gear)
+            {
+                LOG_WARN("Battle", "Reward gear key not in catalog, skipped: %s", key.c_str());
+                continue;
+            }
+            if (!ctx.inventory().add(*gear, 1))
+            {
+                LOG_WARN("Battle", "Inventory full, dropped item lost: %s", key.c_str());
+                continue;
+            }
+
+            bool counted = false;
+            for (std::size_t i = 0; i < m_rewardDropNames.size(); ++i)
+            {
+                if (m_rewardDropNames[i] == gear->displayName)
+                {
+                    ++m_rewardDropCounts[i];
+                    counted = true;
+                    break;
+                }
+            }
+            if (!counted)
+            {
+                m_rewardDropNames.push_back(gear->displayName);
+                m_rewardDropCounts.push_back(1);
+            }
+        }
+    }
+
+    // XP + levels — only surviving player-team units.
+    const int gained = GameConstants::BATTLE_VICTORY_XP + m_pendingRewardXp +
+                       (m_battleDefinition ? m_battleDefinition->rewards.xp : 0);
+    m_rewardXpEach = gained;
+    m_rewardLevelUps.clear();
     for (const Unit &u : m_session.getUnits())
     {
         if (u.getTeam() != 0 || u.isDead())
@@ -914,32 +1304,60 @@ void BattleState::awardVictoryBonusXp()
         if (RosterUnit *rosterUnit = ctx.roster().findById(rosterId))
         {
             // Current progression rule: surviving units gain exactly one level
-            // per battle victory. Leveling only raises stats for now (skill
-            // progression is a later milestone).
+            // per battle victory. Each level-up also grants one skill point
+            // (spent permanently in the world-map Skills panel to unlock and
+            // equip skills from the progression table).
             if (rosterUnit->level < u.getMaxLevel())
+            {
                 ++rosterUnit->level;
+                ++rosterUnit->skillPoints;
+                m_rewardLevelUps.push_back(u.getName());
+            }
             rosterUnit->exp += gained;
         }
     }
     m_pendingRewardXp = 0;
 }
 
+void BattleState::evaluateBattleResult()
+{
+    m_session.checkResult();
+    if (checkDefeat())
+        startBattleEnd(false);
+    else if (checkVictory())
+        startBattleEnd(true);
+}
+
+void BattleState::endCurrentUnitTurn(float timeCost)
+{
+    m_session.advanceTurn(timeCost);
+    m_turnState = TurnState::Idle;
+
+    evaluateBattleResult();
+}
+
 void BattleState::processCurrentTurn()
 {
+    // Turn-start evaluation. This is the trigger that resolves turn-based
+    // objectives (e.g. SurviveTurns) which can be met without any unit dying.
+    // Deaths already evaluated the result inside applyDamage(); re-checking is
+    // idempotent and costs nothing.
+    evaluateBattleResult();
+    if (m_battleEndPending || m_showVictoryOverlay || m_showDefeatOverlay)
+        return;
+
     Unit *active = m_session.getCurrentUnit();
     if (!active || active->isDead())
     {
         const float timeCost = TurnQueue::BASE_ACTION_COST /
                                (active ? static_cast<float>(active->getSpeed()) : 100.0f);
-        m_session.advanceTurn(timeCost);
-        m_turnState = TurnState::Idle;
-        if (checkDefeat() || checkVictory())
-            return;
+        endCurrentUnitTurn(timeCost);
         return;
     }
 
     active->resetTurn();
     m_canUndoLastMove = false; // fresh turn — nothing to undo yet
+    m_eventSystem.setTurn(m_session.m_turnsElapsed);
     m_eventSystem.emit(BattleTriggerType::OnTurnStart);
 
     LOG_INFO("Battle", "Active unit: %s, Team: %d, Position: (%d,%d)",
@@ -947,6 +1365,44 @@ void BattleState::processCurrentTurn()
              active->getTeam(),
              active->getPosition().x,
              active->getPosition().y);
+
+    // Status phase: DoT (poison/burn) ticks and turn locks (stun/sleep)
+    // consume the unit's turn BEFORE it can act. A DoT kill or a skip both
+    // end the turn through the same tail as a plain dead unit — the next
+    // unit gets its turn, or the battle ends if that resolved it.
+    const Unit::StatusTickResult statusTick = active->tickStatuses();
+    if (statusTick.dotDamage > 0)
+    {
+        const StatusTickVisual visual = statusTickVisual(statusTick.dotType);
+        m_floatingText.enqueue("-" + std::to_string(statusTick.dotDamage),
+                               active->getPosition(), visual.floatColor);
+        m_combatAnimations.enqueue(statusTick.dotType == StatusType::Burn ? "burn" : "poison",
+                                   active->getPosition());
+        LOG_INFO("Battle", "%s takes %d DoT damage from statuses",
+                 active->getName().c_str(), statusTick.dotDamage);
+    }
+
+    if (active->isDead())
+    {
+        const float timeCost = TurnQueue::BASE_ACTION_COST /
+                               static_cast<float>(active->getSpeed());
+        endCurrentUnitTurn(timeCost);
+        return;
+    }
+
+    if (statusTick.skippedTurn)
+    {
+        const char *label = statusTick.skipType == StatusType::Sleep ? "ASLEEP" : "STUNNED";
+        m_floatingText.enqueue(label, active->getPosition(), Color{210, 180, 120, 255});
+        m_combatAnimations.enqueue(statusTick.skipType == StatusType::Sleep ? "sleep" : "stun",
+                                   active->getPosition());
+        LOG_INFO("Battle", "%s is %s and loses its turn",
+                 active->getName().c_str(), label);
+        const float timeCost = TurnQueue::BASE_ACTION_COST /
+                               static_cast<float>(active->getSpeed());
+        endCurrentUnitTurn(timeCost);
+        return;
+    }
 
     if (active->getTeam() != 0) // Enemies
     {
@@ -971,7 +1427,8 @@ void BattleState::processCurrentTurn()
         if (m_playerControlMode == PlayerControlMode::AI)
         {
 #ifdef _DEBUG
-            int actionIndex = EnemyAI::chooseAction(*active, m_grid, m_battleMap, m_session.getUnitPtrs());
+            int actionIndex = EnemyAI::chooseAction(*active, m_grid, m_battleMap, m_session.getUnitPtrs(),
+                                                   basicAttackSkill());
             m_autoPlayActionIndex = actionIndex;
             m_autoPlayPhase = AutoPlayPhase::ShowMenu;
             m_autoPlayTimer = 0.1f;
@@ -991,6 +1448,7 @@ void BattleState::processCurrentTurn()
 
 void BattleState::advanceToNextUnit()
 {
+    m_eventSystem.setTurn(m_session.m_turnsElapsed);
     m_eventSystem.emit(BattleTriggerType::OnTurnEnd);
 
     Unit *active = m_session.getCurrentUnit();
@@ -1012,26 +1470,13 @@ void BattleState::advanceToNextUnit()
 
     m_canUndoLastMove = false; // turn is over — nothing left to undo
 
-    // Turn banner — no round number, just the unit name
-    Unit *nextUnit = m_session.getCurrentUnit();
-    if (nextUnit && m_unitPanelWindow)
-        m_unitPanelWindow->setTurnInfo(nextUnit, 0); // 0 means round-less
-
-    if (checkDefeat())
-    {
-        startBattleEnd(false);
+    if (m_battleEndPending || m_showVictoryOverlay || m_showDefeatOverlay)
         return;
-    }
-    if (checkVictory())
-    {
-        startBattleEnd(true);
-        return;
-    }
 }
 
 void BattleState::resolveEnemyAttack(Unit &unit, Unit *target)
 {
-    const EnemyAttackResult atk = EnemyAI::resolveAttack(unit, target, m_grid, m_battleMap);
+    const EnemyAttackResult atk = EnemyAI::resolveAttack(unit, target, m_grid, m_battleMap, basicAttackSkill());
 
     m_pendingResolution = PendingResolution::EnemyAction;
 
@@ -1103,7 +1548,8 @@ void BattleState::finishEnemyAction()
 Camera BattleState::buildInterpolatedCamera(float alpha) const
 {
     Vec2f interpOffset = m_previousCamera.getOffset() +
-                         (m_camera.getOffset() - m_previousCamera.getOffset()) * alpha;
+                         (m_camera.getOffset() - m_previousCamera.getOffset()) * alpha +
+                         m_shakeOffset;
 
     float interpZoom = m_previousCamera.getZoom() +
                        (m_camera.getZoom() - m_previousCamera.getZoom()) * alpha;
@@ -1164,7 +1610,26 @@ void BattleState::renderSceneAndOverlays(const Camera &renderCam)
         .showSpawnOverlays = (m_flowPhase == BattleFlowPhase::Deployment),
         .overlayMode = overlayMode,
         .overlayTiles = overlayTiles,
+        .facingChoiceUnit = nullptr,
+        .facingChoiceSelection = IsoDirection::SouthWest,
+        .hideCursor = (m_humanTurnPhase == HumanTurnPhase::ChooseFacing) ||
+                      (m_flowPhase == BattleFlowPhase::Deployment && m_deploymentPhase.isChoosingFacing()),
     };
+
+    if (m_flowPhase == BattleFlowPhase::Combat &&
+        m_humanTurnPhase == HumanTurnPhase::ChooseFacing)
+    {
+        if (Unit *active = m_session.getCurrentUnit())
+        {
+            renderCtx.facingChoiceUnit = active;
+            renderCtx.facingChoiceSelection = active->getFacing();
+        }
+    }
+    else if (m_flowPhase == BattleFlowPhase::Deployment && m_deploymentPhase.isChoosingFacing())
+    {
+        renderCtx.facingChoiceUnit = m_deploymentPhase.facingChoiceUnit();
+        renderCtx.facingChoiceSelection = m_deploymentPhase.facingChoiceSelection();
+    }
 
     m_battleRenderer->drawScene(renderCtx);
 }
@@ -1209,7 +1674,6 @@ void BattleState::syncUnitPanelWindow()
     Unit *active = nullptr;
     if (m_flowPhase == BattleFlowPhase::Combat)
         active = m_session.getCurrentUnit();
-    m_unitPanelWindow->setTurnInfo(active, 0);
 
     if (m_pendingResolution != PendingResolution::None && m_pendingActor)
     {
@@ -1307,18 +1771,30 @@ void BattleState::renderTopBattleText()
     if (m_topBattleText.empty())
         return;
 
-    if (const Font *font = FontManager::instance().get(FontRole::Body))
-    {
-        m_renderer->renderTextInRect(font,
-                                     m_topBattleText,
-                                     Rectf{0.0f, 72.0f, GameConstants::VIEW_W, 24.0f},
-                                     UITheme::SelectedText,
-                                     HorizontalAlign::Center,
-                                     VerticalAlign::Middle,
-                                     false,
-                                     false,
-                                     false);
-    }
+    const Font *font = FontManager::instance().get(FontRole::Body);
+    if (!font)
+        return;
+
+    // Skill descriptions are long, so the top band wraps instead of running off
+    // the screen. Wrapping and growing downward from the same y keeps the single
+    // short preview lines (status floater banners) exactly where they were.
+    // Sits below the confirm cascade (which is pinned to the top edge) so the
+    // two never overlap while a target is being confirmed.
+    constexpr float kTop = 72.0f;
+    constexpr float kMaxW = static_cast<float>(GameConstants::VIEW_W) - 64.0f;
+    constexpr float kLineSpacing = 2.0f;
+
+    const TextBlock::Layout layout =
+        TextBlock::measure(*m_renderer, {TextBlock::Line{font, m_topBattleText, UITheme::SelectedText}},
+                           kMaxW, kLineSpacing);
+
+    TextBlock::render(*m_renderer,
+                      {TextBlock::Line{font, m_topBattleText, UITheme::SelectedText}},
+                      Rectf{32.0f, kTop, kMaxW, layout.height()},
+                      TextBlock::Anchor::TopLeft,
+                      kMaxW,
+                      kLineSpacing,
+                      HorizontalAlign::Center);
 }
 
 void BattleState::renderWorldEffects(const Camera &renderCam)
@@ -1364,35 +1840,97 @@ void BattleState::renderEndOverlay(bool victory)
     const Color labelColor = victory ? Color{210, 255, 210, 255} : Color{255, 210, 210, 255};
     const std::string label = victory ? "VICTORY" : "DEFEAT";
 
-    const Rectf box{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f};
+    const Font *font = FontManager::instance().get(FontRole::Body);
+    if (!font)
+        return;
 
     m_renderer->setBlendMode(Renderer::BlendMode::Blend);
-    m_renderer->setDrawColor(bgColor);
-    m_renderer->fillRect(box);
-    m_renderer->setDrawColor(borderColor);
-    m_renderer->drawRect(box);
 
-    if (const Font *font = FontManager::instance().get(FontRole::Body))
+    if (!victory)
     {
-        const float labelW = static_cast<float>(label.size()) * 8.0f;
+        const Rectf box{GameConstants::VIEW_W * 0.5f - 260.0f, GameConstants::VIEW_H * 0.5f - 90.0f, 520.0f, 180.0f};
+        m_renderer->setDrawColor(bgColor);
+        m_renderer->fillRect(box);
+        m_renderer->setDrawColor(borderColor);
+        m_renderer->drawRect(box);
+
+        const float labelW = m_renderer->measureText(font, label).x;
         m_renderer->renderText(font,
                                label,
-                               Vec2f{(GameConstants::VIEW_W - labelW) * 0.5f, GameConstants::VIEW_H * 0.5f - 26.0f},
+                               Vec2f{(GameConstants::VIEW_W - labelW) * 0.5f, box.y + 34.0f},
                                labelColor,
                                false,
                                false,
                                false);
 
         const std::string hint = "Press Enter/Space/Esc";
-        const float hintW = static_cast<float>(hint.size()) * 8.0f;
+        const float hintW = m_renderer->measureText(font, hint).x;
         m_renderer->renderText(font,
                                hint,
-                               Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, GameConstants::VIEW_H * 0.5f + 24.0f},
+                               Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, box.y + box.h - 40.0f},
                                UITheme::Text,
                                false,
                                false,
                                false);
+        return;
     }
+
+    // Victory: summarize what the battle paid out. Rows are built from the
+    // reward snapshot captured in applyVictoryRewards().
+    std::vector<std::string> rows;
+    rows.push_back("Gold: +" + std::to_string(m_rewardGold));
+    rows.push_back("XP: +" + std::to_string(m_rewardXpEach) + " each");
+    for (const std::string &name : m_rewardLevelUps)
+        rows.push_back("Lv up: " + name);
+    if (!m_rewardLevelUps.empty())
+        rows.push_back("(level-ups grant +1 skill point)");
+    for (std::size_t i = 0; i < m_rewardDropNames.size(); ++i)
+        rows.push_back("Drop: " + m_rewardDropNames[i] + " x" + std::to_string(m_rewardDropCounts[i]));
+
+    constexpr float kRowH = 30.0f;
+    constexpr float kPadV = 16.0f;
+    constexpr float kTitleH = 40.0f;
+    constexpr float kHintH = 40.0f;
+    constexpr float kBoxMinH = 220.0f;
+    constexpr float kBoxW = 520.0f;
+
+    const float boxH = std::max(
+        kBoxMinH, kPadV + kTitleH + static_cast<float>(rows.size()) * kRowH + kHintH + kPadV);
+    const Rectf box{(GameConstants::VIEW_W - kBoxW) * 0.5f,
+                    (GameConstants::VIEW_H - boxH) * 0.5f,
+                    kBoxW,
+                    boxH};
+
+    m_renderer->setDrawColor(bgColor);
+    m_renderer->fillRect(box);
+    m_renderer->setDrawColor(borderColor);
+    m_renderer->drawRect(box);
+
+    const float titleW = m_renderer->measureText(font, label).x;
+    m_renderer->renderText(font,
+                           label,
+                           Vec2f{(GameConstants::VIEW_W - titleW) * 0.5f, box.y + kPadV},
+                           labelColor,
+                           false,
+                           false,
+                           false);
+
+    float rowY = box.y + kPadV + kTitleH;
+    for (const std::string &row : rows)
+    {
+        m_renderer->renderText(font, row, Vec2f{box.x + 24.0f, rowY}, UITheme::Text, false, false, false);
+        rowY += kRowH;
+    }
+
+    const std::string hint = "Press Enter/Space/Esc";
+    const float hintW = m_renderer->measureText(font, hint).x;
+    m_renderer->renderText(font,
+                           hint,
+                           Vec2f{(GameConstants::VIEW_W - hintW) * 0.5f, box.y + boxH - kHintH},
+                           UITheme::Text,
+                           false,
+                           false,
+                           false);
 }
 
 void BattleState::render(float alpha)
@@ -1414,16 +1952,100 @@ void BattleState::render(float alpha)
     renderNativeEffects();
     renderUIStack();
 
-    m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
-
     if (m_showDefeatOverlay)
         renderEndOverlay(false);
     if (m_showVictoryOverlay)
         renderEndOverlay(true);
+
+    // Fade layer draws last so it covers the whole screen — battlefield, UI
+    // stack and the end overlay alike.
+    m_transition.render(m_renderer, GameConstants::VIEW_W, GameConstants::VIEW_H);
+
+    // Invalid-target flash sits above the fade: it is input feedback, not part
+    // of the battle picture.
+    renderInvalidFlashVignette();
+}
+
+void BattleState::renderInvalidFlashVignette() const
+{
+    if (m_invalidFlashTimer <= 0.0f || !m_renderer)
+        return;
+
+    const float w = static_cast<float>(GameConstants::VIEW_W);
+    const float h = static_cast<float>(GameConstants::VIEW_H);
+
+    // Band thickness tracks the short edge so it reads the same at any aspect
+    // ratio; past it the screen is completely untouched.
+    const float band = std::min(w, h) * INVALID_FLASH_BAND;
+
+    const float t = m_invalidFlashTimer / INVALID_FLASH_DURATION;
+    const float peak = INVALID_FLASH_ALPHA * t;
+    const FColor rgb{INVALID_FLASH_COLOR.r / 255.0f,
+                     INVALID_FLASH_COLOR.g / 255.0f,
+                     INVALID_FLASH_COLOR.b / 255.0f,
+                     1.0f};
+
+    // One gradient band per screen border: full red at the edge, transparent
+    // `band` inward, with a squared falloff so the colour hugs the frame
+    // instead of washing toward the middle. SDL interpolates per-vertex alpha
+    // across each triangle, so this needs no texture, shader or mask asset.
+    //
+    // Each band is origin + direction-along-the-edge + direction-inward. The
+    // bands overlap in the corners and their alphas blend there, so corners end
+    // up a touch darker — which is what a vignette should look like anyway.
+    struct Band
+    {
+        Vec2f origin, along, inward;
+    };
+    const Band bands[4] = {
+        {{0.0f, 0.0f}, {w, 0.0f}, {0.0f, band}}, // top
+        {{w, 0.0f}, {0.0f, h}, {-band, 0.0f}},   // right
+        {{w, h}, {-w, 0.0f}, {0.0f, -band}},     // bottom
+        {{0.0f, h}, {0.0f, -h}, {band, 0.0f}},   // left
+    };
+
+    const int rows = INVALID_FLASH_STRIPS + 1;
+
+    std::vector<Renderer::Vertex> verts;
+    std::vector<int> indices;
+    verts.reserve(static_cast<std::size_t>(4 * rows * 2));
+    indices.reserve(static_cast<std::size_t>(4 * INVALID_FLASH_STRIPS * 6));
+
+    for (const Band &b : bands)
+    {
+        const int base = static_cast<int>(verts.size());
+        for (int s = 0; s < rows; ++s)
+        {
+            const float f = static_cast<float>(s) / static_cast<float>(INVALID_FLASH_STRIPS);
+            const float alpha = peak * (1.0f - f) * (1.0f - f);
+            const FColor c{rgb.r, rgb.g, rgb.b, alpha};
+            const float ox = b.inward.x * f, oy = b.inward.y * f;
+            verts.push_back(Renderer::Vertex{{b.origin.x + ox, b.origin.y + oy}, c});
+            verts.push_back(Renderer::Vertex{{b.origin.x + b.along.x + ox,
+                                              b.origin.y + b.along.y + oy}, c});
+        }
+        for (int s = 0; s < INVALID_FLASH_STRIPS; ++s)
+        {
+            const int a0 = base + s * 2, a1 = a0 + 1;
+            const int b0 = a0 + 2, b1 = a0 + 3;
+            indices.push_back(a0);
+            indices.push_back(b0);
+            indices.push_back(b1);
+            indices.push_back(a0);
+            indices.push_back(b1);
+            indices.push_back(a1);
+        }
+    }
+
+    const Renderer::BlendMode previous = m_renderer->getBlendMode();
+    m_renderer->setBlendMode(Renderer::BlendMode::Blend);
+    m_renderer->drawGeometry(verts, indices);
+    m_renderer->setBlendMode(previous);
 }
 
 void BattleState::computeAttackRangeTiles()
 {
+
     m_attackCenterTiles.clear();
     Unit *active = m_session.getCurrentUnit();
     if (!active)
@@ -1447,26 +2069,28 @@ void BattleState::computeAttackRangeTiles()
         m_attackCenterTiles.erase(pos);
 }
 
+bool BattleState::isLearnedSkillSelected() const
+{
+    if (m_selectedSkillId.empty())
+        return false;
+    auto it = m_skillDB.find(m_selectedSkillId);
+    return it != m_skillDB.end() && !it->second.isBasicAttack;
+}
+
+SkillData BattleState::basicAttackSkill() const
+{
+    auto it = m_skillDB.find(kBasicAttackSkillId);
+    return it != m_skillDB.end() ? it->second : SkillData::makeBasicAttack();
+}
+
 HitContext BattleState::makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const
 {
-    HitContext ctx;
-    ctx.attacker = attacker;
-    ctx.target = target;
-    if (skill)
-    {
-        ctx.basePower = skill->basePower;
-        ctx.isMagical = skill->isMagical;
-        ctx.element = skill->element;
-        ctx.skillAccuracy = skill->skillAccuracy;
-    }
-    else
-    {
-        ctx.basePower = 0;
-        ctx.isMagical = false;
-        ctx.element = Element::Neutral;
-        ctx.skillAccuracy = 95;
-    }
-    ctx.side = AttackSide::Side;
-    ctx.tileEvasionBonus = 0;
+    // Every attack — including the basic attack, which is a real skill — goes
+    // through the same skill -> HitContext builder the AI uses.
+    HitContext ctx = skill ? CombatSystem::hitContextFor(*skill, *attacker, *target)
+                           : CombatSystem::basicAttackContext(*attacker, *target);
+    // Terrain: attacker's ground (grass_atk/grass_mag) and defender's ground
+    // (grass_eva) both feed the fight. Shared by player, AI and preview.
+    CombatSystem::applyTileBonuses(ctx, m_battleMap);
     return ctx;
 }

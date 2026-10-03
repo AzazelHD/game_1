@@ -1,12 +1,13 @@
 #pragma once
 #include <vector>
 #include <string>
-#include <unordered_map>
 #include "engine/math/Vec2.h"
+#include "engine/math/MathUtils.h"
 #include "battle/unit/UnitData.h"
 #include "battle/unit/UnitProgression.h"
 #include "battle/unit/SkillProgression.h"
 #include "battle/unit/RecruitmentRules.h"
+#include "battle/unit/StatusEffect.h"
 #include "inventory/EquipRules.h"
 #include <algorithm>
 
@@ -59,6 +60,10 @@ public:
 
     // Combat
     void takeDamage(int amount);
+    // Kills the unit outright with no damage roll and no defense check - the
+    // consequence of a Ko-effect skill (SkillEffectType::Ko). Idempotent, and
+    // it does not go through takeDamage so callers can tell a KO from a big hit.
+    void kill();
     void heal(int amount);
     bool isDead() const;
 
@@ -141,14 +146,43 @@ public:
     // mod on the same StatKind.
     void applyStatMod(StatKind stat, int amount, int turns);
     int activeStatMod(StatKind stat) const;
-    // Remaining turns a skill is on cooldown for THIS unit (0 = usable).
-    int skillCooldownLeft(const std::string &skillId) const;
-    // Sets a skill's cooldown. Callers pass cooldownTurns + 1 so the turn of
-    // use counts toward the lockout (resetTurn() decrements at turn start).
-    void setSkillCooldown(const std::string &skillId, int turns);
+
+    // Status effects ---------------------------------------------------------
+    // Applies a battle status for `turns` of the target's own turns. DoT
+    // statuses (Poison/Burn) stack their damagePerTick on reapplication and
+    // refresh the duration; lock statuses (Stun/Sleep) only refresh the
+    // duration. See battle/unit/StatusEffect.h for the full semantics.
+    void applyStatus(StatusType type, int turns, int damagePerTick);
+    // Removes a status immediately (e.g. Sleep breaks on taking damage).
+    void removeStatus(const StatusType &type);
+    bool hasStatus(StatusType type) const;
+    int statusTurns(StatusType type) const;
+    const std::vector<ActiveStatus> &getStatuses() const { return m_statuses; }
+
+    // Result of a status tick at the start of a unit's own turn.
+    struct StatusTickResult
+    {
+        int dotDamage = 0;                // DoT damage dealt this tick (0 = none)
+        bool skippedTurn = false;         // unit is stunned/asleep -> turn is consumed
+        StatusType skipType = StatusType::Stun; // which lock caused the skip
+        StatusType dotType = StatusType::Poison; // which status dealt the DoT
+    };
+    // Called at the START of the unit's own turn (after resetTurn()). Deals
+    // the accumulated DoT damage, refreshes durations, removes expired
+    // statuses, and reports whether a stun/sleep lock consumes the turn.
+    StatusTickResult tickStatuses();
 
     bool promote(PromotionClass promotion);
     bool learnOrUpgradeSkill(const std::string &skillId);
+
+    // Copies the roster's persistent progression (unspent points + learned /
+    // equipped skills) into this battle unit, then grafts its equipped active
+    // skills onto the unit's battle skill list so they show up in the in-battle
+    // Skills menu. Call after growToLevel() when building a unit from a
+    // RosterUnit.
+    void importRosterProgression(int skillPoints, const SkillProgression &progression);
+    void setSkillPoints(int points) { m_skillPoints = points; }
+
     void bindEquipmentLoadout(const EquipmentLoadout *loadout);
     void setResolvedEquipmentLoadout(EquipmentLoadout loadout);
     const EquipmentLoadout *equipmentLoadout() const { return m_equipmentLoadout; }
@@ -156,10 +190,18 @@ public:
 
     // Setters
     void setPosition(Vec2i pos) { m_position = pos; }
+    // Direction the unit's "front" faces (one of the four iso diagonals).
+    // Updated when the unit moves or attacks; used to draw a facing arrow at
+    // the unit's feet, and (later) to derive the attack side.
+    void setFacing(IsoDirection dir) { m_facing = dir; }
+    IsoDirection getFacing() const { return m_facing; }
     void setState(UnitState state) { m_state = state; }
     void setWaitTime(int val) { m_waitTime = val; }
     void setCurrentHp(int val) { m_currentHp = std::clamp(val, 0, getMaxHp()); }
     void setCurrentMp(int val) { m_currentMp = std::clamp(val, 0, getMaxMp()); }
+    // Overrides the template unit's display name at build time (used for
+    // recruited units with a custom name like Liandra).
+    void setDisplayName(std::string name) { m_data.name = std::move(name); }
     void setRosterInstanceId(int id) { m_rosterInstanceId = id; }
 
     // Spends `cost` movement points (e.g. path cost of a confirmed move).
@@ -207,15 +249,16 @@ private:
 
     // Turn state
     Vec2i m_position;
+    IsoDirection m_facing = IsoDirection::SouthWest;
     int m_waitTime = 0;
     int m_moveRangeLeft = 0; // refilled to getMoveRange() in resetTurn()
     MajorAction m_majorAction = MajorAction::None;
     UnitState m_state = UnitState::Idle;
     int m_rosterInstanceId = -1;
 
-    // Status effects + skill cooldowns
+    // Status effects
     std::vector<TemporaryStatMod> m_statMods;
-    std::unordered_map<std::string, int> m_skillCooldowns;
+    std::vector<ActiveStatus> m_statuses;
 
     // Actions
     std::vector<ActionType> m_actions;
@@ -229,4 +272,9 @@ private:
     bool levelUp();
     GearStatModifiers gearModifiers() const;
     int tempMod(StatKind stat) const;
+    // Sum of the stat contribution of active buff/debuff statuses (Barrier,
+    // AttackUp, ArmorDown, AttackDown). Buffs: +25% of the base stat; curses:
+    // −10% of the total stat (data + race/gender + gear). Folded into tempMod()
+    // so every stat getter reflects them. See StatusEffect.h.
+    int statusStatContribution(StatKind stat) const;
 };

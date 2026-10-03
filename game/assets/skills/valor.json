@@ -9,8 +9,7 @@
   "range": 2,
   "mpCost": 2,
   "effectTypes": ["buff"],
-  "statKey": "attack",
-  "statAmount": 3,
-  "buffTurns": 3,
-  "cooldown": 2
+  "statuses": [
+    { "type": "attack_up", "turns": 3, "chance": 100 }
+  ]
 }

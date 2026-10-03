@@ -1,5 +1,6 @@
 #pragma once
 #include "battle/map/MovementRange.h"
+#include "engine/math/MathUtils.h"
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -12,6 +13,7 @@ struct DeploymentEntry
     int instanceId = -1;
     std::string templatePath;
     Vec2i position{0, 0};
+    IsoDirection facing = IsoDirection::SouthWest;
     bool locked = false;   // forced by BattleDefinition — cannot be grabbed/unplaced/swapped out
     bool critical = false; // losing this unit is an instant defeat
 };
@@ -49,6 +51,9 @@ public:
     // a separate list BattleState owns, never touched here).
     bool swapGrabbedWithPlacedAt(Vec2i pos);
     bool unplaceUnit(int instanceId);
+    // Updates the facing stored on a placed (deployed) unit. Returns false
+    // if instanceId isn't on the field.
+    bool setFacing(int instanceId, IsoDirection facing);
 
     void cycleSelection(int delta);
     const DeploymentEntry *selectedEntry() const;

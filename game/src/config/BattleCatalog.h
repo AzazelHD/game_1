@@ -41,6 +41,13 @@ struct BattleEventAction
 struct BattleEvent
 {
     BattleTriggerType trigger = BattleTriggerType::OnBattleStart;
+    // Wave scripting (M5): minTurn fires the event only once the battle's
+    // turn counter (session.m_turnsElapsed) has reached this value — used
+    // with OnTurnStart/OnTurnEnd to stage reinforcements mid-fight.
+    int minTurn = 0;
+    // Once-fired events execute a single time even if the trigger fires
+    // repeatedly (e.g. a reinforcement that must spawn only once).
+    bool once = false;
     std::vector<BattleEventAction> actions;
 };
 
@@ -59,7 +66,14 @@ struct BattleObjective
 
 struct BattleRewards
 {
+    // Per-unit XP granted on victory (on top of GameConstants::BATTLE_VICTORY_XP).
     int xp = 0;
+
+    // Currency granted once to the campaign on victory.
+    int gold = 0;
+
+    // Gear keys (GearCatalog::findByKey) granted to the shared inventory on
+    // victory, one copy per entry in this list.
     std::vector<std::string> items;
 };
 

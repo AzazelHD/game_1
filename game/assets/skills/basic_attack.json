@@ -1,0 +1,15 @@
+{
+  "id": "basic_attack",
+  "name": "Attack",
+  "description": "A basic attack using the unit's own attack stat.",
+  "isBasicAttack": true,
+  "basePower": 0,
+  "powerPerLevel": 0,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 95,
+  "range": 1,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["damage"]
+}

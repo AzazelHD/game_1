@@ -1,0 +1,23 @@
+{
+  "id": "debug_oneshot",
+  "name": "Debug KO",
+  "description": "Debug skill: applies a death effect that knocks the target out once the effect finishes. Deals no damage.",
+
+  "neverMiss": true,
+  "visualOnHit": {
+    "id": "skull",
+    "duration": 1.1
+  },
+
+  "basePower": 0,
+  "powerPerLevel": 0,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 100,
+
+  "range": 1,
+  "heightTolerance": 0,
+  "area": 0,
+  "mpCost": 0,
+  "effectTypes": ["ko"]
+}

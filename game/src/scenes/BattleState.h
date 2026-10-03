@@ -24,6 +24,7 @@
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
 #include "battle/systems/CombatAnimationSystem.h"
+#include "battle/systems/CombatVfxLibrary.h"
 #include "ui/UIManager.h"
 #include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
@@ -34,8 +35,10 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 class Input;
@@ -51,6 +54,10 @@ struct BattleRequest
 {
     std::string mapPath;
     int returnWorldNodeId = 4;
+    // Tutorial duel: launched straight after the narrator on a fresh game,
+    // driven by contextual one-line tips and retried on defeat instead of
+    // returning to the world map.
+    bool tutorial = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +80,12 @@ public:
     void render(float alpha) override;
 
     void processCurrentTurn();
+
+    // Advances the timeline and hands control to the next unit, ending the
+    // battle first if the advance produced a victory/defeat result. The single
+    // "what happens when a unit's turn ends" tail used by every early-exit
+    // path in processCurrentTurn().
+    void endCurrentUnitTurn(float timeCost);
     void advanceToNextUnit();
 
     // ── Public enums ──────────────────────────────────────────────────────
@@ -82,6 +95,22 @@ public:
         Human
     };
 
+    // Contextual one-line hints used by the fresh-game tutorial duel. Each is
+    // shown once per battle, at the moment the player first does the thing it
+    // explains (or right at the tutorial's start/deployment). Real battles
+    // keep the static controls dialog instead.
+    enum class TutorialTip
+    {
+        Deploy,
+        Welcome,
+        ActionMenu,
+        Move,
+        Attack,
+        Defend,
+        Wait,
+        Skill,
+    };
+
     enum class HumanTurnPhase
     {
         FreeCursor,
@@ -89,6 +118,7 @@ public:
         MoveTarget,
         AttackTarget,
         AttackConfirm,
+        ChooseFacing,
         TurnEnded
     };
 
@@ -143,6 +173,7 @@ public:
         PendingAttackController &pendingAttack;
         std::string &pendingSkillId;
         UIManager &uiManager;
+        TurnState &turnState;
     };
 
     HumanTurnContext makeHumanTurnContext();
@@ -232,6 +263,7 @@ public:
         DeploymentPhaseController &deploymentPhase;
         StateMachine<Scene> &sm;
         Renderer *renderer;
+        std::string &topBattleText;
     };
 
     MenuContext makeMenuContext();
@@ -246,16 +278,45 @@ public:
     MovementAnimationController &movementAnimation() { return m_movementAnimation; }
     bool canActiveUnitMove() const;
     HitContext makeHitContext(Unit *attacker, Unit *target, const SkillData *skill) const;
+    // The shared basic-attack skill every unit uses (from the skill DB, seeded
+    // in code so it is always present). Handed to the AI so enemies resolve
+    // their attacks through the exact same skill pipeline as the player.
+    // Returned by value: the fallback is a temporary and must not be bound to
+    // a reference.
+    SkillData basicAttackSkill() const;
+    // True when a learned skill (not the shared basic attack) is the current
+    // selection — decides whether Esc from the targeting phase returns to the
+    // Skills submenu or the action menu.
+    bool isLearnedSkillSelected() const;
     void preparePendingAttack(Unit *active,
                               Vec2i targetPos,
                               Unit *directTarget,
                               const SkillData *skill);
 
+    // Brief red flash + tiny shake for a refused cast (see m_invalidFlashTimer).
+    // Public so HumanTurnController can trigger it when a locked tile turns out
+    // to catch nobody.
+    void flashInvalidTarget();
+
     // Battle-end queries/trigger — public so the controllers above (and the
     // EnemyAction path already in this file) can call them.
+    // Single place where the battle result is evaluated against the board.
+    // Called from the only two moments that can resolve a battle: after damage
+    // (inside BattleSession::applyDamage) and at turn start.
+    void evaluateBattleResult();
     void startBattleEnd(bool playerWon);
+    void updatePendingBattleEnd();
     bool checkVictory() const;
     bool checkDefeat() const;
+
+    void maybeShowBattleControlsTutorial();
+
+    // Tutorial support: shows a one-line contextual tip (tutorial duels only),
+    // and lets the system-menu Quit bail out of a tutorial instead of
+    // entering the retry-on-defeat loop. Returns true when a tip dialog was
+    // actually pushed, so callers can hold back work until it is dismissed.
+    bool maybeShowTutorialTip(TutorialTip tip);
+    void quitFromSystemMenu();
 
 private:
 #ifdef _DEBUG
@@ -275,6 +336,10 @@ private:
     DebugRenderer *m_debugRenderer = nullptr;
     std::unique_ptr<BattleRenderer> m_battleRenderer;
     Texture *m_tileset = nullptr;
+    // Owns the built-in combat VFX textures and keeps them registered with
+    // m_combatAnimations. Populated wholesale by CombatVfxLibrary::load() and
+    // released in onExit().
+    CombatVfxLibrary m_combatVfx;
 
     // ── Map data ───────────────────────────────────────────────────────────
     TileMapData m_mapData;
@@ -294,6 +359,14 @@ private:
     int m_pendingRewardXp = 0;
     bool m_rewardXpAwarded = false;
 
+    // Snapshot of the last victory reward grant, used by renderEndOverlay()
+    // to summarize earnings. Computed once in applyVictoryRewards().
+    int m_rewardGold = 0;
+    int m_rewardXpEach = 0;
+    std::vector<std::string> m_rewardDropNames;
+    std::vector<int> m_rewardDropCounts;
+    std::vector<std::string> m_rewardLevelUps;
+
     // ── Move undo ──────────────────────────────────────────────────────────
     Vec2i m_moveStartPos{0, 0};
     int m_moveStartPointsLeft = 0;
@@ -308,6 +381,16 @@ private:
     bool m_showDefeatOverlay = false;
     bool m_showVictoryOverlay = false;
 
+    // Battle end is deferred until the last damage number / hit ring has
+    // finished, so the finishing blow's VFX are never cut off by the overlay.
+    bool m_battleEndPending = false;
+    bool m_battleEndPendingWin = false;
+
+    // Full-screen fade-out before leaving battle
+    bool m_battleEndFading = false;
+    bool m_battleLeaveTutorialRetry = false;
+    bool m_battleLeaveWin = false;
+
     ScreenTransition m_transition;
 
 #ifdef _DEBUG
@@ -318,6 +401,25 @@ private:
 
     PlayerControlMode m_playerControlMode = PlayerControlMode::Human;
     HumanTurnPhase m_humanTurnPhase = HumanTurnPhase::FreeCursor;
+    bool m_battleTutorialPending = true;
+    // Tutorial-duel one-shot tip guards, reset in onEnter so a retry replays
+    // them. m_tutorialQuitRequested lets the system menu escape the retry
+    // loop (see quitFromSystemMenu()).
+    bool m_tutorialQuitRequested = false;
+    bool m_tutorialDeployTipShown = false;
+    bool m_tipActionMenuShown = false;
+    bool m_tipMoveShown = false;
+    bool m_tipAttackShown = false;
+    bool m_tipDefendShown = false;
+    bool m_tipWaitShown = false;
+    bool m_tipSkillShown = false;
+
+    // Action menu held back while the ActionMenu tip explains it; the flags
+    // replay the requested menu once that tip is dismissed (processUIEvents).
+    bool m_openActionMenuAfterTip = false;
+    bool m_tipMenuCanMove = false;
+    bool m_tipMenuCanAttack = false;
+    bool m_tipMenuCanWait = false;
 
     // ── Turn state ─────────────────────────────────────────────────────────
     TurnState m_turnState = TurnState::Idle;
@@ -346,6 +448,16 @@ private:
 
     Camera m_camera;
     Camera m_previousCamera;
+
+    // ── Invalid-target feedback ────────────────────────────────────────────
+    // A refused cast (AoE splash that catches nobody, single-target skill with
+    // no unit under the cursor) gets a brief red border vignette and a tiny
+    // shake instead of silently refusing, so the player knows the press
+    // registered.
+    void renderInvalidFlashVignette() const;
+
+    float m_invalidFlashTimer = 0.0f;
+    Vec2f m_shakeOffset{0.0f, 0.0f};
 
     Cursor m_cursor;
     float m_cursorHoverOffset = 50.0f;
@@ -402,5 +514,5 @@ private:
 
     void finishEnemyAction();
     void resolveEnemyAttack(Unit &unit, Unit *target);
-    void awardVictoryBonusXp();
+    void applyVictoryRewards();
 };

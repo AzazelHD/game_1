@@ -16,8 +16,9 @@ enum class ProgressionSkillCategory
 
 struct ProgressionSkillDefinition
 {
-    std::string id;
-    std::string name;
+    std::string id;              // unique key; for Active skills this *is* the combat skill id ("slash", "fireball", ...)
+    std::string name;            // display name
+    std::string description;     // short flavour/effect text shown in the spend UI
     ProgressionSkillCategory category = ProgressionSkillCategory::Active;
     int maxLevel = 1;
     std::vector<int> pointCosts;
@@ -55,10 +56,20 @@ public:
     bool equip(const std::string &skillId);
     bool unequip(const std::string &skillId);
 
+    // Bulk-restores a persisted progression state (campaign load). The given
+    // learned levels and equipped sets are authoritative — unlike the class
+    // constructor, nothing is re-granted here.
+    void restore(BaseClass baseClass, PromotionClass promotion,
+                 const std::unordered_map<std::string, int> &learned,
+                 const std::unordered_set<std::string> &equippedActive,
+                 const std::unordered_set<std::string> &equippedPassive,
+                 const std::unordered_set<std::string> &equippedReaction);
+
     const std::unordered_map<std::string, int> &learnedSkills() const { return m_levels; }
     const std::unordered_set<std::string> &equippedActive() const { return m_equippedActive; }
     const std::unordered_set<std::string> &equippedPassive() const { return m_equippedPassive; }
     const std::unordered_set<std::string> &equippedReaction() const { return m_equippedReaction; }
+    bool hasLearnedSkills() const { return !m_levels.empty(); }
 
 private:
     bool isEligible(const ProgressionSkillDefinition &skill) const;

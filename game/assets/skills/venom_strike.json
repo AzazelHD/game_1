@@ -1,0 +1,16 @@
+{
+  "id": "venom_strike",
+  "name": "Venom Strike",
+  "description": "A poisoned slash that deals damage over time.",
+  "basePower": 4,
+  "powerPerLevel": 2,
+  "isMagical": false,
+  "element": "neutral",
+  "skillAccuracy": 90,
+  "range": 1,
+  "mpCost": 0,
+  "effectTypes": ["damage"],
+  "statuses": [
+    { "type": "poison", "turns": 3, "damagePerTick": 4, "chance": 90 }
+  ]
+}

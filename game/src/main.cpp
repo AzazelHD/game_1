@@ -51,7 +51,9 @@ int main(int argc, char *argv[])
                     windowConfig.height = res.height;
                     windowConfig.borderless = (settings.windowMode == WindowMode::Borderless);
                     return windowConfig; });
+
         app.run();
+
         return 0;
     }
     catch (const std::exception &e)

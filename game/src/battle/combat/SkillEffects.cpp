@@ -1,5 +1,8 @@
 #include "battle/combat/SkillEffects.h"
 
+#include "data/SkillLoader.h"
+#include "battle/unit/StatusEffect.h"
+
 #include <algorithm>
 #include <cstdio>
 
@@ -39,7 +42,8 @@ namespace skill_effects
     bool isOffensive(const SkillData &skill)
     {
         return hasEffect(skill, SkillEffectType::Damage) ||
-               hasEffect(skill, SkillEffectType::Debuff);
+               hasEffect(skill, SkillEffectType::Debuff) ||
+               hasEffect(skill, SkillEffectType::Ko);
     }
 
     StatKind statKindFromKey(const std::string &key)
@@ -84,24 +88,22 @@ namespace skill_effects
         return std::max(0, ctx.basePower + ctx.attacker->getMagic());
     }
 
+    // ── The damage preview ───────────────────────────────────────────────────
+    // Deliberately narrow: damage and accuracy and nothing else. What a skill
+    // *causes* (element, statuses, stat mods) lives in describeSkillDetails(),
+    // which the confirm window shows, so the same fact is never printed twice.
     std::string describeSkill(const SkillData &skill, const HitContext &ctx)
     {
-        if (hasEffect(skill, SkillEffectType::Heal) && !isOffensive(skill))
-        {
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "HEAL +%d", computeHealAmount(ctx));
-            return buf;
-        }
-        if (hasEffect(skill, SkillEffectType::Buff) ||
-            hasEffect(skill, SkillEffectType::Debuff))
-        {
-            const StatKind stat = statKindFromKey(skill.statKey);
-            char buf[48];
-            std::snprintf(buf, sizeof(buf), "%s %+d (%dT)",
-                          statKindLabel(stat), skill.statAmount, skill.buffTurns);
-            return buf;
-        }
-        return describeAttack(ctx);
+        if (hasEffect(skill, SkillEffectType::Damage))
+            return describeAttack(ctx);
+
+        // Any skill without a damage effect - heal, buff, debuff, and a KO
+        // (which is a lethal rider, so it rolls just like a stun would):
+        // "---" in the damage slot, but the accuracy it will actually roll.
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "--- ACC %d%%",
+                      static_cast<int>(CombatSystem::preview(ctx).hitChance + 0.5f));
+        return buf;
     }
 
     std::string describeAttack(const HitContext &ctx)
@@ -115,5 +117,64 @@ namespace skill_effects
         char buf[32];
         std::snprintf(buf, sizeof(buf), "%s %+d", statKindLabel(stat), skill.statAmount);
         return buf;
+    }
+
+    // The riders a skill attaches on top of its own description: the stat mod
+    // it applies and the statuses it inflicts. These are the facts the DMG/ACC
+    // preview has no room for.
+    std::string describeSkillRiders(const SkillData &skill)
+    {
+        std::string riders;
+        char buf[48];
+
+        if (!skill.statKey.empty() && skill.buffTurns > 0)
+        {
+            std::snprintf(buf, sizeof(buf), "%s %+d for %d turn%s",
+                          statKindLabel(statKindFromKey(skill.statKey)),
+                          skill.statAmount, skill.buffTurns,
+                          skill.buffTurns == 1 ? "" : "s");
+            riders += buf;
+        }
+
+        if (!skill.statuses.empty())
+        {
+            if (!riders.empty())
+                riders += " ";
+            riders += "Causes:";
+            for (const StatusEffectApply &apply : skill.statuses)
+            {
+                const StatusInfo &info = statusInfo(apply.type);
+                std::snprintf(buf, sizeof(buf), " %s", info.label);
+                riders += buf;
+                if (apply.damagePerTick > 0)
+                {
+                    std::snprintf(buf, sizeof(buf), " %d/turn", apply.damagePerTick);
+                    riders += buf;
+                }
+                if (apply.turns > 0)
+                {
+                    std::snprintf(buf, sizeof(buf), " (%d turn%s)",
+                                  apply.turns, apply.turns == 1 ? "" : "s");
+                    riders += buf;
+                }
+                if (apply.chance < 100)
+                {
+                    std::snprintf(buf, sizeof(buf), " %d%%", apply.chance);
+                    riders += buf;
+                }
+            }
+        }
+
+        return riders;
+    }
+
+    std::string describeSkillDetail(const SkillData &skill)
+    {
+        const std::string riders = describeSkillRiders(skill);
+        if (riders.empty())
+            return skill.description;
+        if (skill.description.empty())
+            return riders;
+        return skill.description + " " + riders;
     }
 } // namespace skill_effects

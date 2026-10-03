@@ -30,6 +30,7 @@ enum class ActionId
 
     // Main menu
     StartGame,
+    ContinueGame,
     LoadGame,
     DeleteSave,
     OpenSettings,
@@ -49,21 +50,27 @@ enum class ActionId
 
     // Tavern
     AcceptMission,
+    Recruit,
     Talk,
     Whispers,
 
     // World map — node hub (city-type nodes)
     OpenInn,
     OpenInventory,
+    OpenJournal,
     OpenPartyMenu,
     OpenPrison,
     OpenShop,
     OpenTavern,
     SaveGame,
 
+    // Party — unit detail
+    OpenSkills,
+
     // World map — node interaction
     EnterBattle,
     InteractWithNode,
     MoveToNode,
+    PlayNodeEvent,
     ViewMissionDetails,
 };

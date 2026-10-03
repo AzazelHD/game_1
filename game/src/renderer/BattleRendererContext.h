@@ -2,6 +2,7 @@
 
 #include "engine/data/TileMapData.h"
 #include "engine/math/Vec2.h"
+#include "engine/math/MathUtils.h"
 #include "battle/map/MovementRange.h"
 #include "battle/controllers/MovementAnimationController.h"
 
@@ -65,4 +66,10 @@ struct BattleRendererContext
 
     BattleOverlayMode overlayMode;
     const std::unordered_set<Vec2i, Vec2iHash> *overlayTiles;
+
+    // While non-null the unit is mid "choose facing" (after Wait): a compass
+    // picker is drawn around that unit's feet and its own arrow is hidden.
+    const Unit *facingChoiceUnit = nullptr;
+    IsoDirection facingChoiceSelection = IsoDirection::SouthWest;
+    bool hideCursor = false;
 };

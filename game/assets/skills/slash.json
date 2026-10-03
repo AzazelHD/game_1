@@ -3,6 +3,7 @@
   "name": "Slash",
   "description": "A basic physical attack.",
   "basePower": 5,
+  "powerPerLevel": 3,
   "isMagical": false,
   "element": "neutral",
   "skillAccuracy": 95,

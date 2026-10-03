@@ -18,6 +18,11 @@ struct ItemDefinition
     std::string description;
     bool stackable = true;
     std::uint32_t maxStackSize = kDefaultItemStackSize;
+
+    // Merchant value in gold. The shop pays this when buying from the player
+    // and charges a markup (see the shop implementation) when selling. 0 =
+    // not sold by the shop.
+    int goldValue = 0;
 };
 
 struct ItemStack

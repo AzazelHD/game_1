@@ -8,6 +8,7 @@
 #include "engine/renderer/Aligment.h"
 #include "engine/renderer/Font.h"
 #include "engine/renderer/Renderer.h"
+#include "engine/ui/TextBlock.h"
 #include "ui/UITheme.h"
 #include "ui/WindowId.h"
 
@@ -81,8 +82,19 @@ void DialogWindow::render(Renderer *renderer) const
         return;
 
     const float w = GameConstants::VIEW_W - 80.0f;
-    const float h = 140.0f;
     const float x = 40.0f;
+    const float inset = 20.0f;
+    const float textW = w - (inset * 2.0f);
+
+    const Line &line = m_lines[m_lineIndex];
+    constexpr float kLineSpacing = 4.0f;
+    const float speakerH = line.speaker.empty() ? 8.0f : 38.0f;
+
+    // Measure the full text once to size the box, so the dialog doesn't
+    // reflow while the typewriter effect reveals characters.
+    const TextBlock::Layout fullLayout =
+        TextBlock::measure(*renderer, {TextBlock::Line{m_font, line.text, UITheme::Text}}, textW, kLineSpacing);
+    const float h = std::max(140.0f, 14.0f + speakerH + fullLayout.height());
     const float y = GameConstants::VIEW_H - h - 30.0f;
 
     renderer->setBlendMode(Renderer::BlendMode::Blend);
@@ -91,12 +103,11 @@ void DialogWindow::render(Renderer *renderer) const
     renderer->setDrawColor(UITheme::PopupBorder);
     renderer->drawRect(Rectf{x, y, w, h});
 
-    const Line &line = m_lines[m_lineIndex];
     if (!line.speaker.empty())
     {
         renderer->renderTextInRect(m_font,
                                    line.speaker,
-                                   Rectf{x, y + 10.0f, w, 20.0f},
+                                   Rectf{x, y + 8.0f, w, 24.0f},
                                    UITheme::Cursor,
                                    HorizontalAlign::Center,
                                    VerticalAlign::Middle,
@@ -105,16 +116,19 @@ void DialogWindow::render(Renderer *renderer) const
                                    false);
     }
 
-    std::string visible = line.text.substr(0, static_cast<std::size_t>(m_visibleChars));
-    renderer->renderTextInRect(m_font,
-                               visible,
-                               Rectf{x, y + 40.0f, w, 24.0f},
-                               UITheme::Text,
-                               HorizontalAlign::Center,
-                               VerticalAlign::Middle,
-                               false,
-                               false,
-                               false);
+    // Reveal wraps the currently visible substring — the typewriter reveals
+    // characters across wrapped rows exactly as before, but long lines now
+    // flow onto multiple rows inside the box instead of overflowing it.
+    const std::string visible = line.text.substr(0, static_cast<std::size_t>(m_visibleChars));
+    const Rectf textArea{x + inset, y + 6.0f + speakerH, textW, h - speakerH - 16.0f};
+    TextBlock::render(*renderer,
+                      {TextBlock::Line{m_font, visible, UITheme::Text}},
+                      textArea,
+                      TextBlock::Anchor::TopLeft,
+                      textW,
+                      kLineSpacing,
+                      HorizontalAlign::Center,
+                      true);
 }
 
 bool DialogWindow::isCurrentLineFinished() const

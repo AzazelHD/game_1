@@ -185,6 +185,18 @@ AttackRange::computeSplashTiles(const Grid &grid,
                 !hasLineOfSight(grid, battleMap, center, tile, rule))
                 continue;
 
+            // AoE height filter: each splash tile may be no more than
+            // splashHeightTolerance levels away from the CENTER tile. The
+            // center itself is exempt (it already passed canTarget's own
+            // height check). -1 = no height constraint on splash (legacy).
+            if (rule.splashHeightTolerance >= 0)
+            {
+                const int hCenter = battleMap.at(center.x, center.y).height;
+                const int hTile = battleMap.at(c, r).height;
+                if (std::abs(hTile - hCenter) > rule.splashHeightTolerance)
+                    continue;
+            }
+
             tiles.insert(tile);
         }
     }
