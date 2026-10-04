@@ -73,7 +73,21 @@ void DeploymentPhaseController::autoDeployForTutorial()
         const Vec2i pos{tile->col, tile->row};
         if (m_deployment.isOccupied(pos))
             continue;
-        if (!m_deployment.grabSelected())
+
+        // Default the onboarding fight to the Debug Overlord so the tutorial
+        // is a comfortable clear while it's being built/tested. Fall back to
+        // the normal first-in-roster pick if the Overlord isn't in the party.
+        int overlordId = -1;
+        for (const DeploymentEntry &entry : m_deployment.partyEntries())
+        {
+            if (entry.templatePath == "assets/units/debug_overlord.json")
+            {
+                overlordId = entry.instanceId;
+                break;
+            }
+        }
+        const bool grabbedOverlord = overlordId >= 0 && m_deployment.grabUnit(overlordId);
+        if (!grabbedOverlord && !m_deployment.grabSelected())
             break;
 
         const int instanceId = m_deployment.grabbedEntry()->instanceId;

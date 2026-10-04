@@ -111,7 +111,9 @@
 - [x] The tutorial duel **starts already deployed**: the party is auto-placed
       on its spawn tile (facing the nearest enemy) and combat begins
       immediately, so the facing picker is never shown before the `Wait` tip
-      explains facing. Real battles keep the full deployment phase.
+      explains facing. Real battles keep the full deployment phase. The
+      deployed unit defaults to the Debug Overlord (falls back to the first
+      party member if it is absent).
 - [x] Main menu **Continue** button (top, appears when any save exists) that
       instantly resumes the newest campaign save and auto-focuses; Load Game
       still browses the save list (pick older / delete with X).
@@ -155,15 +157,15 @@
       collide with the preview box; shop/tavern/quest confirms still show their
       normal centered prompt box.
 - [ ] Manual verify (refused-input feedback): every rejected input stays in its
-      current phase and plays a short **red border vignette** + small shake
+      current phase and plays a short **red border vignette**
       instead of silently ignoring the press — an unreachable move tile, an
       attack/skill tile out of range, a supportive cast aimed at a hostile, a
       hostile cast aimed at an ally, and a single-target/AoE cast that catches
       no legal unit. A held Accept must not re-fire after a refusal. The red
       hugs the screen edge and fades to nothing about 5% of the short edge
       inward (no hard banding steps); the middle of the screen is untouched; it
-      lasts ~0.18s at a deliberately faint peak alpha (~0.30) with only a ~1.5px
-      shake — a hint, not a jolt.
+      lasts ~0.18s at a deliberately faint peak alpha (~0.30) — a hint, not a
+      jolt.
 - [ ] Manual verify (no turn banner): nothing is drawn at the top-center of the
       battle screen naming the acting unit (or a round number); the top area is
       free for the Tab skill description.

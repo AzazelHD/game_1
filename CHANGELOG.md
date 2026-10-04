@@ -25,7 +25,10 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   Previously deployment ran with its facing picker — arrows silently rotate
   the dial and Esc is repurposed to undo the placement — before facing was
   ever explained (the only facing tip is the later combat `Wait` one, several
-  dialogs later). Real battles keep the full deployment phase.
+  dialogs later). Real battles keep the full deployment phase. The tutorial's
+  deployed unit **defaults to the Debug Overlord** so the onboarding fight is a
+  comfortable clear while it is being built; it falls back to the normal
+  first-in-roster pick if the Overlord is not in the party.
 - Main menu gains a **Continue** button at the very top whenever any save
   exists, giving the order Continue / New Game / Load Game / Options / Quit.
   It instantly resumes the newest campaign save (`SaveManager::loadLatestCampaign`);
@@ -102,7 +105,7 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
     for every rejected input, not just an empty cast: accepting an unreachable
     move tile, attacking a tile out of range, a supportive cast aimed at a
     hostile, a hostile cast aimed at an ally, and a single-target/AoE cast that
-    catches no legal unit all flash it (plus a small shake) and swallow the
+    catches no legal unit will flash it and swallow the
     Accept so a held key cannot re-fire. Previously every one of those paths
     returned early before the flash check, so the vignette never appeared. It
     stays in the current phase with the cursor unchanged. The vignette is built

@@ -64,7 +64,6 @@ namespace
     // Invalid-target feedback: a deliberately faint, quick hint that the press
     // did not work — enough to register, not enough to read as damage.
     constexpr float INVALID_FLASH_DURATION = 0.18f;
-    constexpr float INVALID_FLASH_SHAKE = 1.5f;
     // Peak opacity right at the screen border. Kept low so the flash is a soft
     // edge glow rather than a red wash.
     constexpr float INVALID_FLASH_ALPHA = 0.30f;
@@ -932,19 +931,10 @@ void BattleState::update(float dt)
     m_combatAnimations.update(dt);
     m_floatingText.update(dt);
 
-    // Invalid-target flash/shake decay. Kept here rather than in the confirm
-    // path so it plays out even while the cursor is being moved again.
+    // Invalid-target flash decay. Kept here rather than in the confirm path so
+    // it plays out even while the cursor is being moved again.
     if (m_invalidFlashTimer > 0.0f)
-    {
         m_invalidFlashTimer = std::max(0.0f, m_invalidFlashTimer - dt);
-        const float t = 1.0f - (m_invalidFlashTimer / INVALID_FLASH_DURATION);
-        const float amp = INVALID_FLASH_SHAKE * (1.0f - t);
-        m_shakeOffset = Vec2f{std::sin(t * 20.0f) * amp, std::cos(t * 27.0f) * amp * 0.5f};
-    }
-    else
-    {
-        m_shakeOffset = Vec2f{0.0f, 0.0f};
-    }
 
     if (m_transition.isActive())
     {
@@ -1548,8 +1538,7 @@ void BattleState::finishEnemyAction()
 Camera BattleState::buildInterpolatedCamera(float alpha) const
 {
     Vec2f interpOffset = m_previousCamera.getOffset() +
-                         (m_camera.getOffset() - m_previousCamera.getOffset()) * alpha +
-                         m_shakeOffset;
+                         (m_camera.getOffset() - m_previousCamera.getOffset()) * alpha;
 
     float interpZoom = m_previousCamera.getZoom() +
                        (m_camera.getZoom() - m_previousCamera.getZoom()) * alpha;

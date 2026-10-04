@@ -293,7 +293,7 @@ public:
                               Unit *directTarget,
                               const SkillData *skill);
 
-    // Brief red flash + tiny shake for a refused cast (see m_invalidFlashTimer).
+    // Brief red flash for a refused cast (see m_invalidFlashTimer).
     // Public so HumanTurnController can trigger it when a locked tile turns out
     // to catch nobody.
     void flashInvalidTarget();
@@ -451,13 +451,11 @@ private:
 
     // ── Invalid-target feedback ────────────────────────────────────────────
     // A refused cast (AoE splash that catches nobody, single-target skill with
-    // no unit under the cursor) gets a brief red border vignette and a tiny
-    // shake instead of silently refusing, so the player knows the press
-    // registered.
+    // no unit under the cursor) gets a brief red border vignette instead of
+    // silently refusing, so the player knows the press registered.
     void renderInvalidFlashVignette() const;
 
     float m_invalidFlashTimer = 0.0f;
-    Vec2f m_shakeOffset{0.0f, 0.0f};
 
     Cursor m_cursor;
     float m_cursorHoverOffset = 50.0f;
