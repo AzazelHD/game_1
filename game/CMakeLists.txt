@@ -99,6 +99,7 @@ set(GAME_SOURCES
     src/scenes/MainMenuState.h
     src/scenes/IntroState.h
     src/scenes/BattleState.h
+    src/scenes/BattleLoader.h
     src/scenes/ResultState.h
     src/scenes/WorldMapState.h
     
@@ -158,6 +159,7 @@ set(GAME_SOURCES
     src/data/SaveManager.h
     
     src/config/BattleCatalog.h
+    src/config/GameConstants.h
     
     src/systems/RosterSystem.h
     src/systems/PartySystem.h
@@ -183,6 +185,8 @@ set(GAME_SOURCES
     src/ui/BattleMenuItem.h
     src/ui/FloatingTextSystem.h
     src/ui/UIUtils.h
+    src/ui/ActionId.h
+    src/ui/WindowId.h
     src/ui/UIKeyRepeat.h
     
     src/ui/windows/ButtonMenuWindow.h

@@ -251,7 +251,7 @@ Parsed by `QuestLoader` into `QuestDefinition`; runtime state tracked by
 
 `QuestLog::isNodeUnlocked(nodeId)` is false when any **incomplete** quest lists
 `nodeId` in `unlocks`. Nodes referenced by no quest are always unlocked. Quest
-state persists in the campaign save (`formatVersion` 3, `questLog` payload).
+state persists in the campaign save (`formatVersion` 3+, `questLog` payload; current format is v4).
 
 ### Example
 
@@ -470,7 +470,7 @@ Replacing a weapon while a shield is equipped is rejected unless the new weapon 
 - SlotSelect state: shows 6 equippable positions with current items
 - ItemSelect state: filters inventory by slot and shows list view or stat-delta preview
 
-`RosterSystem` consumes these rules through atomic equip/unequip transactions. A resolved `EquipmentLoadout` remains a transient view; campaign save/load serialization remains deferred.
+`RosterSystem` consumes these rules through atomic equip/unequip transactions. A resolved `EquipmentLoadout` remains a transient view; campaign saves persist roster equipment and the shared inventory (see Campaign ownership above).
 It shows a unit portrait, name, level, EXP, class, effective core stats, and
 every equipment slot, including empty slots. Battle inspection remains separate.
 

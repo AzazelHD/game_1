@@ -8,7 +8,7 @@ Deliver a stable tactical RPG vertical slice on top of the shared engine while k
 
 The core path is implemented in code:
 
-- App boot and scene flow (`BootState` -> `MainMenuState` -> `WorldMapState` -> `BattleState`)
+- App boot and scene flow (`BootState` -> `MainMenuState` -> `IntroState` (New Game tutorial duel) -> `WorldMapState` -> `BattleState` -> `ResultState`)
 - Deployment phase with roster selection and forced/critical unit handling
 - Combat phase with turn queue, movement, attack/skill targeting, confirm, and resolution
 - Event hooks (`BattleEventSystem`) for dialogue/reward/spawn/end-battle actions
@@ -70,7 +70,7 @@ The core path is implemented in code:
 1. Full uninterrupted smoke run through all major scenes.
 2. Camera and menu alignment regression checks across display modes.
 3. Final visual verification for pass separation on all battle UI overlays.
-4. Add explicit pre-battle scripted dialogue sequence usage.
+4. Add scripted pre-battle story dialogue beats for real battles (the tutorial duel already uses contextual tips).
 
 ## Engineering Rules
 
@@ -89,10 +89,9 @@ The core path is implemented in code:
 
 ## Deferred Until Vertical Slice Is Fully Stable
 
-1. Unit/class progression redesign (`UNIT_DESIGN.md`).
-2. Expanded world simulation (cities, NPC interactions, recruitment UX).
-3. Full combat animation and VFX package.
-4. Advanced skill meta systems (multi-cast chains, status pipelines).
+1. Promotion class tree and passive/reaction skills (`UNIT_DESIGN.md`).
+2. Full combat animation and VFX package, real sprites, audio.
+3. Multi-cast skill chains and enemy skill casting.
 
 ## Roadmap — Remaining Work (living plan)
 

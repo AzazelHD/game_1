@@ -15,18 +15,21 @@ The game owns all domain logic:
 ## Scene Flow
 
 1. `BootState`
-2. `MainMenuState`
-3. `WorldMapState`
-4. `BattleState`
-5. `ResultState` (or return to world map depending on outcome flow)
+2. `MainMenuState` (Continue / New Game / Load Game / Options / Quit)
+3. `IntroState` (New Game only: narrator script, then tutorial duel via `BattleState`)
+4. `WorldMapState` (node graph, town hub, quest journal, node events)
+5. `BattleState`
+6. `ResultState` (or return to world map depending on outcome flow)
 
 ## Module Responsibilities
 
 ### `scenes/`
 
 - `BootState`: startup setup and first transition.
-- `MainMenuState`: top-level navigation and settings entry.
-- `WorldMapState`: node graph cursor/movement and battle launch requests.
+- `MainMenuState`: top-level navigation, Continue/Load, and settings entry.
+- `IntroState`: data-driven narrator shots (`assets/intro/script.json`) leading into the tutorial duel.
+- `BattleLoader`: builds a battle from a `BattleRequest`.
+- `WorldMapState`: node graph cursor/movement, battle launch requests, town hub (shop/tavern/talk), and FFTA-style node event chooser.
 - `BattleState`: orchestration shell for deployment/combat/render/event integration.
 - `ResultState`: outcome display and transition onward.
 
@@ -49,8 +52,8 @@ The game owns all domain logic:
 
 - `combat/`: hit formulas (`CombatSystem`), turn queue, pending target sets.
 - `map/`: grid occupancy, movement range, map tile data, and pathfinding.
-- `unit/`: unit runtime model, progression, and template-driven factory construction.
-- `systems/`: deployment and combat animation event queue support.
+- `unit/`: unit runtime model, progression, `SkillProgression` (skill points/levels), `StatusEffect` (statuses, buffs/debuffs), and template-driven factory construction.
+- `systems/`: deployment, combat animation event queue, `CombatVfxLibrary`, and `MovementCommitSystem`.
 - `ui/`: battle-specific windows (deployment, inspect, panel).
 
 ### `ai/`
@@ -69,6 +72,10 @@ The game owns all domain logic:
 - `SettingsManager`: load/save/apply graphics/audio settings.
 - `UnitLoader`: unit JSON to runtime data.
 - `SkillLoader`: skill JSON to runtime data and directory bulk load.
+- `SaveManager`: campaign saves (format v4: gold, roster, equipment, inventory, EXP, skill progression, quest log) and save-slot listing.
+- `QuestData` / `QuestLoader`: quest JSON to runtime data.
+- `ShopStock`: shop stock table (`assets/shop/stock.json`).
+- `TavernData`: recruit candidates and lore (`assets/tavern/*.json`).
 
 ### `events/`
 
@@ -82,7 +89,8 @@ The game owns all domain logic:
 ### `ui/`
 
 - `UIManager`: single stack owner for windows and input/render blocking behavior.
-- shared widgets/helpers: cursor, damage preview, floating text, theme, scaling.
+- shared widgets/helpers: cursor, damage preview, floating text, theme, scaling, key repeat, unit portrait, confirm dialogs.
+- `ui/windows/`: `ButtonMenuWindow`, `ConfirmWindow`, `DialogWindow`, `InventoryWindow`, `PartyWindow`, `ShopWindow`, `SkillProgressionWindow`, `UnitDetailWindow`.
 
 ### `settings/`
 
@@ -93,8 +101,9 @@ The game owns all domain logic:
 - `RosterSystem`: recruitable/player-owned units, persistent equipped ItemIds,
   and atomic equip/unequip transactions.
 - `PartySystem`: active party subset used in world/battle flows.
-- `PartyContext`: campaign-lifetime owner of roster, party, shared Inventory,
+- `PartyContext`: campaign-lifetime owner of roster, party, gold, shared Inventory,
   and GearCatalog.
+- `QuestLog`: active/completed quest state, persisted in the campaign save.
 
 ### `inventory/`
 
@@ -129,13 +138,14 @@ Primary content assets live under `game/assets`:
 - maps (`.tmj`, `.tmx`)
 - unit templates (`assets/units/*.json`)
 - skills (`assets/skills/*.json`)
+- quests (`assets/quests/*.json`), shop (`assets/shop/`), tavern (`assets/tavern/`), town talk (`assets/town/`), intro script (`assets/intro/`)
 - visuals/audio/fonts/sprites
 
 See `DATA_SCHEMAS.md` for map/unit/skill structures.
 
 ## Current Gaps and Follow-Ups
 
-1. Full smoke and regression test pass needs manual execution.
-2. Pre-battle scripted dialogue usage exists as API hooks but still needs an always-on sample sequence.
-3. Combat animation system currently exposes structure and queueing, with placeholder rendering behavior.
-4. Campaign save/load serialization for roster equipment, inventory, and EXP remains deferred.
+1. Full smoke and regression test pass needs manual execution (see "Manual verify" items in `TODO.md`).
+2. Combat VFX uses placeholder visuals (`CombatAnimationSystem` + `CombatVfxLibrary`); real sprite art is pending.
+3. Enemy AI uses basic attacks only (no skill casting).
+4. No audio backend exists in the engine; only a persisted music-volume setting.

@@ -16,33 +16,40 @@ game_1/
 ├── ARCHITECTURE.md          # authoritative module/ownership map
 ├── PLAN.md                  # mission, status, done-vs-pending
 ├── DATA_SCHEMAS.md          # JSON + struct data contracts
-├── UNIT_DESIGN.md           # progression design (deferred)
+├── UNIT_DESIGN.md           # progression design (partly shipped, M4/M5)
 ├── RACE_DESIGN.md           # race/class eligibility
 ├── TODO.md                  # active bugs, regressions, polish
 ├── CHANGELOG.md             # milestone log
-├── USEFUL_COMMANDS.txt      # build/run commands
+├── USEFUL_COMMANDS.txt      # iso projection formula (build recipes: section 8)
+├── graphify-out/            # knowledge graph (graph.json, GRAPH_REPORT.md,
+│                            # .graphify_labels.json); regenerate, never hand-edit
 ├── CMakeLists.txt           # orchestrator only
 ├── game/CMakeLists.txt      # SINGLE source of truth for game sources
 ├── tools/build_debug.bat
 ├── tools/build_release.bat
 └── game/
-    ├── assets/              # maps, units, skills, fonts, sprites, audio
+    ├── assets/              # maps, units, skills, quests, shop, tavern, town,
+    │                        # intro, fonts, sprites, audio
     └── src/
         ├── main.cpp
-        ├── scenes/          # BootState, MainMenuState, WorldMapState,
-        │                    # BattleState, ResultState
+        ├── scenes/          # BootState, IntroState, MainMenuState,
+        │                    # WorldMapState, BattleState, ResultState,
+        │                    # BattleLoader
         ├── battle/          # BattleSession, controllers/, combat/, map/,
         │                    # unit/, systems/, ui/
         ├── ai/              # EnemyAI
         ├── config/          # BattleCatalog, GameConstants
-        ├── data/            # SettingsManager, UnitLoader, SkillLoader
+        ├── data/            # SettingsManager, UnitLoader, SkillLoader,
+        │                    # SaveManager, QuestData/QuestLoader, ShopStock,
+        │                    # TavernData
         ├── events/          # BattleEventSystem
         ├── inventory/       # Item, Inventory, Gear, EquipRules,
         │                    # GearCatalog
-        ├── renderer/        # BattleRenderer, BattleRendererContext
-        ├── scenes/BattleLoader.{h,cpp}
+        ├── renderer/        # BattleRenderer, BattleRendererContext,
+        │                    # BattleWorldProjection
         ├── settings/        # SettingsState, Graphics/Audio, SettingsRowWindow
-        ├── systems/         # RosterSystem, PartySystem, PartyContext
+        ├── systems/         # RosterSystem, PartySystem, PartyContext,
+        │                    # QuestLog
         ├── ui/              # UIManager, Cursor, DamagePreview, theme,
         │                    # scaling, floating text, shared windows
         └── world/           # WorldGraph, WorldPathfinding
@@ -102,7 +109,9 @@ and the modular design.
 For detailed module responsibilities see `ARCHITECTURE.md`. Quick roles:
 
 - `scenes/` — top-level state flow (`BootState` → `MainMenuState` →
-  `WorldMapState` → `BattleState` → `ResultState`).
+  `IntroState` (New Game narrator → tutorial duel) → `WorldMapState` →
+  `BattleState` → `ResultState`). `BattleLoader` builds battles from a
+  `BattleRequest`.
 - `battle/BattleSession` — owns runtime units, turn queue integration,
   victory/defeat evaluation.
 - `battle/controllers/` — `HumanTurnController`, `BattleMenuController`,
@@ -111,26 +120,32 @@ For detailed module responsibilities see `ARCHITECTURE.md`. Quick roles:
 - `battle/combat/` — hit formulas (`CombatSystem`), turn queue, pending targets.
 - `battle/map/` — `Grid`, `BattleMap`, `MovementRange`, `Pathfinder`, `GameTile`.
 - `battle/unit/` — runtime `Unit`, `UnitData`, `UnitProgression`,
-  `SkillProgression`, `RecruitmentRules`, `UnitFactory`.
-- `battle/systems/` — deployment, combat animation queue,
-  `BattleParticipantsBuilder`.
+  `SkillProgression` (skill points/unlocks/levels), `StatusEffect`
+  (statuses, buffs/debuffs), `RecruitmentRules`, `UnitFactory`.
+- `battle/systems/` — deployment, combat animation queue, `CombatVfxLibrary`,
+  `MovementCommitSystem`, `BattleParticipantsBuilder`.
 - `battle/ui/` — battle-specific windows (deployment, inspect, panel).
 - `ai/EnemyAI` — enemy movement + attack plan/act.
 - `config/BattleCatalog` — static battle definitions, per-map rules/events.
 - `config/GameConstants` — viewport / shared game constants.
-- `data/` — `SettingsManager`, `UnitLoader`, `SkillLoader`.
+- `data/` — `SettingsManager`, `UnitLoader`, `SkillLoader`, `SaveManager`
+  (campaign saves, format v4), `QuestData`/`QuestLoader`, `ShopStock`,
+  `TavernData`.
 - `events/BattleEventSystem` — trigger→action dispatcher
   (`OnTurnStart`, `OnUnitDeath`, `OnVictory`, …).
 - `renderer/BattleRenderer` + `BattleRendererContext` — read-only render
-  contract.
+  contract; `BattleWorldProjection` — shared tile→screen anchor math.
 - `inventory/` — `Item`, `Inventory`, `Gear`, `EquipRules`, `GearCatalog`.
 - `systems/` — `RosterSystem` (recruitable + persistent equipped `ItemId`),
   `PartySystem` (active battle/world subset), `PartyContext` (campaign-lifetime
-  owner of roster + party + shared `Inventory` + `GearCatalog`).
+  owner of roster + party + shared `Inventory` + `GearCatalog` + gold),
+  `QuestLog` (active/completed quest state).
 - `ui/` — `UIManager`, `Cursor`, `DamagePreview`, `FloatingTextSystem`,
-  `UITheme`, `UIScale`, `UIUtils`, `UIWindow`, shared widgets.
+  `UITheme`, `UIScale`, `UIUtils`, `UIWindow`, `UIKeyRepeat`, `UnitPortrait`,
+  `ConfirmDialogs`, shared widgets.
 - `ui/windows/` — `ButtonMenuWindow`, `ConfirmWindow`, `DialogWindow`,
-  `InventoryWindow`, `PartyWindow`, `UnitDetailWindow`.
+  `InventoryWindow`, `PartyWindow`, `ShopWindow`, `SkillProgressionWindow`,
+  `UnitDetailWindow`.
   `ButtonMenuWindow` supports `setScrollable(false)` (panel grows to fit every
   row, nothing scrolls) and `setWrappable(false)` (focus stops at the ends);
   the world-map main menu uses both.
@@ -193,7 +208,8 @@ Facing semantics (see `battle/combat/CombatSystem.h`):
 - Cursor resets to the active unit when the battle menu reopens or after
   attack resolution commits.
 - Pre-battle scripted dialogue hooks exist in `DialogueController`; the
-  always-on sample sequence is still pending.
+  tutorial duel uses contextual one-line tips and other battles show the
+  static controls dialog on first combat.
 
 ---
 
@@ -414,15 +430,11 @@ Rules of thumb:
 
 ## 10. What Is Deferred — Do NOT Build
 
-These are explicitly out of scope for the current vertical slice. Some are now
-part of the **roadmap** in `PLAN.md` "Roadmap — Remaining Work" (progression
-wiring, cities/NPC/recruitment UX, status pipelines, campaign save
-serialization) and will be built in that order when the user asks — until
-then they remain in the do-not-build bucket. Do not implement them unless the
-user explicitly asks:
+M1–M5 (economy/save v4, quests, town hub, skill progression, status effects,
+buffs, terrain, skill power scaling, boss battle) have **shipped**; see
+`PLAN.md` roadmap and `CHANGELOG.md`. What remains deferred — do not implement
+unless the user explicitly asks:
 
-- Full campaign save/load serialization for roster equipment, inventory,
-  and EXP (`ARCHITECTURE.md` § Current Gaps).
 - Monster / `Undead` units as player recruits. `Undead` is a placeholder
   for future monster units only (FFTA-style fixed movesets, likely
   different slot model). Do not build monster unit / skill tree / equip
@@ -430,15 +442,16 @@ user explicitly asks:
 - Elin-specific Archer/Mage specialization names (currently reusing Elf
   placeholders).
 - Races beyond Human/Elf/Elin.
-- Unit progression point investment / leveling / promotion wiring beyond
-  the existing `SkillProgression` placeholder catalog (`UNIT_DESIGN.md` is
-  the design doc but progression is intentionally deferred —
+- Promotion class tree and passive/reaction skill effects (`UNIT_DESIGN.md`;
   `SkillLoader` ignores `progressionCategory`, `requiredPromotion`,
   `autoGranted`, `placeholder`).
-- Combat animation and VFX package beyond the current
-  `CombatAnimationSystem` queue + placeholder rendering.
-- City/NPC interactions and full recruitment UX.
-- Multi-cast skill chains, status effect pipelines.
+- Enemy skill casting (AI uses basic attacks only), cursed terrain, extra
+  content statuses.
+- Multi-cast skill chains.
+- Real sprite art, a full combat animation/VFX package beyond
+  `CombatAnimationSystem` + `CombatVfxLibrary`, and any audio backend (the
+  engine has none).
+- Gamepad support.
 
 ---
 
@@ -474,8 +487,8 @@ mind (full wording is in the cited section):
   include/ tree, globbing → **§2**.
 - Cursor reset, Manhattan-distance movement cost → **§5**.
 - Magic strings, code comments → **§7**.
-- Deferred features (progression wiring, monster units, save serialization,
-  multi-cast chains) → **§10**.
+- Deferred features (monster units, promotions, enemy skill casting,
+  multi-cast chains, audio) → **§10**.
 
 ---
 
@@ -488,10 +501,13 @@ When the agent needs ground truth, read in this order:
 3. `DATA_SCHEMAS.md` — JSON / struct contracts.
 4. `TODO.md` — active bugs and regressions.
 5. `CHANGELOG.md` — what shipped and when.
-6. `UNIT_DESIGN.md` — progression design (deferred, do not implement).
-7. `RACE_DESIGN.md` — race/class eligibility (deferred, do not implement).
-8. `USEFUL_COMMANDS.txt` — build/run commands.
+6. `UNIT_DESIGN.md` — progression design (M4/M5 slices shipped; promotions
+   and passives still deferred).
+7. `RACE_DESIGN.md` — race/class eligibility.
+8. `USEFUL_COMMANDS.txt` — iso projection formula only.
 9. Engine architecture: `engine/ARCHITECTURE.md`.
+10. `graphify-out/GRAPH_REPORT.md` — generated code graph; a derived view of
+    the source, not a replacement for the docs above.
 
 Update `TODO.md` and `CHANGELOG.md` when finishing items. Update
 `ARCHITECTURE.md` when ownership/responsibilities change. Update
