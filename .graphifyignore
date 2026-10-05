@@ -1,0 +1,14 @@
+build/
+vcpkg_installed/
+.opencode/
+.github/
+game/assets/
+PLAN.md
+TODO.md
+CHANGELOG.md
+ISSUE.md
+AGENTS.md
+.clinerules
+USEFUL_COMMANDS.txt
+latest_debug_run.txt
+build_out.txt

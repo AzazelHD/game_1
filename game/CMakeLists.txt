@@ -39,7 +39,6 @@ set(GAME_SOURCES
     src/battle/BattleSession.cpp
     src/battle/controllers/DeploymentPhaseController.cpp
     src/battle/controllers/BattleMenuController.cpp
-    src/battle/controllers/DeploymentPhaseController.cpp
     src/battle/systems/DeploymentSystem.cpp
     src/battle/systems/BattleParticipantsBuilder.cpp
     src/battle/systems/CombatAnimationSystem.cpp
@@ -134,7 +133,6 @@ set(GAME_SOURCES
     src/battle/BattleSession.h
     src/battle/controllers/DeploymentPhaseController.h
     src/battle/controllers/BattleMenuController.h
-    src/battle/controllers/DeploymentPhaseController.h
     src/battle/systems/DeploymentSystem.h
     src/battle/systems/BattleParticipantsBuilder.h
     src/battle/systems/CombatAnimationSystem.h
