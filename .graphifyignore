@@ -12,3 +12,5 @@ AGENTS.md
 USEFUL_COMMANDS.txt
 latest_debug_run.txt
 build_out.txt
+*.md
+CMakeLists.txt
