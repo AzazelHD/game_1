@@ -31,9 +31,10 @@ struct RosterUnit
 
     // Source of truth for the unit's level. Battle units are rebuilt fresh
     // from their template each battle and grown to this level via
-    // Unit::growToLevel(). Surviving roster units gain +1 per battle victory
-    // (see BattleState::applyVictoryRewards), and each level-up also grants
-    // +1 skill point (see skillPoints).
+    // Unit::growToLevel(). Levels are exp-driven: each victory adds `exp`,
+    // and crossing the linear threshold (100 * level, see
+    // expNeededForLevel) grants +1 level and +1 skill point, with surplus
+    // carrying over (see BattleState::applyVictoryRewards).
     int level = 1;
 
     // Progression (M4). Level-ups grant skill points, points are spent

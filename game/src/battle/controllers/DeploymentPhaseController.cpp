@@ -6,6 +6,7 @@
 #include "engine/math/MathUtils.h"
 #include "scenes/BattleState.h"
 #include "battle/map/GameTile.h"
+#include "battle/combat/TurnQueue.h"
 #include "battle/unit/Unit.h"
 #include "battle/unit/UnitFactory.h"
 #include "battle/unit/UnitProgression.h"
@@ -99,7 +100,7 @@ void DeploymentPhaseController::autoDeployForTutorial()
         presetFacingTowardNearestEnemy(instanceId, pos);
     }
 
-    startCombatPhase();
+    startCombatPhase(true);
 }
 
 void DeploymentPhaseController::syncDeploymentPreviewUnits()
@@ -218,6 +219,8 @@ void DeploymentPhaseController::setUnitPanelPreviewFromEntry(const DeploymentEnt
         {
             previewUnit.setResolvedEquipmentLoadout(
                 partyContext.roster().resolveLoadout(*rosterUnit, partyContext.gearCatalog()));
+            previewUnit.growToLevel(rosterUnit->level);
+            previewUnit.importRosterProgression(rosterUnit->skillPoints, rosterUnit->skills);
             if (!rosterUnit->customName.empty())
                 previewUnit.setDisplayName(rosterUnit->customName);
         }
@@ -231,7 +234,7 @@ void DeploymentPhaseController::setUnitPanelPreviewFromEntry(const DeploymentEnt
     }
 }
 
-void DeploymentPhaseController::startCombatPhase()
+void DeploymentPhaseController::startCombatPhase(bool enemyOpens)
 {
     BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
 
@@ -253,6 +256,31 @@ void DeploymentPhaseController::startCombatPhase()
         return;
 
     ctx.session.init(spawns, ctx.battleDefinition->victoryRule, ctx.battleDefinition->defeatRule);
+
+    // Reorder the fresh queue before processCurrentTurn() below reads the front
+    // of it — that call is what decides human-vs-enemy, so anything that wants a
+    // different unit to open has to say so here, not after this function returns.
+    //
+    // Used by the tutorial: moving the enemy to the head of the queue lets it act
+    // first, so the player learns which unit is theirs by watching the other one
+    // move rather than by being told. Move, don't delay — advance() rewrites
+    // each unit's time to whatever it last spent, so a delay would hand the
+    // enemy several turns in a row instead of one. See TurnQueue::moveToFront.
+    //
+    // Every enemy goes to the front, in the order they appear. Everyone else
+    // keeps their own time and their relative order.
+    if (enemyOpens)
+    {
+        std::vector<Unit *> enemies;
+        for (Unit *u : ctx.session.getUnitPtrs())
+        {
+            // Team 0 is the player's team (see BattleParticipantsBuilder::build).
+            if (u && u->getTeam() != 0)
+                enemies.push_back(u);
+        }
+        for (Unit *e : enemies)
+            ctx.session.moveToFront(e);
+    }
 
     for (Unit *u : ctx.session.getUnitPtrs())
     {
@@ -355,21 +383,14 @@ void DeploymentPhaseController::update(float dt)
 
     if (ctx.unitPanelWindow)
     {
+        // FFTA model: the portrait is driven purely by roster cycling (Q/E)
+        // or by whatever is held in hand. Hovering the cursor never changes
+        // it, so cycling reads clearly even when the cursor sits on an
+        // already-placed unit. Use Details to inspect under-cursor units.
         if (m_deployment.hasGrabbedUnit())
-        {
             setUnitPanelPreviewFromEntry(m_deployment.grabbedEntry());
-        }
-        else if (ctx.hoveredUnit)
-        {
-            if (const DeploymentEntry *placed = m_deployment.deployedEntryAt(cursorPos))
-                setUnitPanelPreviewFromEntry(placed);
-            else
-                ctx.unitPanelWindow->setSingle(ctx.hoveredUnit, ctx.hoveredUnit->getTeam());
-        }
         else
-        {
             setUnitPanelPreviewFromEntry(m_deployment.selectedEntry());
-        }
     }
 }
 
@@ -521,11 +542,11 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
 
             if (m_deployment.isOccupied(cursorPos))
             {
-                if (m_deployment.swapGrabbedWithPlacedAt(cursorPos))
-                {
-                    syncDeploymentPreviewUnits();
-                    refreshDeploymentWindow();
-                }
+                // Future redesign idea: FFTA-style repositioning swaps the held
+                // unit with the occupant. Refused for now so a fresh deployment
+                // never silently bumps someone — flash red and make the player
+                // rearrange explicitly (pick the occupant back up first).
+                m_owner.flashInvalidTarget();
                 return true;
             }
 
@@ -550,27 +571,14 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
             return true;
         }
 
-        if (ctx.hoveredUnit && ctx.hoveredUnit->getTeam() != 0)
-        {
-            m_owner.battleMenu().showInspectWindow(ctx.hoveredUnit);
-            return true;
-        }
-
-        if (const DeploymentEntry *placedHere = m_deployment.deployedEntryAt(cursorPos))
-        {
-            const int instanceId = placedHere->instanceId;
-            if (m_deployment.unplaceUnit(instanceId) && m_deployment.grabUnit(instanceId))
-            {
-                syncDeploymentPreviewUnits();
-                refreshDeploymentWindow();
-            }
-            return true;
-        }
-
         const DeploymentEntry *selected = m_deployment.selectedEntry();
         if (!selected)
             return true;
 
+        // FFTA model: Enter always acts on the portrait-selected unit — a
+        // placed unit is picked back up into the hand, an unplaced one is
+        // grabbed ready for placement. The cursor's hover position doesn't
+        // drive this; use Details to inspect whatever is under the cursor.
         if (m_deployment.isUnitPlaced(selected->instanceId))
         {
             if (m_deployment.unplaceUnit(selected->instanceId) && m_deployment.grabUnit(selected->instanceId))
@@ -581,18 +589,8 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
             return true;
         }
 
-        if (!m_deployment.isOccupied(cursorPos))
-        {
-            if (m_deployment.placedCount() >= m_deployment.maxUnits())
-                return true; // TODO: play "impossible action" sound
-
-            if (m_deployment.grabSelected())
-                refreshDeploymentWindow();
-        }
-        else
-        {
+        if (m_deployment.grabSelected())
             refreshDeploymentWindow();
-        }
         return true;
     }
     if (event.actionId == ActionId::Details)

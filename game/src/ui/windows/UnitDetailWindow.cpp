@@ -62,6 +62,8 @@ UnitDetailWindow::UnitDetailWindow(WindowId id, const RosterUnit &rosterUnit, co
         const GenderData &genderData = getGenderData(data.gender);
         m_unit = std::make_unique<Unit>(data, raceData, genderData, Vec2i{0, 0});
         m_unit->bindEquipmentLoadout(m_loadout.get());
+        m_unit->growToLevel(rosterUnit.level);
+        m_unit->importRosterProgression(rosterUnit.skillPoints, rosterUnit.skills);
         m_className = (data.className.empty() || data.className == "Unknown") ? toString(data.baseClass) : data.className;
     }
     catch (...)
@@ -135,9 +137,13 @@ UnitDetailWindow::UnitDetailWindow(WindowId id,
         const GenderData &genderData = getGenderData(data.gender);
         m_unit = std::make_unique<Unit>(data, raceData, genderData, Vec2i{0, 0});
         m_unit->bindEquipmentLoadout(m_loadout.get());
+        m_unit->growToLevel(rosterUnit.level);
+        m_unit->importRosterProgression(rosterUnit.skillPoints, rosterUnit.skills);
         m_previewUnit = std::make_unique<Unit>(data, raceData, genderData, Vec2i{0, 0});
         m_previewLoadout = std::make_unique<EquipmentLoadout>(*m_loadout);
         m_previewUnit->bindEquipmentLoadout(m_previewLoadout.get());
+        m_previewUnit->growToLevel(rosterUnit.level);
+        m_previewUnit->importRosterProgression(rosterUnit.skillPoints, rosterUnit.skills);
         m_className = (data.className.empty() || data.className == "Unknown") ? toString(data.baseClass) : data.className;
     }
     catch (...)
@@ -720,9 +726,28 @@ void UnitDetailWindow::renderIdentityHeader(Renderer *renderer, Vec2f contentPos
     renderer->renderTextInRect(headingFont, m_className,
                                Rectf{identityRect.x, identityRect.y + 12.0f, identityRect.w, 32.0f},
                                UITheme::SelectedText, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
-    renderer->renderTextInRect(m_font, "EXP  " + std::to_string(m_exp),
-                               Rectf{identityRect.x, identityRect.y + 54.0f, identityRect.w, 24.0f},
+    renderer->renderTextInRect(m_font, "EXP",
+                               Rectf{identityRect.x, identityRect.y + 54.0f, 46.0f, 24.0f},
                                UITheme::Info, HorizontalAlign::Left, VerticalAlign::Middle, false, false, false);
+    const float expBarX = identityRect.x + 52.0f;
+    const float expBarY = identityRect.y + 54.0f + 9.0f;
+    const float expBarW = 220.0f;
+    const float expBarH = 6.0f;
+    const Rectf expBar{expBarX, expBarY, expBarW, expBarH};
+    renderer->setDrawColor(UITheme::Panel);
+    renderer->fillRect(expBar);
+    if (m_unit && m_exp > 0)
+    {
+        const int need = m_unit->expToNextLevel();
+        const float frac = (need > 0) ? std::clamp(m_exp / static_cast<float>(need), 0.0f, 1.0f) : 0.0f;
+        if (frac > 0.0f)
+        {
+            renderer->setDrawColor(UITheme::Success);
+            renderer->fillRect(Rectf{expBar.x, expBar.y, expBar.w * frac, expBar.h});
+        }
+    }
+    renderer->setDrawColor(UITheme::Border);
+    renderer->drawRect(expBar);
 
     if (m_unit && !m_unit->getStatuses().empty())
     {

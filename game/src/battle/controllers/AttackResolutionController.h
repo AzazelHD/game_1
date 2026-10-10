@@ -56,6 +56,16 @@ public:
     [[nodiscard]] std::string &pendingSkillId() { return m_pendingSkillId; }
     [[nodiscard]] const std::string &pendingSkillId() const { return m_pendingSkillId; }
 
+    // Per-step playback readouts for the camera (which hit is showing and its
+    // target). Resolution is driven frame-to-frame by the timer, so the caller
+    // snaps to currentHitTarget() whenever pendingHitIndex() advances.
+    [[nodiscard]] std::size_t pendingHitIndex() const { return m_pendingHitIndex; }
+    [[nodiscard]] std::size_t pendingHitCount() const { return m_pendingHitResults.size(); }
+    [[nodiscard]] Unit *currentHitTarget() const
+    {
+        return m_pendingHitIndex < m_pendingHitResults.size() ? m_pendingHitResults[m_pendingHitIndex].target : nullptr;
+    }
+
 private:
     // One target's rolled outcome. `result` is fixed when the resolution begins
     // so the whole sequence is deterministic.
@@ -78,6 +88,12 @@ private:
         // This is what lets any future skill animation gate its own outcome, and
         // it needs no per-skill special-casing.
         bool visualPlayed = false;
+
+        // Second two-phase gate: a skill with effectPerTarget=true (the default)
+        // plays its effect on each connected target before that target's
+        // consequence, so the whole resolve reads "effect → damage" per unit
+        // instead of a burst of numbers at once. Mirrors visualPlayed above.
+        bool effectPlayed = false;
     };
 
     // Phase 2 pieces, one per kind of consequence. Each builds the resolution

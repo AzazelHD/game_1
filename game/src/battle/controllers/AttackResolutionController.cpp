@@ -16,6 +16,8 @@ namespace
 {
     // Pause between two hits so the animation and the floating number both read.
     constexpr float kHitPacing = 0.4f;
+    // Duration of a skill's effect beat (per-target or the single area bloom).
+    constexpr float kSkillEffectDuration = 0.4f;
 }
 
 void AttackResolutionController::prepare(Unit *active, Vec2i targetPos, Unit *directTarget, const SkillData *skill)
@@ -116,8 +118,22 @@ void AttackResolutionController::beginResolution(Unit *active, const SkillData *
         ctx.combatAnimations.enqueue(skill->id + "_cast_once", 0.5f);
     }
 
+    // A single-bloom skill (effectPerTarget=false) lands its one effect over
+    // the blast area before any per-target consequence — a shiva-style wide
+    // explosion: one burst, then each target's damage pops in turn. Per-target
+    // skills (the default) interleave their effects inside processNextResult().
+    if (skill && !skill->effectPerTarget)
+    {
+        ctx.combatAnimations.enqueue(skill->id + "_effect", m_pendingAttack.center(),
+                                     kSkillEffectDuration);
+        ctx.turnTimer = kSkillEffectDuration;
+    }
+    else
+    {
+        ctx.turnTimer = kHitPacing;
+    }
+
     ctx.pendingResolution = BattleState::PendingResolution::ResolvingHits;
-    ctx.turnTimer = kHitPacing; // TODO: tune per-hit pacing, maybe per-skill
 }
 
 void AttackResolutionController::processNextResult()
@@ -153,6 +169,23 @@ void AttackResolutionController::processNextResult()
         ctx.combatAnimations.enqueue(skill->visualOnHit.id, entry.target->getPosition(),
                                      skill->visualOnHit.duration);
         ctx.turnTimer = skill->visualOnHit.duration;
+        return;
+    }
+
+    // ── Phase 1b: the skill's per-target effect ─────────────────────────────
+    // effectPerTarget (default) gives every target its own effect beat before
+    // its consequence — a fire bolt jumping target to target. Skills that
+    // author a `visualOnHit` use that instead; supportive casts already land
+    // their visual with the consequence, and the basic attack keeps its plain
+    // hit_impact beat.
+    if (skill && skill->effectPerTarget && skill->visualOnHit.empty() &&
+        !skill->isBasicAttack && !skill_effects::isSupportive(*skill) &&
+        !entry.effectPlayed)
+    {
+        entry.effectPlayed = true;
+        ctx.combatAnimations.enqueue(skill->id + "_effect", entry.target->getPosition(),
+                                     kSkillEffectDuration);
+        ctx.turnTimer = kSkillEffectDuration;
         return;
     }
 

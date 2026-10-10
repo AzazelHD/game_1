@@ -10,7 +10,7 @@ set(GAME_SOURCES
     src/scenes/IntroState.cpp
     src/scenes/BattleState.cpp
     src/scenes/ResultState.cpp
-    src/scenes/BattleLoader.cpp   
+    src/scenes/BattleLoader.cpp
     src/scenes/WorldMapState.cpp
     
     src/battle/map/Grid.cpp
@@ -43,6 +43,7 @@ set(GAME_SOURCES
     src/battle/systems/BattleParticipantsBuilder.cpp
     src/battle/systems/CombatAnimationSystem.cpp
     src/battle/systems/CombatVfxLibrary.cpp
+    src/battle/systems/BattleCameraController.cpp
     src/battle/systems/MovementCommitSystem.cpp
     src/battle/ui/UnitPanelWindow.cpp
     src/battle/ui/UnitInspectWindow.cpp
@@ -138,6 +139,7 @@ set(GAME_SOURCES
     src/battle/systems/BattleParticipantsBuilder.h
     src/battle/systems/CombatAnimationSystem.h
     src/battle/systems/CombatVfxLibrary.h
+    src/battle/systems/BattleCameraController.h
     src/battle/systems/MovementCommitSystem.h
     src/battle/ui/UnitPanelWindow.h
     src/battle/ui/UnitInspectWindow.h

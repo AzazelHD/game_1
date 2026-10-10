@@ -273,7 +273,14 @@ void BattleMenuController::showSystemMenu()
             m_owner.quitFromSystemMenu();
         }};
 
-    m_systemMenuItems = {std::move(firstItem), std::move(quitItem)};
+    m_systemMenuItems = {std::move(firstItem)};
+
+    // The tutorial duel offers no way out. Abandoning it counts as a defeat and
+    // drops the player back on the world map with the tutorial half-finished,
+    // which is strictly worse than just playing the one-round fight. Testers
+    // have tools\clear_saves.bat to reset the campaign instead.
+    if (!ctx.tutorial)
+        m_systemMenuItems.push_back(std::move(quitItem));
 
     ButtonMenuConfig config; // all defaults → dead center, both axes, matches actual computed size
     pushButtonMenu(WindowId::BattleSystemMenu, config, m_systemMenuItems);

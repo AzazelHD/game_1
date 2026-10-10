@@ -90,6 +90,13 @@ Parsed by `SkillLoader` into `SkillData`.
 - `area` (int, default: `0`)
 - `mpCost` (int, default: `0`)
 - `castOncePerArea` (bool, default: `false`)
+- `effectPerTarget` (bool, default: `true`) — visual/animation pacing:
+  - `true` (default): the skill's effect animation plays on **each** target,
+    interleaved with that target's consequence (the camera snaps target-to-target).
+  - `false`: the effect blooms **once** over the threat tile (`area` blast
+    center / caster), then consequences are applied per target. Pair with
+    `castOncePerArea` or a single-target forwards skill for the once-bloom look.
+    Example: `"effectPerTarget": false` with `area: 1` (fireball-style).
 - `effectTypes` (array of string enums, default: `["damage"]`)
   - supported values map to: `damage`, `heal`, `buff`, `debuff`, `ko`
   - A skill may declare several; `ko` is fatal and takes precedence over

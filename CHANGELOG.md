@@ -7,6 +7,55 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `(uncommitted)` — 2026-10-09 — "FFTA deployment cycling, exp-driven leveling, QA string fixes"
+
+- **Deployment cycling reworked to the FFTA model.** The unit portrait is now
+  driven purely by roster cycling (Q/E) or by the held unit — hovering the
+  cursor never changes it, so cycling reads clearly even when the cursor sits
+  on an already-placed unit. `Enter` acts on the portrait's unit: an unplaced
+  unit is grabbed into the hand (following the cursor as a pulsing ghost), a
+  placed unit is picked back up; `Esc` drops the held unit back to the roster
+  pool; placing auto-selects the next unplaced unit. Details (not Enter) is the
+  inspect key. _Files: `DeploymentPhaseController`, `BattleState`._
+- **Leveling is now exp-driven.** Each victory adds exp; crossing the linear
+  threshold (`100 * level`, `expNeededForLevel`) grants +1 level and +1 skill
+  point with the surplus carried over, replacing the flat "+1 level per win".
+  `Unit::expToNextLevel` shares the same curve. _Files: `UnitProgression`,
+  `Unit`, `BattleState::applyVictoryRewards`, `RosterSystem`._
+- **EXP / level display.** The portrait gained a thin green EXP bar under the
+  HP/MP lines; the unit-detail identity header shows an `EXP` label + bar
+  instead of raw `EXP 123` text.
+- **Fixed two "LV 1" display bugs.** The deployment preview and the
+  `UnitDetailWindow` roster constructors built units from the template without
+  applying the roster level — they now `growToLevel()` and
+  `importRosterProgression()` like battle units do.
+- **Fixed mojibake in `WorldMapState`.** An earlier ASCII-encoded write had
+  flattened UTF-8 em dashes to `???` (visible in the quest-complete toast);
+  restored.
+- `ConfirmWindow` gained a separate optional button font so the
+  "Start Battle?" prompt can use the heading font while its buttons stay
+  body-sized. The deployment "Start Battle?" confirm now uses
+  heading-prompt + body-buttons to match the world-map confirm.
+- **Portraits hidden behind dialogs/tips.** The battle unit panel clears while
+  a `BattleDialog` is open (tutorial tips, controls block, scripted dialogue),
+  so stray unit portraits no longer flash over tutorial messages.
+- **Place-on-occupied refused.** Placing a held unit onto an occupied tile now
+  flashes the red invalid vignette instead of silently swapping (swap left as
+  a future-redesign comment in the controller).
+- **Per-skill `effectPerTarget` pacing flag.** Default `true` — the skill's
+  effect animation plays on each target interleaved with that target's
+  consequence. Set `"effectPerTarget": false` for a once-bloom over the threat
+  tile (fireball-style), with per-target consequences after. _Files:
+  `SkillLoader`, `AttackResolutionController`, `DATA_SCHEMAS.md`._
+- **`BattleCameraController` (FFTA camera).** Free control holds the active
+  unit centred and only pans when the cursor exits the inner ~75% viewport box
+  (edge-scroll); entering a resolution glides to the caster for the cast beat,
+  then SNAPS target-to-target as each hit's effect plays, and returns to the
+  active unit when the resolve closes. Target-all casts stay on the caster;
+  scripted dialogue always wins. Snaps hard-cut the render interpolation.
+  _Files: `battle/systems/BattleCameraController`, `BattleState`,
+  `AttackResolutionController` accessors._
+
 ## `(uncommitted)` — 2026-09-27 — "Fresh-game tutorial duel with contextual tips"
 
 - A **New Game** now jumps straight into a tutorial duel right after the
@@ -29,6 +78,50 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   deployed unit **defaults to the Debug Overlord** so the onboarding fight is a
   comfortable clear while it is being built; it falls back to the normal
   first-in-roster pick if the Overlord is not in the party.
+- The tutorial duel is now **impossible to abandon**: the system menu (Esc)
+  drops its **Quit** row during the tutorial, leaving only Resume. Quitting used
+  to count as a defeat and dump the player back on the world map with the
+  tutorial half-finished. Real battles keep Quit. (`tools\clear_saves.bat` is the
+  tester's escape hatch.)
+- The tutorial **enemy now opens the duel**. `DeploymentPhaseController::startCombatPhase`
+  takes an `enemyOpens` flag; when set it calls the new `TurnQueue::moveToFront`
+  (pass-through on `BattleSession`) to lift each enemy to the head of the queue.
+  The move happens immediately after `BattleSession::init()` and *before*
+  `processCurrentTurn()` — that call is what reads the front of the queue to pick
+  human-vs-enemy, so reordering after `startCombatPhase()` returns leaves the
+  human turn already running against a queue front that is no longer the player
+  (cursor live, Enter dead, enemy frozen).
+  Watching the other unit take its turn teaches the player which one is theirs far
+  faster than a dialog naming it. `HumanTurnController` already snaps the cursor
+  onto their unit when the turn arrives, so the only thing left to discover is that
+  Enter opens the action menu — which is why the welcome tip now points at the
+  arrow keys and deliberately stops short of saying "press Enter on your unit".
+- **The reorder is a move to the head, not a delay and not a swap.** The first
+  attempt added a flat `delayInitialTurn(unit, delay)` and was wrong twice over:
+  `TurnQueue::advance()` rewrites a unit's `timeUntilTurn` to whatever it just
+  spent on its last action (`TurnQueue.cpp:110`), so a unit pushed back by `delay`
+  stays behind for `delay / cost` turns — a 200 delay against a 100-cost turn
+  handed the enemy **three** turns before the player's first, five if it Waits.
+  The second attempt swapped the first ally's and first enemy's times, which
+  leaves every unit *between* them where it was and so reorders them. `moveToFront`
+  lifts the unit out and re-inserts it at the head: everyone else keeps its own
+  time and its relative order and simply slides down a slot. The enemy acts once,
+  then the normal cost table resumes. `delayInitialTurn` and `swapTurns` have both
+  been removed rather than left as unused API.
+- **Turn-cost consolidation (internal).** Every "cost ÷ speed" division in the
+  battle code now goes through two new `TurnQueue` statics instead of being
+  open-coded at each site: `scaledCost(baseCost, speed)` and
+  `turnCostFor(unit)` (which picks wait/move/action/both from what the unit
+  actually did). This collapsed seven separate divisions across `TurnQueue`,
+  `BattleSession` and `BattleState` into one place, and it fixes a real
+  inconsistency: `rebuildPreview()` was costing each predicted turn at
+  `BASE_MOVE_COST + BASE_ACTION_COST` (125) while the live timeline used
+  `BASE_MOVE_AND_ACTION_COST` (100) — despite a comment in `init()` explicitly
+  stating the constants are dedicated and must not be summed. The preview's
+  spacing was therefore ~25% wider than the timeline it predicts. No gameplay
+  impact (nothing reads `getPreview()` yet), but it would have shown up the moment
+  a turn-order gauge is wired up. The `speed > 0` assertion that only `init()`
+  had now guards every path.
 - Main menu gains a **Continue** button at the very top whenever any save
   exists, giving the order Continue / New Game / Load Game / Options / Quit.
   It instantly resumes the newest campaign save (`SaveManager::loadLatestCampaign`);

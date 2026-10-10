@@ -74,10 +74,8 @@ void BattleSession::spawnUnit(const UnitSpawn &spawn)
 
     Unit &unit = buildUnit(spawn);
     m_unitPtrs.push_back(&unit);
-    float speed = static_cast<float>(unit.getSpeed());
-    float timeCost = TurnQueue::BASE_MOVE_AND_ACTION_COST / speed;
-
-    m_queue.insert(&unit, timeCost);
+    m_queue.insert(&unit, TurnQueue::scaledCost(TurnQueue::BASE_MOVE_AND_ACTION_COST,
+                                               unit.getSpeed()));
 
     if (spawn.isCritical)
         m_criticalUnits.push_back(&unit);
@@ -115,9 +113,8 @@ void BattleSession::replaceUnit(Unit *dead, const UnitSpawn &spawn)
         m_bossUnits.push_back(&(*it));
 
     // Insert into timeline as if it just moved
-    float speed = static_cast<float>(it->getSpeed());
-    float timeCost = TurnQueue::BASE_MOVE_AND_ACTION_COST / speed;
-    m_queue.insert(&(*it), timeCost);
+    m_queue.insert(&(*it), TurnQueue::scaledCost(TurnQueue::BASE_MOVE_AND_ACTION_COST,
+                                                it->getSpeed()));
 }
 
 void BattleSession::update(float dt)

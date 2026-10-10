@@ -36,7 +36,9 @@ namespace UnitPortrait
                           int maxMp,
                           Vec2f topLeft,
                           const PortraitStyle &style,
-                          const std::string &spriteSetId = "");
+                          const std::string &spriteSetId = "",
+                          int currentExp = 0,
+                          int expToNext = 0);
 
     // Draws a circle + centered initial letter — a generated placeholder
     // sprite used everywhere a real unit image doesn't exist yet (map

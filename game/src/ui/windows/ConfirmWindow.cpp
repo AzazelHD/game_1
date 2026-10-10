@@ -101,6 +101,8 @@ void ConfirmWindow::render(Renderer *renderer) const
     UIScale::refresh();
     const float ui = UIScale::factor();
 
+    const Font *buttonFont = m_buttonFont ? m_buttonFont : m_font;
+
     const float maxBoxW = kMaxW * ui;
     const float innerMaxTextW = maxBoxW - kHorizontalPad * ui;
 
@@ -114,14 +116,14 @@ void ConfirmWindow::render(Renderer *renderer) const
 
     // Worst-case (bracketed) button widths — computed here too, so the box
     // is guaranteed wide enough for them, not just for the message text.
-    const float cancelW = renderer->measureText(m_font, "> " + m_cancelLabelText + " <").x;
-    const float confirmW = renderer->measureText(m_font, "> " + m_confirmLabelText + " <").x;
+    const float cancelW = renderer->measureText(buttonFont, "> " + m_cancelLabelText + " <").x;
+    const float confirmW = renderer->measureText(buttonFont, "> " + m_confirmLabelText + " <").x;
     const float buttonsRowW = cancelW + kButtonSpacing * ui + confirmW;
 
     const float widestContentW = std::max(widestLineW, buttonsRowW);
     const float w = std::clamp(widestContentW + kHorizontalPad * ui, kMinW * ui, maxBoxW);
 
-    const float lineH = renderer->measureText(m_font, "Ag").y;
+    const float lineH = renderer->measureText(buttonFont, "Ag").y;
     const float linesBlockH = textLayout.height();
     const float h = (kTopPad * ui) + linesBlockH + (kButtonsGap * ui) + (kBottomPad * ui);
 
@@ -164,6 +166,6 @@ void ConfirmWindow::render(Renderer *renderer) const
         Vec2f{buttonsStartX, buttonsY},
         kButtonSpacing * ui);
 
-    m_cancelButton->render(renderer, m_font, results[0].itemRects[0], ui, UITheme::Text, UITheme::SelectedText);
-    m_confirmButton->render(renderer, m_font, results[1].itemRects[0], ui, UITheme::Text, UITheme::SelectedText);
+    m_cancelButton->render(renderer, buttonFont, results[0].itemRects[0], ui, UITheme::Text, UITheme::SelectedText);
+    m_confirmButton->render(renderer, buttonFont, results[1].itemRects[0], ui, UITheme::Text, UITheme::SelectedText);
 }

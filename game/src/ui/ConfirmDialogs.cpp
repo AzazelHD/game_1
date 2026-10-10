@@ -26,9 +26,11 @@ ConfirmWindow *pushDeleteSaveConfirm(UIManager &ui)
 ConfirmWindow *pushStartBattleConfirm(UIManager &ui)
 {
     // Raised from both the deployment action menu and the deployment phase
-    // controller, so tear down any half-open one first.
+    // controller, so tear down any half-open one first. Match the world-map
+    // "Start Battle?" prompt: heading font, body-sized buttons.
     ui.popById(WindowId::BattleDeploymentConfirm);
-    ConfirmWindow *confirm = pushConfirm(ui, WindowId::BattleDeploymentConfirm, FontRole::Body);
+    ConfirmWindow *confirm = pushConfirm(ui, WindowId::BattleDeploymentConfirm, FontRole::Heading);
+    confirm->setButtonFont(FontManager::instance().get(FontRole::Body));
     confirm->setPrompt("Start Battle?");
     return confirm;
 }

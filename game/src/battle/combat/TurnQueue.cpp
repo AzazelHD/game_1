@@ -34,6 +34,27 @@ static void normalise(std::vector<TurnEntry> &timeline)
 // public
 // ---------------------------------------------------------------------------
 
+float TurnQueue::scaledCost(float baseCost, int speed)
+{
+    assert(speed > 0);
+    return baseCost / static_cast<float>(speed);
+}
+
+float TurnQueue::turnCostFor(const Unit &unit)
+{
+    float baseCost;
+    if (unit.hasMoved() && unit.hasActed())
+        baseCost = BASE_MOVE_AND_ACTION_COST;
+    else if (unit.hasActed())
+        baseCost = BASE_ACTION_COST;
+    else if (unit.hasMoved())
+        baseCost = BASE_MOVE_COST;
+    else
+        baseCost = BASE_WAIT_COST;
+
+    return scaledCost(baseCost, unit.getSpeed());
+}
+
 void TurnQueue::init(std::vector<Unit *> units)
 {
     m_timeline.clear();
@@ -45,11 +66,8 @@ void TurnQueue::init(std::vector<Unit *> units)
     for (std::size_t i = 0; i < units.size(); ++i)
     {
         Unit *u = units[i];
-        float speed = static_cast<float>(u->getSpeed());
-        assert(speed > 0.f);
-        // Uses the dedicated move+action constant (not a sum of the two
-        // separate ones) — matches BattleState::advanceToNextUnit()'s costing.
-        float time = BASE_MOVE_AND_ACTION_COST / speed + static_cast<float>(i) * 0.001f;
+        float time = scaledCost(BASE_MOVE_AND_ACTION_COST, u->getSpeed()) +
+                     static_cast<float>(i) * 0.001f;
 
         m_timeline.push_back({u, time});
     }
@@ -59,9 +77,40 @@ void TurnQueue::init(std::vector<Unit *> units)
     rebuildPreview();
 }
 
+void TurnQueue::moveToFront(Unit *unit)
+{
+    auto it = std::find_if(m_timeline.begin(), m_timeline.end(),
+                           [unit](const TurnEntry &e) { return e.unit == unit; });
+    if (it == m_timeline.end() || it == m_timeline.begin())
+        return;
+
+    // Lift the unit out and re-insert it at the head. Every other unit keeps its
+    // own time and its relative order — they just slide down one slot. Swapping
+    // two units' times instead would leave them where they were, reordering them.
+    TurnEntry moved = *it;
+    m_timeline.erase(it);
+
+    // Place it a hair ahead of whoever is currently first. Keeping its own time
+    // would be wrong: the unit being moved is normally *later* than the front,
+    // and normalise() shifts by the front's value, so the untouched units would
+    // land on negative times — i.e. everyone else would get a free head start.
+    const float firstTime = m_timeline.empty() ? 0.f : m_timeline.front().timeUntilTurn;
+    moved.timeUntilTurn = firstTime - 1.f;
+    m_timeline.insert(m_timeline.begin(), moved);
+
+    // Deliberately no sortTimeline(): the point is to override the time order.
+    normalise(m_timeline);
+    rebuildPreview();
+}
+
 Unit *TurnQueue::getCurrentUnit() const
 {
-    assert(!m_timeline.empty());
+    // Empty timeline is a legitimate state: the queue exists from
+    // BattleSession::init({}) until startCombatPhase() seeds it (and after
+    // every unit is removed). Every caller already handles nullptr, so this
+    // is a normal answer, not a programming error.
+    if (m_timeline.empty())
+        return nullptr;
     return m_timeline.front().unit;
 }
 
@@ -111,10 +160,11 @@ void TurnQueue::rebuildPreview()
         m_preview.push_back(sim.front());
 
         // Re-insert it with a full-cost delay (worst case assumption,
-        // since we don't know what it will do in the future).
+        // since we don't know what it will do in the future). This must match
+        // init()'s opening cost, or the preview's spacing drifts away from the
+        // real timeline's.
         TurnEntry next = sim.front();
-        float speed = static_cast<float>(next.unit->getSpeed());
-        next.timeUntilTurn = (BASE_MOVE_COST + BASE_ACTION_COST) / speed;
+        next.timeUntilTurn = scaledCost(BASE_MOVE_AND_ACTION_COST, next.unit->getSpeed());
 
         sim.erase(sim.begin());
         sim.push_back(next);

@@ -10,6 +10,14 @@
 
 #include "battle/unit/UnitData.h"
 
+// XP needed to advance from `level` to the next level. Linear curve — the
+// single shared source of truth used by Unit::expToNextLevel(), roster
+// leveling in BattleState::applyVictoryRewards, and the EXP bars.
+inline int expNeededForLevel(int level)
+{
+    return 100 * level;
+}
+
 struct RaceData
 {
     Race race = Race::Human;

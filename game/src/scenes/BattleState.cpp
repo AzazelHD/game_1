@@ -189,6 +189,10 @@ void BattleState::onEnter()
     m_camera.setZoom(m_battleDefinition->defaultZoom);
     m_camera.setMapBoundsMargin(0.0f);
 
+    // Cast-beat glides read smoother with a touch more follow time than the
+    // stock cursor chase; per-target snaps bypass easing entirely.
+    m_camera.setFollowDuration(0.2f);
+
     // origin is a screen-space placement value, not a valid iso-space camera
     // offset — clamp immediately so the very first rendered frame already
     // sits inside valid bounds, instead of snapping there on the first
@@ -379,6 +383,57 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
     };
 }
 
+BattleCameraController::Context BattleState::makeCameraContext()
+{
+    BattleCameraController::Context ctx;
+
+    ctx.inCombat = m_flowPhase == BattleFlowPhase::Combat;
+    ctx.phase = m_cameraPhase;
+    ctx.dialogueActive = m_dialogueController.isActive();
+    if (Unit *speaker = m_dialogueController.currentSpeaker())
+        ctx.speakerTile = speaker->getPosition();
+    ctx.cursorTile = m_cursor.getPosition();
+    ctx.anchorTile = Vec2i{-1, -1};
+    if (Unit *active = m_session.getCurrentUnit())
+        ctx.anchorTile = active->getPosition();
+    ctx.tileSize = Vec2f{static_cast<float>(m_mapData.tileWidth),
+                         static_cast<float>(m_mapData.tileHeight)};
+
+    if (ctx.phase == BattleCameraController::Phase::ResolutionCast ||
+        ctx.phase == BattleCameraController::Phase::ResolutionTrack)
+    {
+        if (Unit *caster = m_pendingActor ? m_pendingActor : m_session.getCurrentUnit())
+            ctx.casterTile = caster->getPosition();
+
+        if (ctx.phase == BattleCameraController::Phase::ResolutionTrack)
+        {
+            Vec2i focus = ctx.casterTile;
+            if (m_pendingResolution == PendingResolution::ResolvingHits)
+            {
+                if (Unit *hit = m_attackResolution.currentHitTarget())
+                    focus = hit->getPosition();
+            }
+            else if (m_pendingResolution == PendingResolution::EnemyAction &&
+                     m_enemyActionResolved && m_pendingTarget)
+            {
+                focus = m_pendingTarget->getPosition();
+            }
+            ctx.focusTile = focus;
+
+            const SkillData *skill = nullptr;
+            if (!m_attackResolution.pendingSkillId().empty())
+            {
+                auto it = m_skillDB.find(m_attackResolution.pendingSkillId());
+                if (it != m_skillDB.end())
+                    skill = &it->second;
+            }
+            ctx.stayOnCaster = skill && skill->castOncePerArea;
+        }
+    }
+
+    return ctx;
+}
+
 BattleState::DeploymentContext BattleState::makeDeploymentContext()
 {
     return DeploymentContext{
@@ -429,6 +484,7 @@ BattleState::MenuContext BattleState::makeMenuContext()
         .sm = m_sm,
         .renderer = m_renderer,
         .topBattleText = m_topBattleText,
+        .tutorial = m_request.tutorial,
     };
 }
 
@@ -541,7 +597,10 @@ bool BattleState::maybeShowTutorialTip(TutorialTip tip)
         text = "Deployment — place your unit on a highlighted tile, then press Esc and choose Start Battle.";
         break;
     case TutorialTip::Welcome:
-        text = "Follow the tips — they appear as you act. Dismiss each one with Accept (Enter / Space).";
+        // Deliberately does NOT say "press Enter on your unit" — discovering that
+        // is the point of the first real turn. The enemy opens the duel, so by
+        // the time control arrives the player already knows which unit is theirs.
+        text = "Follow the tips — they appear as you act. Move the cursor with the arrow keys, and dismiss each tip with Enter or Space.";
         break;
     case TutorialTip::ActionMenu:
         if (m_tipActionMenuShown)
@@ -792,12 +851,10 @@ void BattleState::handleInput()
         // the first Back should close that window, not release the grab.
         if (m_uiManager.hasBlockingWindow())
         {
-            // getCurrentUnit() asserts on an empty timeline, which is exactly
-            // the case during Deployment (the turn queue doesn't exist yet).
-            // Only Combat has a "currently active unit" concept.
-            Unit *active = nullptr;
-            if (m_flowPhase == BattleFlowPhase::Combat)
-                active = m_session.getCurrentUnit();
+            // nullptr before combat (empty queue) and after every unit is
+            // gone — processUIEvents() treats "no active unit" as "no
+            // tactical context", which is exactly right for those phases.
+            Unit *active = m_session.getCurrentUnit();
 
             // The action menu specifically should not be cancellable via
             // Back once the active unit has committed to its action and
@@ -964,6 +1021,7 @@ void BattleState::update(float dt)
 
     if (m_flowPhase == BattleFlowPhase::Deployment)
     {
+        m_deploymentElapsed += dt;
         if (m_request.tutorial && !m_tutorialDeployTipShown)
             maybeShowTutorialTip(TutorialTip::Deploy);
         m_deploymentPhase.update(dt);
@@ -1040,27 +1098,38 @@ void BattleState::update(float dt)
     // Track unit under cursor
     Vec2i cursorPos = m_cursor.getPosition();
 
-    if (Unit *speaker = m_dialogueController.currentSpeaker())
+    // ── Camera phase machine ─────────────────────────────────────────────────
+    // Entering a resolution starts the cast beat (glide to the caster); the
+    // enemy's applied strike promotes it to the per-target track. Player hits
+    // promote it inside the WaitingForAnimation switch below, right as the
+    // first consequence's effect plays. Anything else returns to free follow.
+    const bool resolving = m_pendingResolution == PendingResolution::ResolvingHits ||
+                           m_pendingResolution == PendingResolution::EnemyAction;
+    if (resolving)
     {
-        const Vec2f speakerIsoPos = tileToIso(speaker->getPosition(), m_mapData.tileWidth, m_mapData.tileHeight);
-        m_camera.trackTarget(speakerIsoPos, Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H}, dt);
+        if (m_cameraPhase == BattleCameraController::Phase::Free)
+            m_cameraPhase = BattleCameraController::Phase::ResolutionCast;
+        if (m_pendingResolution == PendingResolution::EnemyAction && m_enemyActionResolved &&
+            m_cameraPhase == BattleCameraController::Phase::ResolutionCast)
+            m_cameraPhase = BattleCameraController::Phase::ResolutionTrack;
     }
-    else if (!m_dialogueController.isActive())
+    else
     {
-        const Vec2f isoPos = tileToIso(cursorPos, m_mapData.tileWidth, m_mapData.tileHeight);
-        m_camera.trackTarget(isoPos, Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H}, dt);
+        m_cameraPhase = BattleCameraController::Phase::Free;
     }
-    // else: dialogue active with no speaker for this beat — leave camera where it is.
 
-    m_camera.clampToBounds();
+    const bool cameraSnapped = m_battleCamera.update(
+        dt, m_camera,
+        Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H},
+        makeCameraContext());
+    if (cameraSnapped)
+        m_previousCamera = m_camera; // hard cut: no this-frame render lerp
+
     m_hoveredUnit = unitAt(m_session.getUnitPtrs(), cursorPos);
 
-    // The turn-state machine (and everything that calls
-    // m_turnQueue.getCurrentUnit()) is only valid once the queue has been
-    // initialised in startCombatPhase(). During Deployment m_units is already
-    // populated with preview units, so without this guard the Idle case would
-    // call processCurrentTurn() -> getCurrentUnit() and assert on the empty
-    // timeline.
+    // The turn-state machine only applies to combat: before startCombatPhase()
+    // there is no queue (getCurrentUnit() would return nullptr) and after it
+    // the overlays below own the screen.
     if (m_flowPhase != BattleFlowPhase::Combat)
         return;
 
@@ -1097,6 +1166,11 @@ void BattleState::update(float dt)
 
             if (m_pendingResolution == PendingResolution::ResolvingHits)
             {
+                // First processNextResult() call = the cast beat is over and
+                // the first target's effect begins — from here the camera
+                // snaps focus target-to-target.
+                if (m_cameraPhase == BattleCameraController::Phase::ResolutionCast)
+                    m_cameraPhase = BattleCameraController::Phase::ResolutionTrack;
                 m_attackResolution.processNextResult();
                 break;
             }
@@ -1293,17 +1367,26 @@ void BattleState::applyVictoryRewards()
             continue;
         if (RosterUnit *rosterUnit = ctx.roster().findById(rosterId))
         {
-            // Current progression rule: surviving units gain exactly one level
-            // per battle victory. Each level-up also grants one skill point
-            // (spent permanently in the world-map Skills panel to unlock and
-            // equip skills from the progression table).
-            if (rosterUnit->level < u.getMaxLevel())
-            {
-                ++rosterUnit->level;
-                ++rosterUnit->skillPoints;
-                m_rewardLevelUps.push_back(u.getName());
-            }
+            // Progression rule: exp accumulates toward the next level on a
+            // linear curve (100 * level). Crossing the threshold levels up
+            // (surplus carries over) and grants one skill point (spent
+            // permanently in the world-map Skills panel to unlock and equip
+            // skills from the progression table).
             rosterUnit->exp += gained;
+            const int maxLevel = u.getMaxLevel();
+            if (rosterUnit->level < maxLevel)
+            {
+                while (rosterUnit->level < maxLevel &&
+                       rosterUnit->exp >= expNeededForLevel(rosterUnit->level))
+                {
+                    rosterUnit->exp -= expNeededForLevel(rosterUnit->level);
+                    ++rosterUnit->level;
+                    ++rosterUnit->skillPoints;
+                    m_rewardLevelUps.push_back(u.getName());
+                }
+                if (rosterUnit->level >= maxLevel)
+                    rosterUnit->exp = 0;
+            }
         }
     }
     m_pendingRewardXp = 0;
@@ -1339,9 +1422,9 @@ void BattleState::processCurrentTurn()
     Unit *active = m_session.getCurrentUnit();
     if (!active || active->isDead())
     {
-        const float timeCost = TurnQueue::BASE_ACTION_COST /
-                               (active ? static_cast<float>(active->getSpeed()) : 100.0f);
-        endCurrentUnitTurn(timeCost);
+        endCurrentUnitTurn(TurnQueue::scaledCost(
+            TurnQueue::BASE_ACTION_COST,
+            active ? active->getSpeed() : TurnQueue::kFallbackSpeed));
         return;
     }
 
@@ -1374,9 +1457,8 @@ void BattleState::processCurrentTurn()
 
     if (active->isDead())
     {
-        const float timeCost = TurnQueue::BASE_ACTION_COST /
-                               static_cast<float>(active->getSpeed());
-        endCurrentUnitTurn(timeCost);
+        endCurrentUnitTurn(TurnQueue::scaledCost(TurnQueue::BASE_ACTION_COST,
+                                                 active->getSpeed()));
         return;
     }
 
@@ -1388,9 +1470,8 @@ void BattleState::processCurrentTurn()
                                    active->getPosition());
         LOG_INFO("Battle", "%s is %s and loses its turn",
                  active->getName().c_str(), label);
-        const float timeCost = TurnQueue::BASE_ACTION_COST /
-                               static_cast<float>(active->getSpeed());
-        endCurrentUnitTurn(timeCost);
+        endCurrentUnitTurn(TurnQueue::scaledCost(TurnQueue::BASE_ACTION_COST,
+                                                 active->getSpeed()));
         return;
     }
 
@@ -1436,6 +1517,15 @@ void BattleState::processCurrentTurn()
     }
 }
 
+bool BattleState::isHumanTurn() const
+{
+    // Team 0 is the player's team (see BattleParticipantsBuilder::build).
+    // An empty queue (pre-combat / post-battle) has no enemy turn to wait
+    // for, so it reads as the player's own state and the cursor stays visible.
+    const Unit *current = m_session.getCurrentUnit();
+    return !current || current->getTeam() == 0;
+}
+
 void BattleState::advanceToNextUnit()
 {
     m_eventSystem.setTurn(m_session.m_turnsElapsed);
@@ -1443,20 +1533,7 @@ void BattleState::advanceToNextUnit()
 
     Unit *active = m_session.getCurrentUnit();
     if (active)
-    {
-        float timeCost;
-        if (active->hasMoved() && active->hasActed())
-            timeCost = TurnQueue::BASE_MOVE_AND_ACTION_COST;
-        else if (active->hasActed())
-            timeCost = TurnQueue::BASE_ACTION_COST;
-        else if (active->hasMoved())
-            timeCost = TurnQueue::BASE_MOVE_COST;
-        else
-            timeCost = TurnQueue::BASE_WAIT_COST;
-
-        timeCost /= static_cast<float>(active->getSpeed());
-        m_session.advanceTurn(timeCost);
-    }
+        m_session.advanceTurn(TurnQueue::turnCostFor(*active));
 
     m_canUndoLastMove = false; // turn is over — nothing left to undo
 
@@ -1601,7 +1678,8 @@ void BattleState::renderSceneAndOverlays(const Camera &renderCam)
         .overlayTiles = overlayTiles,
         .facingChoiceUnit = nullptr,
         .facingChoiceSelection = IsoDirection::SouthWest,
-        .hideCursor = (m_humanTurnPhase == HumanTurnPhase::ChooseFacing) ||
+        .hideCursor = !isHumanTurn() ||
+                      (m_humanTurnPhase == HumanTurnPhase::ChooseFacing) ||
                       (m_flowPhase == BattleFlowPhase::Deployment && m_deploymentPhase.isChoosingFacing()),
     };
 
@@ -1652,13 +1730,24 @@ void BattleState::renderDeploymentGrabbedGhost(const Camera &renderCam)
         if (!name.empty())
             letter = std::string(1, name[0]);
     }
-    UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, halfTW * 1.2f, 0, letter, 120);
+    const float breathe = 0.5f + 0.5f * std::sin(m_deploymentElapsed * 6.0f);
+    const int alpha = 80 + static_cast<int>(breathe * 80.0f);
+    UnitPortrait::drawPlaceholderSprite(m_renderer, FontManager::instance().get(FontRole::Body), Vec2f{cx, cy}, halfTW * 1.2f, 0, letter, alpha);
 }
 
 void BattleState::syncUnitPanelWindow()
 {
     if (!m_unitPanelWindow || m_flowPhase == BattleFlowPhase::Deployment)
         return;
+
+    // No unit panel behind a modal dialog/tip (tutorial welcome, controls
+    // block, scripted dialogue) — it reads as a stray overlay floating over
+    // the message. It reappears once the dialog is dismissed.
+    if (m_uiManager.hasWindow(WindowId::BattleDialog))
+    {
+        m_unitPanelWindow->clearPanels();
+        return;
+    }
 
     Unit *active = nullptr;
     if (m_flowPhase == BattleFlowPhase::Combat)

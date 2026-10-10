@@ -29,6 +29,9 @@ public:
     explicit ConfirmWindow(WindowId id);
 
     void setFont(const Font *font) { m_font = font; }
+    // Optional: buttons/prompts can differ in size (e.g. a heading-sized
+    // prompt with body-sized buttons). Falls back to setFont() when unset.
+    void setButtonFont(const Font *font) { m_buttonFont = font; }
     void setPrompt(std::string prompt) { m_prompt = std::move(prompt); }
 
     void handleInput(const Input &input) override;
@@ -43,6 +46,7 @@ public:
 
 private:
     const Font *m_font = nullptr;
+    const Font *m_buttonFont = nullptr;
     std::string m_prompt = "???";
 
     std::unique_ptr<ButtonControl> m_cancelButton;

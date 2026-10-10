@@ -107,6 +107,13 @@ struct SkillData
     //         in processNextPendingResult().
     bool castOncePerArea = false;
 
+    // Whether the skill's area effect lands on every target separately
+    // (default; a fire bolt jumping target to target, effect→damage per unit)
+    // or blooms ONCE over the whole blast area before each target's consequence
+    // pops in turn (a shiva-style wide explosion: one burst, then N damage
+    // numbers). Author `"effectPerTarget": false` on a skill to override.
+    bool effectPerTarget = true;
+
     // ── Debug / scripted-assist flags ────────────────────────────────────────
     //
     // neverMiss: the attack always lands. Evasion, the defender's facing bonus

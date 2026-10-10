@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.10" tiledversion="2026.05.04" name="0.5H_IsoTiles" tilewidth="48" tileheight="36" tilecount="40" columns="8">
- <image source="../../../../../../../Tiled/Tiled-2026.05.04_Windows-10+_x86_64/.temp/0.5H_IsoTiles.png" width="384" height="180"/>
+ <image source="../sprites/0.5H_IsoTiles.png" width="384" height="180"/>
  <tile id="3" type="normal"/>
  <tile id="8" type="grass"/>
  <tile id="9" type="grass"/>

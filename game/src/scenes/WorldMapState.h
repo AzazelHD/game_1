@@ -51,8 +51,8 @@ private:
 
     // An interaction waiting at a node (FFTA-style). One per active quest
     // whose objective targets the node, plus one generic "Battle" event when
-    // a battle node has no quest calling on it. >1 events at a node open a
-    // chooser; a single event auto-plays.
+    // a battle node has no quest calling on it. Any non-empty event set opens
+    // a chooser; Enter on the entry runs it.
     struct NodeEvent
     {
         std::string label;

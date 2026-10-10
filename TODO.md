@@ -21,8 +21,15 @@
 - [x] Quest-gated world nodes (`isNodeUnlocked`) + locked node render tint
 - [x] Quest journal UI (world-map menu → list → detail dialog)
 - [x] Completion hooks (`PartyContext::completeQuestsForNode`) + completion toasts
-- [ ] Manual verify in-game: New Game → journal shows 3 quests → win node 2 →
-      node 6 unlocks → journal marks first_watch done → win node 6
+- [ ] Manual verify in-game: New Game → world map opens with the Controls/Tip
+      dialog (once per campaign) → Quests menu lists 2 auto quests (Claim the
+      First Watch, Break the Enemy Line) → travel to node 3 (watchtower) →
+      node-event chooser lists the quest before the Start Battle confirm →
+      win → journal marks first_watch done, node 7 (enemy camp) unlocks →
+      win node 7 → break_the_line completes
+- [ ] Manual verify tavern contract: Riverwatch tavern → quest board → take
+      Scout the Eastern Reach (10g, only one contract at a time) → reach
+      node 1 → quest completes → tavern board offers nothing until done
 - [ ] Manual verify save round-trips quest state (save, quit, load)
 
 ## M3 — Town Hub (shipped, pending verification)
@@ -98,6 +105,33 @@
 - [x] Town hub order + talk: Tavern, Shop, Talk, Quit — Talk plays `assets/town/talk.json` town gossip
 - [x] Quests (journal) reachable from the initial world-map Back menu (`refreshWorldMapMenuItems` now used at open — previously "Quests" was missing there and only appeared after some flows)
 
+## UX Backlog (from manual QA)
+
+- [ ] **Journal submenu**: "Quests" should open a tabbed panel (Active /
+      Completed tabs for now) instead of one flat list, so more tabs can be
+      added later (e.g. Bestiary, Party).
+- [x] **Deployment cycling (FFTA model)**: the portrait is driven only by
+      Q/E cycling (or by the held unit); hovering never changes it. Enter acts
+      on the portrait unit — unplaced → grab it in hand, placed → pick it back
+      up; the held unit follows the cursor with a pulsing ghost; Esc drops it
+      back to the roster pool; placing auto-selects the next unplaced unit.
+- [x] **Exp-driven leveling + XP display**: `RosterUnit::exp` now drives
+      levels on a linear curve (`expNeededForLevel`, 100 * level) instead of a
+      flat +1/win; crossing the threshold levels up and grants +1 SP with
+      surplus carried. Level badge + thin green EXP bar in the portrait; the
+      unit-detail identity header shows an EXP label + bar. (Wipes stale saves.)
+- [x] **LVL1 display bug**: deployment preview and `UnitDetailWindow` roster
+      constructors now `growToLevel()` + `importRosterProgression()` so they
+      show the real roster level/stats instead of a template-fresh unit.
+- [ ] **Battle camera — follow active unit**: keep the camera centered on the
+      current turn's unit every turn; free pan only while on the free cursor.
+- [ ] **Battle camera — target framing**: on attack/skill confirm, center the
+      target unit; for AoE, center the midpoint of all target units.
+- [ ] **Battle camera — cast vs effect**: cast animation centers the caster,
+      effect animation centers the target(s); per-skill flag decides whether
+      the effect animation repeats once per target (e.g. heal) or plays once on
+      the blast tile with per-target floating damage (e.g. fire).
+
 ## Tutorial Duel (shipped, pending verification)
 
 - [x] New Game skips straight from the narrator into a tutorial duel
@@ -114,15 +148,26 @@
       explains facing. Real battles keep the full deployment phase. The
       deployed unit defaults to the Debug Overlord (falls back to the first
       party member if it is absent).
+- [x] The tutorial duel **cannot be abandoned**: the Esc system menu drops its
+      `Quit` row during the tutorial (Resume only). Real battles keep Quit.
+- [x] The tutorial **enemy opens the duel** so the player learns which unit is
+      theirs by watching the other one act, instead of being told. Enemies are
+      lifted to the head of the queue (`TurnQueue::moveToFront` — everyone else
+      keeps their own time and relative order), so the enemy acts once and the
+      normal cost table resumes after. The welcome tip points at the arrow keys
+      but stops short of "press Enter on your unit" — discovering that is the
+      point of the first real turn.
 - [x] Main menu **Continue** button (top, appears when any save exists) that
       instantly resumes the newest campaign save and auto-focuses; Load Game
       still browses the save list (pick older / delete with X).
 - [ ] Manual verify in-game: New Game → narrator → tutorial duel; the player
       unit is already on its spawn tile and combat starts with no deployment
-      step or facing picker → welcome tip → tips fire on the first Move/Attack/
-      Defend/Wait; win → world map at the start node with a fresh save state.
-- [ ] Manual verify: lose the tutorial → duel restarts automatically;
-      system-menu Quit → skips to the world map (no retry loop trap).
+      step or facing picker → welcome tip → **the enemy takes its turn first**
+      → control arrives with the cursor already on the player's unit → tips fire
+      on the first Move/Attack/Defend/Wait; win → world map at the start node
+      with a fresh save state.
+- [ ] Manual verify: lose the tutorial → duel restarts automatically; the Esc
+      system menu offers only Resume (no Quit) and cannot be used to skip ahead.
 - [ ] Manual verify: a non-tutorial battle (Continue on an old save, or the
       node-2 repeat fight) still shows the full static controls dialog on its
       first combat.

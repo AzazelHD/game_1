@@ -53,13 +53,51 @@ public:
     static constexpr float BASE_ACTION_COST = 75.f;
     static constexpr float BASE_MOVE_AND_ACTION_COST = 100.f;
 
+    // Every cost in the game is divided by a unit's speed at its point of use,
+    // so those divisions are funnelled through here rather than open-coded at
+    // each call site. Two reasons: turn frequency stays proportional to speed no
+    // matter which path ends a turn, and a rebalance of the table above cannot
+    // silently miss one of them.
+    //
+    // kFallbackSpeed stands in for "no unit to measure" (a null front-of-queue).
+    static constexpr int kFallbackSpeed = 100;
+
+    // baseCost scaled by speed — the timeline cost of `baseCost` ticks.
+    static float scaledCost(float baseCost, int speed);
+
+    // Timeline cost for a unit that was allowed to act freely: picks the base
+    // cost from what it actually did this turn (wait / move / action / both),
+    // then scales by speed. Turns ended for the unit instead of by it — dead on
+    // arrival, killed by a DoT tick, or consumed by stun/sleep — use
+    // scaledCost(BASE_ACTION_COST, ...) directly, since losing the turn costs
+    // the same as spending it on an action.
+    static float turnCostFor(const Unit &unit);
+
     // Populate the timeline from a list of units and build the initial preview.
-    // Units are inserted with timeUntilTurn = (BASE_MOVE_COST + BASE_ACTION_COST) / speed,
+    // Units are inserted with timeUntilTurn = BASE_MOVE_AND_ACTION_COST / speed,
     // offset slightly so equal-speed units have a deterministic order.
     void init(std::vector<Unit *> units);
 
+    // Moves one unit to the head of the timeline, shifting every other unit down
+    // one slot. Each unit keeps its own time and its relative order — only the
+    // unit being moved changes position. Use this when a unit should get
+    // exactly one turn at the front; the tutorial duel moves the enemy here so
+    // the player works out which unit is theirs by watching, instead of being
+    // told in a dialog. Call after init() and before the first turn is processed.
+    // No-op if the unit is absent or already at the front.
+    //
+    // Prefer this over swapping two units' times (which leaves the units in
+    // between where they were, reordering them) and over pushing a unit back by
+    // a fixed delay — advance() rewrites a unit's time to whatever it just spent
+    // on its last action, so a delayed unit stays behind for delay/cost turns: a
+    // 200 delay against a 100-cost turn hands the unit in front three turns,
+    // not one.
+    void moveToFront(Unit *unit);
+
     // The unit whose turn it is right now (front of the timeline).
     // May return a dead unit — caller is responsible for revive/skip logic.
+    // Returns nullptr when the timeline is empty (pre-combat, or no units
+    // left) — callers must null-check.
     Unit *getCurrentUnit() const;
 
     // Call after the current unit finishes acting.

@@ -304,7 +304,7 @@ void Unit::gainExp(int amount)
 
 int Unit::expToNextLevel() const
 {
-    return 100 * m_data.level * m_data.level; // grows quadratically
+    return expNeededForLevel(m_data.level); // grows linearly with level
 }
 
 void Unit::growToLevel(int targetLevel)

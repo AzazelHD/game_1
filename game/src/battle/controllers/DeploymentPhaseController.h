@@ -75,7 +75,10 @@ private:
     void refreshDeploymentWindow();
     void syncCursorToSelection();
     void setUnitPanelPreviewFromEntry(const DeploymentEntry *entry);
-    void startCombatPhase();
+    // Builds the combat participants from the current deployment and hands over
+    // to processCurrentTurn(). `enemyOpens` holds the player's units back in the
+    // opening turn order so an enemy acts first — tutorial-only.
+    void startCombatPhase(bool enemyOpens = false);
     // Points a freshly placed unit's default facing at the nearest non-player
     // (enemy/neutral) preview unit, so the Accept→Accept→Accept placement flow
     // faces toward the action without extra arrow presses. No-op if nothing

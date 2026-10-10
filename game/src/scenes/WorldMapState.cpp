@@ -92,6 +92,23 @@ void WorldMapState::onEnter()
     m_uiManager.clear();
     m_pendingBattle = PendingBattle{};
 
+    // One-shot controls tutorial (once per campaign): shown the first time
+    // the world map opens, before the player has to move anywhere. Showing it
+    // after the first tavern quest was too late — reaching the tavern already
+    // required the very controls being explained.
+    PartyContext &ctx = PartyContext::instance();
+    ctx.ensureInitialized();
+    if (!ctx.controlsTutorialShown())
+    {
+        ctx.markControlsTutorialShown();
+        auto *dialog = m_uiManager.push<DialogWindow>(WindowId::WorldMapNodeInfo);
+        dialog->setFont(FontManager::instance().get(FontRole::Body));
+        dialog->start({
+            DialogWindow::Line{.speaker = "Controls", .text = "Move cursor: WASD / Arrow keys.  Travel: Accept (Enter).  Details: Tab.  Journal: Quests.  Back: Esc."},
+            DialogWindow::Line{.speaker = "Tip", .text = "Amber halos mark your quest objectives on the map. Your active quests are always in the journal."},
+        });
+    }
+
     // Returning from a battle just won: satisfy victory quests first so the
     // completion dialog shows on top of the fresh world map.
     if (m_wonNodeId >= 0)
@@ -489,12 +506,11 @@ void WorldMapState::onArriveAtNode(int nodeId)
 
     // FFTA-style node events: every active quest whose objective sits on this
     // node is an interaction, and battle nodes additionally offer one even
-    // when no quest points at them. More than one event opens a chooser; a
-    // single event auto-plays (the battle confirm or a quest dialog).
+    // when no quest points at them. Any event opens the chooser so the player
+    // sees what is available; Enter on the entry then runs it (battle confirm
+    // or quest dialog). Nodes with no events stay silent.
     collectNodeEvents(nodeId);
-    if (m_nodeEvents.size() == 1)
-        playNodeEvent(0);
-    else if (m_nodeEvents.size() > 1)
+    if (!m_nodeEvents.empty())
         presentNodeEvents();
 
     // Pushed after the pending event so a completion toast stacks above it.
@@ -585,7 +601,8 @@ void WorldMapState::requestBattleAtNode(int nodeId)
     m_pendingBattle = PendingBattle{.nodeId = nodeId, .mapPath = it->second.battleMapPath};
 
     auto *confirm = m_uiManager.push<ConfirmWindow>(WindowId::WorldMapEncounterConfirm);
-    confirm->setFont(FontManager::instance().get(FontRole::Body));
+    confirm->setFont(FontManager::instance().get(FontRole::Heading));
+    confirm->setButtonFont(FontManager::instance().get(FontRole::Body));
     confirm->setPrompt("Start Battle?");
 }
 
@@ -812,12 +829,6 @@ void WorldMapState::handleTavernEvent(const UIEvent &event)
                 std::vector<DialogWindow::Line> dialogLines;
                 dialogLines.push_back(DialogWindow::Line{.speaker = "Quest Board", .text = std::move(acceptedText)});
                 dialogLines.push_back(DialogWindow::Line{.speaker = "Objective", .text = std::move(objectiveText)});
-                if (quest->offeredAtTavern && !ctx.controlsTutorialShown())
-                {
-                    ctx.markControlsTutorialShown();
-                    dialogLines.push_back(DialogWindow::Line{.speaker = "Controls", .text = "Move cursor: WASD / Arrow keys.  Travel: Accept (Enter).  Details: Tab.  Journal: J.  Back: Esc."});
-                    dialogLines.push_back(DialogWindow::Line{.speaker = "Tip", .text = "Amber halos mark your quest objectives on the map. Your active quests are always in the journal (J)."});
-                }
                 auto *dialog = m_uiManager.push<DialogWindow>(WindowId::WorldMapNodeInfo);
                 dialog->setFont(FontManager::instance().get(FontRole::Body));
                 dialog->start(std::move(dialogLines));
@@ -978,9 +989,9 @@ void WorldMapState::showTavernQuestDetail(int index)
     std::string body = quest->description.empty() ? quest->brief : quest->description;
     body += "\n\nObjective: ";
     if (quest->objective.type == QuestObjectiveType::VictoryAtNode)
-        body += "win the battle at node " + std::to_string(quest->objective.nodeId) + ".";
+        body += "win the battle at node " + nodeNumberLabel(quest->objective.nodeId) + ".";
     else
-        body += "reach node " + std::to_string(quest->objective.nodeId) + ".";
+        body += "reach node " + nodeNumberLabel(quest->objective.nodeId) + ".";
     body += "\nCost: ";
     body += (quest->cost > 0) ? std::to_string(quest->cost) + " gold" : "none";
     body += "\nReward:";
@@ -1703,7 +1714,7 @@ void WorldMapState::refreshWorldMapMenuItems()
         return;
     m_worldMapMenu->setItems({
         ButtonMenuWindow::Item{.id = ActionId::OpenPartyMenu, .label = "Party", .enabled = true},
-        ButtonMenuWindow::Item{.id = ActionId::OpenJournal, .label = "Quests (J)", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::OpenJournal, .label = "Quests", .enabled = true},
         ButtonMenuWindow::Item{.id = ActionId::OpenInventory, .label = "Inventory", .enabled = true},
         ButtonMenuWindow::Item{.id = ActionId::SaveGame, .label = "Save", .enabled = true},
         ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load", .enabled = SaveManager::instance().latestCampaignSlot() >= 0},
@@ -1776,9 +1787,9 @@ void WorldMapState::showQuestDetail(int questIndex)
     std::string body = q.description.empty() ? q.brief : q.description;
     body += "\n\n";
     if (q.objective.type == QuestObjectiveType::VictoryAtNode)
-        body += "Objective: win the battle at node " + std::to_string(q.objective.nodeId) + ".";
+        body += "Objective: win the battle at node " + nodeNumberLabel(q.objective.nodeId) + ".";
     else if (q.objective.type == QuestObjectiveType::ReachNode)
-        body += "Objective: reach node " + std::to_string(q.objective.nodeId) + ".";
+        body += "Objective: reach node " + nodeNumberLabel(q.objective.nodeId) + ".";
     body += "\nReward:";
     if (q.reward.gold > 0)
         body += " " + std::to_string(q.reward.gold) + " gold";

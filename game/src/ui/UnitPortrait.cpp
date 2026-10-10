@@ -109,7 +109,9 @@ Rectf UnitPortrait::render(Renderer *renderer,
                            unit.getMaxMp(),
                            topLeft,
                            style,
-                           unit.getData().spriteSetId);
+                           unit.getData().spriteSetId,
+                           unit.getExp(),
+                           unit.expToNextLevel());
 }
 
 Rectf UnitPortrait::renderFromStats(Renderer *renderer,
@@ -122,7 +124,9 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
                                     int maxMp,
                                     Vec2f topLeft,
                                     const PortraitStyle &style,
-                                    const std::string &spriteSetId)
+                                    const std::string &spriteSetId,
+                                    int currentExp,
+                                    int expToNext)
 {
     if (!renderer || !font)
         return Rectf{topLeft.x, topLeft.y, 0.0f, 0.0f};
@@ -253,6 +257,25 @@ Rectf UnitPortrait::renderFromStats(Renderer *renderer,
                    Rectf{textRect.x + pad, textRect.y + mpY, textRect.w - 2.0f * pad, lineH},
                    UITheme::Text,
                    HorizontalAlign::Right);
+    }
+
+    // EXP bar — a thin track under the MP line spanning the text column.
+    // Only drawn when real progress data is supplied (expToNext > 0).
+    if (expToNext > 0)
+    {
+        const float barH = 5.0f * scale;
+        const float barY = mpY + lineH + 4.0f * scale;
+        const Rectf barBox{textRect.x + pad, textRect.y + barY, textRect.w - 2.0f * pad, barH};
+        const float frac = std::clamp(currentExp / static_cast<float>(expToNext), 0.0f, 1.0f);
+        renderer->setDrawColor(UITheme::Panel);
+        renderer->fillRect(barBox);
+        if (frac > 0.0f)
+        {
+            renderer->setDrawColor(UITheme::Success);
+            renderer->fillRect(Rectf{barBox.x, barBox.y, barBox.w * frac, barBox.h});
+        }
+        renderer->setDrawColor(UITheme::Border);
+        renderer->drawRect(barBox);
     }
 
     return box;

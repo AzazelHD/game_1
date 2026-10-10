@@ -61,6 +61,7 @@ SkillData SkillLoader::load(const std::string &filePath)
     skill.area = j.value("area", 0);
     skill.mpCost = j.value("mpCost", 0);
     skill.castOncePerArea = j.value("castOncePerArea", false);
+    skill.effectPerTarget = j.value("effectPerTarget", true);
 
     skill.neverMiss = j.value("neverMiss", false);
 

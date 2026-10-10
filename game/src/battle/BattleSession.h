@@ -87,6 +87,9 @@ public:
     const std::vector<TurnEntry> &getPreview() const { return m_queue.getPreview(); }
     Unit *getCurrentUnit() { return m_queue.getCurrentUnit(); }
     Unit *getCurrentUnit() const { return m_queue.getCurrentUnit(); }
+    // Pass-through for callers that need to reorder the opening turns — see
+    // TurnQueue::moveToFront.
+    void moveToFront(Unit *unit) { m_queue.moveToFront(unit); }
     // Pass-through for callers that need to advance the turn without going
     // through applyResult() (e.g. skipping a dead unit's turn).
     void advanceTurn(float timeCost)

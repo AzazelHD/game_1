@@ -25,6 +25,7 @@
 #include "events/BattleEventSystem.h"
 #include "battle/systems/CombatAnimationSystem.h"
 #include "battle/systems/CombatVfxLibrary.h"
+#include "battle/systems/BattleCameraController.h"
 #include "ui/UIManager.h"
 #include "ui/BattleMenuItem.h"
 #include "ui/Cursor.h"
@@ -209,6 +210,12 @@ public:
 
     AttackResolutionContext makeAttackResolutionContext();
 
+    // ── Battle camera controller interface ────────────────────────────────
+    // Returns the per-frame snapshot BattleCameraController consumes. The
+    // controller performs no writes; BattleState owns the phase machine
+    // (m_cameraPhase) and flips it as resolution steps advance.
+    BattleCameraController::Context makeCameraContext();
+
     // ── Deployment phase controller interface ──────────────────────────────
     // Mirrors HumanTurnContext/AttackResolutionContext — bundles the shared
     // state DeploymentPhaseController needs to read/write. Extend this (not
@@ -264,6 +271,9 @@ public:
         StateMachine<Scene> &sm;
         Renderer *renderer;
         std::string &topBattleText;
+        // Read-only snapshot: the tutorial duel takes a different path through
+        // a few menus (no way to abandon it).
+        bool tutorial = false;
     };
 
     MenuContext makeMenuContext();
@@ -319,6 +329,11 @@ public:
     void quitFromSystemMenu();
 
 private:
+    // True only while a player-team unit (team 0) holds the front of the turn
+    // queue and the player is expected to act. Drives cursor visibility: the
+    // cursor is meaningless while an enemy (or an AI-autoplayed ally) is moving.
+    bool isHumanTurn() const;
+
 #ifdef _DEBUG
     // Autoplay state machine for player-team units (debug only).
     enum class AutoPlayPhase
@@ -402,6 +417,7 @@ private:
     PlayerControlMode m_playerControlMode = PlayerControlMode::Human;
     HumanTurnPhase m_humanTurnPhase = HumanTurnPhase::FreeCursor;
     bool m_battleTutorialPending = true;
+    float m_deploymentElapsed = 0.0f;
     // Tutorial-duel one-shot tip guards, reset in onEnter so a retry replays
     // them. m_tutorialQuitRequested lets the system menu escape the retry
     // loop (see quitFromSystemMenu()).
@@ -449,6 +465,11 @@ private:
     Camera m_camera;
     Camera m_previousCamera;
 
+    // Where the BattleCameraController is steering the camera. Free =
+    // edge-scroll follow; during an attack/skill resolve we glide into the
+    // cast beat (ResolutionCast), then snap target-to-target (ResolutionTrack).
+    BattleCameraController::Phase m_cameraPhase = BattleCameraController::Phase::Free;
+
     // ── Invalid-target feedback ────────────────────────────────────────────
     // A refused cast (AoE splash that catches nobody, single-target skill with
     // no unit under the cursor) gets a brief red border vignette instead of
@@ -466,6 +487,7 @@ private:
     UIManager m_uiManager;
     HumanTurnController m_humanTurn{*this};
     AttackResolutionController m_attackResolution{*this};
+    BattleCameraController m_battleCamera;
     DeploymentPhaseController m_deploymentPhase{*this};
     BattleMenuController m_battleMenu{*this};
     DialogueController m_dialogueController{*this};
