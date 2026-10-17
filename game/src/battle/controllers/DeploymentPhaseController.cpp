@@ -367,7 +367,7 @@ void DeploymentPhaseController::update(float dt)
         ctx.cursor.update(ctx.battleMap.cols(), ctx.battleMap.rows(), dt);
         const Vec2i pos = ctx.cursor.getPosition();
         const Vec2f isoPos = tileToIso(pos, ctx.mapData.tileWidth, ctx.mapData.tileHeight);
-        ctx.camera.trackTarget(isoPos, Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H}, dt);
+        ctx.camera.trackTarget(isoPos, ctx.camera.getViewportSize(), dt);
         ctx.camera.clampToBounds();
     }
 

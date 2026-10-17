@@ -52,6 +52,7 @@ set(GAME_SOURCES
     src/ai/EnemyAI.cpp
     
     src/renderer/BattleRenderer.cpp
+    src/renderer/BattleLayout.cpp
     src/renderer/BattleWorldProjection.cpp
     
     src/data/UnitLoader.cpp
@@ -148,6 +149,7 @@ set(GAME_SOURCES
     src/ai/EnemyAI.h
     
     src/renderer/BattleRenderer.h
+    src/renderer/BattleLayout.h
     src/renderer/BattleRendererContext.h
     src/renderer/BattleWorldProjection.h
     

@@ -63,7 +63,12 @@ The game owns all domain logic:
 ### `renderer/`
 
 - `BattleRenderer`: battle draw pipeline, overlays, and map/unit presentation.
+  Culling and the backdrop use the live camera viewport (the play field), not a
+  fixed design size.
 - `BattleRendererContext`: read-only render input contract.
+- `BattleLayout`: framed battle layout — computes the permanent side-rail width,
+  the centred `playRect`, and the integer `artScale` (device px per source
+  texel) from the native output size. Rebuilt on resize by `BattleState`.
 - `BattleWorldProjection`: shared tile→screen anchor math (Camera projection +
   elevation) for world-anchored VFX and floating damage text.
 
@@ -142,6 +147,30 @@ Primary content assets live under `game/assets`:
 - visuals/audio/fonts/sprites
 
 See `DATA_SCHEMAS.md` for map/unit/skill structures.
+
+## Render Pipeline (coordinate spaces)
+
+Battle rendering uses two coordinate spaces, deliberately kept separate:
+
+- **World / play field** — the battlefield renders into a `Renderer` **world
+  buffer** sized to the framed layout's `playRect` (native pixels) and is
+  blitted **1:1**, so the art stays pixel-crisp. The `Camera` viewport is the
+  play rect and its render scale is an **integer** device-px-per-texel
+  (`BattleLayout::artScale`). All world draws (tiles, units, cursor, VFX,
+  floating text, debug) go through the camera into this pass via
+  `beginLogicalPass()` / `endLogicalPass()`.
+- **Design / UI** — menus, dialogs, HUD text and screen-anchored effects are
+  laid out in the 1280×720 (`GameConstants::VIEW_*`) design space and mapped to
+  the window by the renderer's letterbox transform, exactly as before.
+- **Rails** — the permanent side rails sit outside the design play field, so
+  they are drawn in raw native pixels via `Renderer::beginNativeOverlay()` /
+  `endNativeOverlay()` (no design transform).
+
+`BattleLayout` (game) owns the rail/play-rect/art-scale math; the engine exposes
+only the primitives (`Renderer::getOutputSize`, `setWorldBufferSize`,
+`begin/endNativeOverlay`, `Camera::getViewportSize`). See
+`FRAMED_LAYOUT_PLAN.md` for the staged rollout (M1 shipped: rails + crisp play
+field; M2+ move the HUD content into the rails and the UI to a native layout).
 
 ## Current Gaps and Follow-Ups
 

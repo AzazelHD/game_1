@@ -21,6 +21,7 @@
 #include "battle/map/RangeRule.h"
 #include "battle/map/Pathfinder.h"
 #include "renderer/BattleRenderer.h"
+#include "renderer/BattleLayout.h"
 #include "config/BattleCatalog.h"
 #include "events/BattleEventSystem.h"
 #include "battle/systems/CombatAnimationSystem.h"
@@ -462,6 +463,13 @@ private:
     // ── Rendering ──────────────────────────────────────────────────────────
     int m_scale = 2;
 
+    // Framed layout: permanent side rails with a crisp play field between them.
+    // Recomputed whenever the native output size changes (see update()). The
+    // world buffer and the camera viewport both follow playRect; artScale is
+    // the integer device-px-per-texel world zoom. See FRAMED_LAYOUT_PLAN.md.
+    BattleLayout m_layout;
+    void applyBattleLayout(const BattleLayout &layout);
+
     Camera m_camera;
     Camera m_previousCamera;
 
@@ -518,6 +526,7 @@ private:
     void renderSceneAndOverlays(const Camera &renderCam);
     void renderDeploymentGrabbedGhost(const Camera &renderCam);
     void syncUnitPanelWindow();
+    void renderRails();
     void renderDeploymentHud();
     void renderTopBattleText();
     void renderWorldEffects(const Camera &renderCam);

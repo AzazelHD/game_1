@@ -86,9 +86,16 @@ and the modular design.
 4. **Render passes**
    - World-layer effects (`CombatAnimationSystem::render`, `DebugRenderer::flush`)
      go through the **world/logical pass** with `beginLogicalPass()` /
-     `endLogicalPass()`.
+     `endLogicalPass()`. The world pass now renders into a **native-sized buffer**
+     set by `Renderer::setWorldBufferSize()` (the framed layout's play rect) and
+     is blitted 1:1, so culling and the backdrop must use the **camera viewport**
+     (`Camera::getViewportSize()`), never `GameConstants::VIEW_*`.
    - Native UI / pixel-aligned overlays (e.g. `DamagePreview`) go through the
-     **native pass** with `toNativeRect` / `toNativePos`.
+     **native pass** with `toNativeRect` / `toNativePos` (the 1280×720 design →
+     window transform).
+   - Content outside the design play field (the permanent battle **rails**) draws
+     in raw output pixels via `beginNativeOverlay()` / `endNativeOverlay()`. See
+     `FRAMED_LAYOUT_PLAN.md` and `ARCHITECTURE.md` → "Render Pipeline".
    - Text must remain crisp: do not reintroduce linear-filter stretching of a
      low-res canvas.
 
@@ -134,7 +141,8 @@ For detailed module responsibilities see `ARCHITECTURE.md`. Quick roles:
 - `events/BattleEventSystem` — trigger→action dispatcher
   (`OnTurnStart`, `OnUnitDeath`, `OnVictory`, …).
 - `renderer/BattleRenderer` + `BattleRendererContext` — read-only render
-  contract; `BattleWorldProjection` — shared tile→screen anchor math.
+  contract; `BattleLayout` — framed rails/play-rect/integer art-scale math;
+  `BattleWorldProjection` — shared tile→screen anchor math.
 - `inventory/` — `Item`, `Inventory`, `Gear`, `EquipRules`, `GearCatalog`.
 - `systems/` — `RosterSystem` (recruitable + persistent equipped `ItemId`),
   `PartySystem` (active battle/world subset), `PartyContext` (campaign-lifetime

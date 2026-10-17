@@ -1,6 +1,6 @@
 # Framed Battle Layout — Persistent Rails + Crisp Play Field
 
-Status: **proposed (Plan mode — not yet implemented)**
+Status: **M1 implemented** (rails + crisp play field); M2–M5 planned
 Scope: battle scene presentation (layout + render pipeline + HUD rails)
 Author: opencode (planning session)
 
@@ -169,9 +169,11 @@ this clean rather than patchwork.
 
 ## 8. Milestones
 
-- **M1 — Layout + crisp play field, stub rails.** Compute rails/play rect;
-  render the world at native integer scale inside `playRect`; draw rails as
-  solid panels. *Visible result: the framed look + no shimmer at any size.*
+- **M1 — Layout + crisp play field, stub rails.** ✅ *Implemented.* `BattleLayout`
+  computes the rails/play rect/integer art scale; the world renders at native
+  integer scale inside `playRect` (blitted 1:1); the rails are drawn as solid
+  native panels with placeholder headers. *Result: the framed look + no shimmer
+  at any size.* Rebuilt live on window resize.
 - **M2 — Rail content.** Actor card (left); Turn queue + Target card (right),
   reusing existing panel logic.
 - **M3 — Tile-anchored overlay migration.** DamagePreview / floating text / VFX

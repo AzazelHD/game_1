@@ -26,7 +26,8 @@ public:
     explicit BattleRenderer(Renderer *renderer);
 
     // Draws the battle backdrop using map-specific configured gradient colors.
-    void drawBackground(FColor top, FColor bottom) const;
+    // `size` is the world viewport size (the play field) the gradient fills.
+    void drawBackground(FColor top, FColor bottom, Vec2f size) const;
     void drawScene(const BattleRendererContext &ctx) const;
 
     void drawTileLayersAt(int row, int col,
@@ -37,7 +38,8 @@ public:
                           Texture *tileset,
                           int tilesPerRow,
                           float spriteH,
-                          float tileW) const;
+                          float tileW,
+                          Vec2f viewport) const;
 
     void drawSpawnOverlayAt(int row, int col, float ax, float ay,
                             float s,

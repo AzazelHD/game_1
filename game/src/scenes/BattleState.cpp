@@ -74,6 +74,12 @@ namespace
     // squared falloff needs a few levels to bend through rather than one ramp.
     constexpr int INVALID_FLASH_STRIPS = 3;
     constexpr Color INVALID_FLASH_COLOR = {220, 60, 60, 255};
+
+    // Framed-layout rails (see FRAMED_LAYOUT_PLAN.md). M1 draws them as solid
+    // panels; the actor card / turn queue land in M2.
+    constexpr Color RAIL_BG = {18, 20, 30, 255};
+    constexpr Color RAIL_EDGE = {58, 64, 88, 255};
+    constexpr Color RAIL_HEADER = {150, 158, 190, 255};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -159,8 +165,20 @@ void BattleState::onEnter()
         static_cast<int>(GameConstants::VIEW_H),
         Renderer::PresentationMode::Letterbox);
 
+    // Framed layout: permanent side rails + a crisp play field. The design
+    // canvas above stays 1280x720 for the UI/design transform, but the world
+    // renders into a native-sized buffer at an integer art scale, so it stays
+    // crisp at any window size. The rails are drawn natively on top of the
+    // leftover. See FRAMED_LAYOUT_PLAN.md.
+    const Vec2i outputSize = m_renderer->getOutputSize();
+    m_layout = computeBattleLayout(outputSize.x, outputSize.y);
+    m_scale = m_layout.artScale;
+    m_renderer->setWorldBufferSize(m_layout.playRect.w, m_layout.playRect.h);
+    const Vec2f playSize{static_cast<float>(m_layout.playRect.w),
+                         static_cast<float>(m_layout.playRect.h)};
+
     // ── 3-6. Load map, build grid, load tileset, compute origin ──
-    BattleLoadResult loaded = BattleLoader{m_renderer}.load(m_request.mapPath.c_str(), m_scale, SPRITE_H);
+    BattleLoadResult loaded = BattleLoader{m_renderer}.load(m_request.mapPath.c_str(), m_scale, SPRITE_H, playSize);
     if (!loaded.ok)
         return;
 
@@ -184,7 +202,7 @@ void BattleState::onEnter()
 
     m_camera.setTileSize(m_mapData.tileWidth, m_mapData.tileHeight);
     m_camera.setMapSize(m_mapData.width, m_mapData.height);
-    m_camera.setViewportSize(Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H});
+    m_camera.setViewportSize(playSize);
     m_camera.setRenderScale(static_cast<float>(m_scale));
     m_camera.setOffset(origin);
     m_camera.setZoom(m_battleDefinition->defaultZoom);
@@ -1006,6 +1024,13 @@ void BattleState::handleInput()
 
 void BattleState::update(float dt)
 {
+    // The window can be resized (or moved between window modes) mid-battle;
+    // when the native output size changes, rebuild the framed layout so the
+    // rails and the crisp integer world scaling stay correct.
+    const Vec2i outputSize = m_renderer->getOutputSize();
+    if (outputSize.x != m_layout.output.x || outputSize.y != m_layout.output.y)
+        applyBattleLayout(computeBattleLayout(outputSize.x, outputSize.y));
+
     // Snapshot old state for precise camera rendering interpolation frames
     m_previousCamera = m_camera;
 
@@ -1149,7 +1174,7 @@ void BattleState::update(float dt)
 
     const bool cameraSnapped = m_battleCamera.update(
         dt, m_camera,
-        Vec2f{GameConstants::VIEW_W, GameConstants::VIEW_H},
+        m_camera.getViewportSize(),
         makeCameraContext());
     if (cameraSnapped)
         m_previousCamera = m_camera; // hard cut: no this-frame render lerp
@@ -1649,6 +1674,29 @@ void BattleState::finishEnemyAction()
 // Render
 // ─────────────────────────────────────────────────────────────────────────────
 
+void BattleState::applyBattleLayout(const BattleLayout &layout)
+{
+    if (!m_renderer)
+        return;
+
+    m_layout = layout;
+    m_scale = layout.artScale;
+
+    // World buffer + camera viewport both follow the play field; artScale is
+    // the integer world zoom (device px per source texel).
+    m_renderer->setWorldBufferSize(m_layout.playRect.w, m_layout.playRect.h);
+
+    const Vec2f playSize{static_cast<float>(m_layout.playRect.w),
+                         static_cast<float>(m_layout.playRect.h)};
+    m_camera.setViewportSize(playSize);
+    m_camera.setRenderScale(static_cast<float>(m_scale));
+    m_camera.clampToBounds();
+
+    // Fold the change into the render-interpolation snapshot so the resize
+    // doesn't lerp across the old framing for one frame.
+    m_previousCamera = m_camera;
+}
+
 Camera BattleState::buildInterpolatedCamera(float alpha) const
 {
     Vec2f interpOffset = m_previousCamera.getOffset() +
@@ -1675,7 +1723,7 @@ Camera BattleState::buildInterpolatedCamera(float alpha) const
 
 void BattleState::renderSceneAndOverlays(const Camera &renderCam)
 {
-    m_battleRenderer->drawBackground(m_bgTop, m_bgBottom);
+    m_battleRenderer->drawBackground(m_bgTop, m_bgBottom, renderCam.getViewportSize());
 
     if (!m_tileset || m_mapData.isEmpty())
         return;
@@ -1876,6 +1924,49 @@ void BattleState::syncUnitPanelWindow()
         m_unitPanelWindow->setSingle(m_hoveredUnit, m_hoveredUnit->getTeam());
     else
         m_unitPanelWindow->clearPanels();
+}
+
+void BattleState::renderRails()
+{
+    const Recti &play = m_layout.playRect;
+    const float railW = static_cast<float>(m_layout.railW);
+    const float h = static_cast<float>(m_layout.output.y);
+    if (railW <= 0.0f || h <= 0.0f)
+        return;
+
+    const Rectf leftRail{0.0f, 0.0f, railW, h};
+    const Rectf rightRail{static_cast<float>(play.x + play.w), 0.0f, railW, h};
+
+    // Native space: the rails live outside the design play field, so they
+    // bypass the UI/design transform.
+    m_renderer->beginNativeOverlay();
+
+    m_renderer->setBlendMode(Renderer::BlendMode::None);
+    m_renderer->setDrawColor(RAIL_BG);
+    m_renderer->fillRect(leftRail);
+    m_renderer->fillRect(rightRail);
+
+    // Inner accent edge so the rails read as a deliberate frame.
+    m_renderer->setDrawColor(RAIL_EDGE);
+    m_renderer->fillRect(Rectf{leftRail.x + leftRail.w - 2.0f, 0.0f, 2.0f, h});
+    m_renderer->fillRect(Rectf{rightRail.x, 0.0f, 2.0f, h});
+
+    // Placeholder headers for M1; the actor card / turn queue land in M2.
+    const Font *font = FontManager::instance().get(FontRole::Body);
+    if (font)
+    {
+        m_renderer->setBlendMode(Renderer::BlendMode::Blend);
+        m_renderer->renderTextInRect(font, "ACTOR",
+                                     Rectf{leftRail.x, 16.0f, leftRail.w, 24.0f},
+                                     RAIL_HEADER, HorizontalAlign::Center, VerticalAlign::Middle,
+                                     false, false, false);
+        m_renderer->renderTextInRect(font, "TURN ORDER",
+                                     Rectf{rightRail.x, 16.0f, rightRail.w, 24.0f},
+                                     RAIL_HEADER, HorizontalAlign::Center, VerticalAlign::Middle,
+                                     false, false, false);
+    }
+
+    m_renderer->endNativeOverlay();
 }
 
 void BattleState::renderDeploymentHud()
@@ -2101,6 +2192,8 @@ void BattleState::render(float alpha)
     renderDeploymentGrabbedGhost(renderCam);
     renderWorldEffects(renderCam);
     m_renderer->endLogicalPass();
+
+    renderRails();
 
     syncUnitPanelWindow();
     renderDeploymentHud();

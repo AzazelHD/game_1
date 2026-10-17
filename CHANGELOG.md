@@ -7,7 +7,40 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
-## `(uncommitted)` — 2026-10-17 — "Turn-start menu, undoable Wait, camera framing, UTF-8 dialog"
+## `(uncommitted)` — 2026-10-17 — "Framed battle layout: persistent rails + crisp play field (M1)"
+
+- **The battle screen is now a framed composition.** A permanent rail (stub
+  panel for now) brackets each side of the battlefield. The rails are a
+  *designed* layout element, not leftover letterbox space, so they exist at
+  every resolution — there is no "rails only show on some monitors" behaviour.
+  `BattleLayout` derives the rail width (~18% of the window, clamped
+  200–340px) and the centred play rect from the native output size, and
+  `BattleState` rebuilds the layout live when the window is resized. _Files:
+  `renderer/BattleLayout`, `BattleState` (`renderRails`, `applyBattleLayout`)._
+- **The world now renders at native resolution at an integer art scale, so it
+  is crisp at every window size.** Root cause of the long-standing shimmer: the
+  world was drawn into the fixed 1280×720 canvas and NEAREST-upscaled by the
+  window ratio (1.25× at 1600×900), so texels landed on uneven screen pixels
+  while the camera moved. The world-pass buffer is now sized to the play rect
+  and blitted **1:1**, with the camera at an integer device-px-per-texel scale
+  (`artScale`), which removes the uneven sizing entirely; the earlier
+  offset snap now guarantees whole *device* pixels. This closes the
+  "known-soft resolutions" backlog item. _Files: `BattleState`,
+  `renderer/BattleRenderer` (viewport-driven culling + backdrop),
+  `scenes/BattleLoader` (viewport-sized map origin)._
+- **Engine: native-sized world buffer + native overlay drawing.** `Renderer`
+  gains `getOutputSize()`, `setWorldBufferSize()` (sizes the world-pass target
+  independently of the logical/design size; `endLogicalPass()` blits it 1:1,
+  centred) and `begin/endNativeOverlay()` (draw in raw output pixels for
+  content outside the design play field — the rails). `Camera` gains
+  `getViewportSize()`. The UI/design transform (1280×720 → window) is
+  unchanged, so no UI code moved; migrating the UI to a native, edge-anchored
+  layout is a follow-up (M5). _Files (engine): `renderer/Renderer`,
+  `renderer/Camera`._
+- Docs: `FRAMED_LAYOUT_PLAN.md` (M1 marked implemented), `TODO.md`,
+  `ARCHITECTURE.md`.
+
+## `5e0de28` — 2026-10-17 — "Turn-start menu, undoable Wait, camera framing, UTF-8 dialog"
 
 - **A player unit's turn now opens its action menu immediately.** The unit
   enters its turn with the cursor already on it and the Move/Attack/Defend/

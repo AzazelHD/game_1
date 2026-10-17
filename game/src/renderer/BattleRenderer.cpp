@@ -92,6 +92,7 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
         return;
 
     const float s = static_cast<float>(ctx.scale) * ctx.camera.getZoom();
+    const Vec2f viewport = ctx.camera.getViewportSize();
     const float halfTW = static_cast<float>(ctx.mapData.tileWidth) * s * 0.5f;
     const float halfTH = static_cast<float>(ctx.mapData.tileHeight) * s * 0.5f;
     const auto tileLayers = collectTileLayers(ctx);
@@ -113,14 +114,15 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
             const float cullR = ax + 2.0f * halfTW;
             const float cullT = ay - 2.0f * spriteSh;
             const float cullB = ay + 2.0f * spriteSh;
-            if (cullR < 0.0f || cullL > GameConstants::VIEW_W ||
-                cullB < 0.0f || cullT > GameConstants::VIEW_H)
+            if (cullR < 0.0f || cullL > viewport.x ||
+                cullB < 0.0f || cullT > viewport.y)
                 continue;
 
             drawTileLayersAt(row, col, ax, ay, s, halfTW, halfTH,
                              tileLayers,
                              ctx.tileset, ctx.tilesPerRow, ctx.spriteH,
-                             static_cast<float>(ctx.mapData.tileWidth));
+                             static_cast<float>(ctx.mapData.tileWidth),
+                             viewport);
 
             if (ctx.showSpawnOverlays)
             {
@@ -171,13 +173,13 @@ void BattleRenderer::drawScene(const BattleRendererContext &ctx) const
     }
 }
 
-void BattleRenderer::drawBackground(FColor top, FColor bottom) const
+void BattleRenderer::drawBackground(FColor top, FColor bottom, Vec2f size) const
 {
     const std::vector<Renderer::Vertex> verts = {
         {{0.0f, 0.0f}, top},
-        {{GameConstants::VIEW_W, 0.0f}, top},
-        {{GameConstants::VIEW_W, GameConstants::VIEW_H}, bottom},
-        {{0.0f, GameConstants::VIEW_H}, bottom}};
+        {{size.x, 0.0f}, top},
+        {{size.x, size.y}, bottom},
+        {{0.0f, size.y}, bottom}};
     const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
     m_renderer->drawGeometry(verts, indices);
 }
@@ -460,7 +462,8 @@ void BattleRenderer::drawTileLayersAt(int row, int col,
                                       Texture *tileset,
                                       int tilesPerRow,
                                       float spriteH,
-                                      float tileW) const
+                                      float tileW,
+                                      Vec2f viewport) const
 {
     for (const auto &ref : layers)
     {
@@ -483,8 +486,8 @@ void BattleRenderer::drawTileLayersAt(int row, int col,
             2.0f * halfTW,
             spriteH * s};
 
-        if (dst.x + dst.w < 0.0f || dst.x > GameConstants::VIEW_W ||
-            dst.y + dst.h < 0.0f || dst.y > GameConstants::VIEW_H)
+        if (dst.x + dst.w < 0.0f || dst.x > viewport.x ||
+            dst.y + dst.h < 0.0f || dst.y > viewport.y)
             continue;
 
         m_renderer->setTextureAlphaMod(tileset, ref.opacity);

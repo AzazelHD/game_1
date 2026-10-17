@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-BattleLoadResult BattleLoader::load(const char *mapPath, int scale, float spriteH)
+BattleLoadResult BattleLoader::load(const char *mapPath, int scale, float spriteH, Vec2f viewport)
 {
     BattleLoadResult r;
 
@@ -55,18 +55,18 @@ BattleLoadResult BattleLoader::load(const char *mapPath, int scale, float sprite
     r.spriteH = spriteH;
 
     // ── computeMapOrigin ──
-    r.mapOrigin = computeMapOrigin(r.mapData, scale, spriteH);
+    r.mapOrigin = computeMapOrigin(r.mapData, scale, spriteH, viewport);
 
     r.ok = true;
     return r;
 }
 
-Vec2f BattleLoader::computeMapOrigin(const TileMapData &mapData, int scale, float spriteH)
+Vec2f BattleLoader::computeMapOrigin(const TileMapData &mapData, int scale, float spriteH, Vec2f viewport)
 {
     if (mapData.width <= 0 || mapData.height <= 0 ||
         mapData.tileWidth <= 0 || mapData.tileHeight <= 0)
     {
-        return {GameConstants::VIEW_CX, GameConstants::VIEW_CY};
+        return {viewport.x * 0.5f, viewport.y * 0.5f};
     }
 
     const Vec2f c00 = tileToIso(Vec2i{0, 0}, mapData.tileWidth, mapData.tileHeight);
@@ -89,8 +89,8 @@ Vec2f BattleLoader::computeMapOrigin(const TileMapData &mapData, int scale, floa
 
     const float s = static_cast<float>(scale);
 
-    float originX = GameConstants::VIEW_CX - centerIsoX * s;
-    float originY = GameConstants::VIEW_CY +
+    float originX = viewport.x * 0.5f - centerIsoX * s;
+    float originY = viewport.y * 0.5f +
                     s * (spriteH - 2.0f * tileH - minLayerOffsetY - gridH) / 2.0f;
 
     LOG_INFO("Battle", "Map origin: (%.0f, %.0f), gridH=%.0f, minLayerOffsetY=%.0f",

@@ -124,9 +124,10 @@ void CombatAnimationSystem::render(Renderer *renderer, const battleworld::Anchor
 
         const float p = ev.effectState->progress();
 
+        const Vec2f viewport = ctx.camera.getViewportSize();
         const Vec2f anchor = ev.anchored
                                  ? battleworld::tileFeetAnchor(ctx, ev.tilePos)
-                                 : Vec2f{GameConstants::VIEW_CX, GameConstants::VIEW_CY};
+                                 : Vec2f{viewport.x * 0.5f, viewport.y * 0.5f};
 
         const auto vis = m_visuals.find(ev.id);
         if (vis != m_visuals.end() && vis->second.sprite && vis->second.motion == SpriteMotion::FadeInHoldRise)

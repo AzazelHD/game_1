@@ -136,12 +136,36 @@
       `BattleState::buildInterpolatedCamera` now snaps `offset * z` to whole
       pixels so every anchor lands on a whole logical pixel. _Files:
       `BattleState`._
-- [ ] **Known-soft resolutions**: the world canvas is 1280×720 upscaled with
-      NEAREST, so non-integer window ratios (1366×768, 1600×900, 1920×1080)
-      still show slight uneven texel sizing when the camera moves; 1280×720,
-      2560×1440, 3840×2160 are exact. Options if it still bugs: integer-scale
-      the world canvas (letterbox bars) or render the world pass at native
-      resolution. Decide after a test at an exact ratio.
+- [x] **Crisp world at any resolution / framed layout M1**: the world renders
+      at native resolution at an integer art scale inside the play field
+      (blitted 1:1), so the NEAREST uneven-texel shimmer at non-integer window
+      ratios is gone, and permanent left/right rails bracket the battlefield.
+      `BattleLayout::artScale` picks the whole device-px-per-texel zoom from the
+      window height; rail width is ~18% of the window, clamped 200–340px.
+      _Files: `renderer/BattleLayout`, `BattleState` (`renderRails`,
+      `applyBattleLayout`), `renderer/BattleRenderer`, `scenes/BattleLoader`._
+- [ ] **Framed layout — M2 (rail content)**: left rail = actor card (portrait,
+      HP/MP, statuses, selected action); right rail = turn queue, swapping to a
+      target card while aiming/resolving (predicted DMG/ACC) and reading as a
+      brief duel on the strike. Reuse `UnitPanelWindow`
+      (`setSingle`/`setDuel`) and move the battle unit panels off the window
+      corners into the rails. _Files: `battle/ui/*`, `BattleState`
+      (`syncUnitPanelWindow`)._
+- [ ] **Framed layout — M3 (native overlays)**: keep tile-anchored overlays
+      (damage preview, floating text, VFX) aligned with the play field now that
+      the world pass no longer shares the design canvas. _Files:
+      `ui/DamagePreview`, `battle/systems/CombatAnimationSystem`,
+      `ui/FloatingTextSystem`._
+- [ ] **Framed layout — M4/M5 (polish + UI migration)**: ornamental frame / rail
+      backdrop, queue→target→duel transitions, rail show/hide with dialogs;
+      migrate menus/dialogs to a native, edge-anchored layout and make the UI
+      crisp (it still upscales 1280×720 by the window ratio). _See
+      `FRAMED_LAYOUT_PLAN.md`._
+- [ ] **Manual verify (framed layout M1)**: windowed at 1600×900 — rails
+      visible left/right, world crisp while panning (no shimmer), any art
+      scale 1×–3×, deployment + attack preview aligned; resize the window and
+      confirm the layout rebuilds (rails stay, camera re-clamps, no crash);
+      check 1280×720 and 1920×1080.
 - [ ] **Journal submenu**: "Quests" should open a tabbed panel (Active /
       Completed tabs for now) instead of one flat list, so more tabs can be
       added later (e.g. Bestiary, Party).

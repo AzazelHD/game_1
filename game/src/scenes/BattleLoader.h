@@ -28,11 +28,13 @@ public:
     explicit BattleLoader(Renderer *renderer) : m_renderer(renderer) {}
 
     // Loads map, builds grid, loads tileset, computes origin.
-    // On any failure, result.ok == false (and any partial texture is freed).
-    BattleLoadResult load(const char *mapPath, int scale, float spriteH);
+    // `viewport` is the world viewport size in native px (the play field); it
+    // centres the initial map framing. On any failure, result.ok == false (and
+    // any partial texture is freed).
+    BattleLoadResult load(const char *mapPath, int scale, float spriteH, Vec2f viewport);
 
 private:
-    static Vec2f computeMapOrigin(const TileMapData &mapData, int scale, float spriteH);
+    static Vec2f computeMapOrigin(const TileMapData &mapData, int scale, float spriteH, Vec2f viewport);
 
     Renderer *m_renderer = nullptr;
 };
