@@ -144,6 +144,14 @@
       window height; rail width is ~18% of the window, clamped 200–340px.
       _Files: `renderer/BattleLayout`, `BattleState` (`renderRails`,
       `applyBattleLayout`), `renderer/BattleRenderer`, `scenes/BattleLoader`._
+- [x] **Framed layout — themed backdrop (Tier 0/1)**: the map's sky now spans
+      the whole window and the battlefield floats on it; the rails are a
+      vignette + hairline frame over that sky rather than opaque panels. Colors
+      derive from `BattleDefinition`, so it is per-map themed with nothing to
+      author. The engine world pass exposes a backdrop seam
+      (`endWorldPass`/`blitWorldBuffer`) that Tier 2 parallax slots into.
+      _Files: `BattleState` (`renderBackdrop`/`renderRails`), engine
+      `renderer/Renderer`._
 - [ ] **Framed layout — M2 (rail content)**: left rail = actor card (portrait,
       HP/MP, statuses, selected action); right rail = turn queue, swapping to a
       target card while aiming/resolving (predicted DMG/ACC) and reading as a
@@ -156,10 +164,11 @@
       the world pass no longer shares the design canvas. _Files:
       `ui/DamagePreview`, `battle/systems/CombatAnimationSystem`,
       `ui/FloatingTextSystem`._
-- [ ] **Framed layout — M4/M5 (polish + UI migration)**: ornamental frame / rail
-      backdrop, queue→target→duel transitions, rail show/hide with dialogs;
-      migrate menus/dialogs to a native, edge-anchored layout and make the UI
-      crisp (it still upscales 1280×720 by the window ratio). _See
+- [ ] **Framed layout — M4/M5 (polish + UI migration)**: Tier 2 parallax layers
+      (drifting clouds/embers/snow per theme — drop into `renderBackdrop`),
+      ornamental frame art, queue→target→duel transitions, rail show/hide with
+      dialogs; migrate menus/dialogs to a native, edge-anchored layout and make
+      the UI crisp (it still upscales 1280×720 by the window ratio). _See
       `FRAMED_LAYOUT_PLAN.md`._
 - [ ] **Manual verify (framed layout M1)**: windowed at 1600×900 — rails
       visible left/right, world crisp while panning (no shimmer), any art

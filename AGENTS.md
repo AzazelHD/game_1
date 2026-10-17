@@ -93,9 +93,13 @@ and the modular design.
    - Native UI / pixel-aligned overlays (e.g. `DamagePreview`) go through the
      **native pass** with `toNativeRect` / `toNativePos` (the 1280×720 design →
      window transform).
-   - Content outside the design play field (the permanent battle **rails**) draws
-     in raw output pixels via `beginNativeOverlay()` / `endNativeOverlay()`. See
-     `FRAMED_LAYOUT_PLAN.md` and `ARCHITECTURE.md` → "Render Pipeline".
+   - The world pass ends with `endWorldPass()`; a full-window **backdrop** (the
+     map's sky, later parallax) is drawn natively between it and
+     `blitWorldBuffer()`, and content outside the design play field (the
+     permanent battle **rails** frame) draws in raw output pixels via
+     `beginNativeOverlay()` / `endNativeOverlay()`. Prefer `endLogicalPass()`
+     only when there is no backdrop to interleave. See `FRAMED_LAYOUT_PLAN.md`
+     and `ARCHITECTURE.md` → "Render Pipeline".
    - Text must remain crisp: do not reintroduce linear-filter stretching of a
      low-res canvas.
 

@@ -1,6 +1,6 @@
 # Framed Battle Layout — Persistent Rails + Crisp Play Field
 
-Status: **M1 implemented** (rails + crisp play field); M2–M5 planned
+Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; M2–M5 planned
 Scope: battle scene presentation (layout + render pipeline + HUD rails)
 Author: opencode (planning session)
 
@@ -56,8 +56,13 @@ decorative rails).
 
 - `playRect` = window minus both rails; this is the **world viewport**.
 - Rails are drawn at **native resolution** (crisp, resolution-independent).
-- A later pass adds an ornamental frame / ambient rail backdrop so it reads as
-  one composition.
+- **Shipped (Tier 0/1):** the *map's sky is drawn across the whole window*, so
+  the battlefield reads as an island floating on the themed backdrop; the rails
+  are a **vignette + hairline** over that sky rather than opaque panels, derived
+  from `BattleDefinition`'s background colours. The diagram above is the logical
+  zoning, not a literal panel split.
+- **Next (Tier 2):** drifting parallax layers (clouds / embers / snow) between
+  the sky and the world blit, inside `BattleState::renderBackdrop`.
 
 ---
 

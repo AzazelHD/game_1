@@ -75,11 +75,48 @@ namespace
     constexpr int INVALID_FLASH_STRIPS = 3;
     constexpr Color INVALID_FLASH_COLOR = {220, 60, 60, 255};
 
-    // Framed-layout rails (see FRAMED_LAYOUT_PLAN.md). M1 draws them as solid
-    // panels; the actor card / turn queue land in M2.
-    constexpr Color RAIL_BG = {18, 20, 30, 255};
-    constexpr Color RAIL_EDGE = {58, 64, 88, 255};
-    constexpr Color RAIL_HEADER = {150, 158, 190, 255};
+    // Framed-layout backdrop + rail frame (see FRAMED_LAYOUT_PLAN.md).
+    //
+    // The map's own sky gradient is drawn across the WHOLE window (rails
+    // included) so the battlefield reads as an island floating on the backdrop
+    // rather than a panel between two bars. The rails are then a vignette +
+    // hairline layered over that continuous sky — not an opaque panel — so the
+    // frame derives from the theme instead of replacing it.
+    //
+    // Tier 2 parallax (drifting clouds/embers/snow) drops into renderBackdrop()
+    // between the gradient and the world blit; nothing else has to move.
+    const FColor kRailVignette = {0.0f, 0.0f, 0.0f, 0.55f};     // screen edge
+    const FColor kRailVignetteSoft = {0.0f, 0.0f, 0.0f, 0.30f};  // top/bottom
+    const FColor kRailVignetteNone = {0.0f, 0.0f, 0.0f, 0.0f};   // field edge
+    constexpr float kRailTopBand = 96.0f;
+    constexpr float kRailBottomBand = 120.0f;
+    constexpr float kRailAccentW = 2.0f;
+
+    void drawHorizontalGradient(Renderer *r, float x0, float x1, float y0, float y1,
+                                const FColor &c0, const FColor &c1)
+    {
+        const std::vector<Renderer::Vertex> verts = {
+            {{x0, y0}, c0}, {{x1, y0}, c1}, {{x1, y1}, c1}, {{x0, y1}, c0}};
+        const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
+        r->drawGeometry(verts, indices);
+    }
+
+    void drawVerticalGradient(Renderer *r, float x0, float x1, float y0, float y1,
+                              const FColor &c0, const FColor &c1)
+    {
+        const std::vector<Renderer::Vertex> verts = {
+            {{x0, y0}, c0}, {{x1, y0}, c0}, {{x1, y1}, c1}, {{x0, y1}, c1}};
+        const std::vector<int> indices = {0, 1, 2, 0, 2, 3};
+        r->drawGeometry(verts, indices);
+    }
+
+    FColor mixColor(const FColor &a, const FColor &b, float t)
+    {
+        return FColor{a.r + (b.r - a.r) * t,
+                      a.g + (b.g - a.g) * t,
+                      a.b + (b.b - a.b) * t,
+                      a.a + (b.a - a.a) * t};
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1723,8 +1760,6 @@ Camera BattleState::buildInterpolatedCamera(float alpha) const
 
 void BattleState::renderSceneAndOverlays(const Camera &renderCam)
 {
-    m_battleRenderer->drawBackground(m_bgTop, m_bgBottom, renderCam.getViewportSize());
-
     if (!m_tileset || m_mapData.isEmpty())
         return;
 
@@ -1929,43 +1964,56 @@ void BattleState::syncUnitPanelWindow()
 void BattleState::renderRails()
 {
     const Recti &play = m_layout.playRect;
+    const float outW = static_cast<float>(m_layout.output.x);
+    const float outH = static_cast<float>(m_layout.output.y);
     const float railW = static_cast<float>(m_layout.railW);
-    const float h = static_cast<float>(m_layout.output.y);
-    if (railW <= 0.0f || h <= 0.0f)
+    if (railW <= 0.0f || outH <= 0.0f)
         return;
 
-    const Rectf leftRail{0.0f, 0.0f, railW, h};
-    const Rectf rightRail{static_cast<float>(play.x + play.w), 0.0f, railW, h};
+    const float fieldL = static_cast<float>(play.x);
+    const float fieldR = static_cast<float>(play.x + play.w);
 
-    // Native space: the rails live outside the design play field, so they
-    // bypass the UI/design transform.
     m_renderer->beginNativeOverlay();
+    m_renderer->setBlendMode(Renderer::BlendMode::Blend);
 
+    // Outer vignette over the continuous sky: darkest at the screen edge, clear
+    // at the field boundary, so the island sits in the light.
+    drawHorizontalGradient(m_renderer, 0.0f, fieldL, 0.0f, outH, kRailVignette, kRailVignetteNone);
+    drawHorizontalGradient(m_renderer, outW, fieldR, 0.0f, outH, kRailVignette, kRailVignetteNone);
+    // Gentle top/bottom falloff so the frame reads all the way around.
+    drawVerticalGradient(m_renderer, fieldL, fieldR, 0.0f, kRailTopBand, kRailVignetteSoft, kRailVignetteNone);
+    drawVerticalGradient(m_renderer, fieldL, fieldR, outH - kRailBottomBand, outH, kRailVignetteNone, kRailVignetteSoft);
+
+    // Hairline where the rails meet the play field: a tinted version of the
+    // theme's lower sky so the framed window reads as deliberate.
+    FColor accent = mixColor(m_bgBottom, FColor{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
+    accent.a = 0.55f;
+    m_renderer->setDrawColor(Color{static_cast<uint8_t>(accent.r * 255.0f),
+                                   static_cast<uint8_t>(accent.g * 255.0f),
+                                   static_cast<uint8_t>(accent.b * 255.0f),
+                                   static_cast<uint8_t>(accent.a * 255.0f)});
+    m_renderer->fillRect(Rectf{fieldL - kRailAccentW, 0.0f, kRailAccentW, outH});
+    m_renderer->fillRect(Rectf{fieldR, 0.0f, kRailAccentW, outH});
+
+    m_renderer->endNativeOverlay();
+}
+
+void BattleState::renderBackdrop()
+{
+    if (!m_battleRenderer || !m_renderer)
+        return;
+
+    const Vec2f window{static_cast<float>(m_layout.output.x),
+                       static_cast<float>(m_layout.output.y)};
+    if (window.x <= 0.0f || window.y <= 0.0f)
+        return;
+
+    // The map's sky spans the whole window, rails included, drawn natively
+    // between endWorldPass() and blitWorldBuffer() so the world composites on
+    // top of it. Tier 2 parallax layers go here, after the gradient.
+    m_renderer->beginNativeOverlay();
     m_renderer->setBlendMode(Renderer::BlendMode::None);
-    m_renderer->setDrawColor(RAIL_BG);
-    m_renderer->fillRect(leftRail);
-    m_renderer->fillRect(rightRail);
-
-    // Inner accent edge so the rails read as a deliberate frame.
-    m_renderer->setDrawColor(RAIL_EDGE);
-    m_renderer->fillRect(Rectf{leftRail.x + leftRail.w - 2.0f, 0.0f, 2.0f, h});
-    m_renderer->fillRect(Rectf{rightRail.x, 0.0f, 2.0f, h});
-
-    // Placeholder headers for M1; the actor card / turn queue land in M2.
-    const Font *font = FontManager::instance().get(FontRole::Body);
-    if (font)
-    {
-        m_renderer->setBlendMode(Renderer::BlendMode::Blend);
-        m_renderer->renderTextInRect(font, "ACTOR",
-                                     Rectf{leftRail.x, 16.0f, leftRail.w, 24.0f},
-                                     RAIL_HEADER, HorizontalAlign::Center, VerticalAlign::Middle,
-                                     false, false, false);
-        m_renderer->renderTextInRect(font, "TURN ORDER",
-                                     Rectf{rightRail.x, 16.0f, rightRail.w, 24.0f},
-                                     RAIL_HEADER, HorizontalAlign::Center, VerticalAlign::Middle,
-                                     false, false, false);
-    }
-
+    m_battleRenderer->drawBackground(m_bgTop, m_bgBottom, window);
     m_renderer->endNativeOverlay();
 }
 
@@ -2191,8 +2239,13 @@ void BattleState::render(float alpha)
     renderSceneAndOverlays(renderCam);
     renderDeploymentGrabbedGhost(renderCam);
     renderWorldEffects(renderCam);
-    m_renderer->endLogicalPass();
+    m_renderer->endWorldPass();
 
+    // Full-window themed sky behind everything, then the world composited on
+    // top of it, then the rail frame — the FFTA "island floating on the
+    // backdrop" look (see FRAMED_LAYOUT_PLAN.md).
+    renderBackdrop();
+    m_renderer->blitWorldBuffer();
     renderRails();
 
     syncUnitPanelWindow();

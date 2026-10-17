@@ -7,7 +7,34 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
-## `(uncommitted)` — 2026-10-17 — "Framed battle layout: persistent rails + crisp play field (M1)"
+## `(uncommitted)` — 2026-10-17 — "Themed battle backdrop: continuous sky + rail frame (framed layout, Tier 0/1)"
+
+- **The rails are no longer opaque panels — the map's sky now continues behind
+  them.** The battlefield's background gradient is drawn across the **whole
+  window** and the world composites on top, so a fight reads as an island
+  floating on the themed backdrop (FFTA-style) instead of a panel clamped
+  between two bars. The rails are now a **vignette + hairline** over that
+  continuous sky: the sky darkens toward the screen edges (with a softer
+  top/bottom falloff) and a hairline tinted from the map's lower sky marks the
+  play-field boundary. Everything derives from
+  `BattleDefinition::backgroundTop/backgroundBottom`, so there are no per-map
+  colours to author and no magic strings. _Files: `BattleState`
+  (`renderBackdrop`, `renderRails`)._
+- **Engine: backdrop seam in the world pass.** `endLogicalPass()` is split into
+  `endWorldPass()` (return to the native output and clear it to the letterbox
+  colour) and `blitWorldBuffer()` (composite the world buffer 1:1, centred,
+  honouring its alpha), so a state can draw a full-window backdrop between the
+  two. The world buffer is now composited with blending rather than opaque, as
+  the pass already clears it to transparent — and because the sky is drawn
+  once, full-window, a semi-transparent tile blends against the same colour it
+  did before. `endLogicalPass()` remains as the
+  `endWorldPass() + blitWorldBuffer()` convenience. This is the seam Tier 2
+  parallax (drifting clouds/embers/snow) drops into. _Files (engine):
+  `renderer/Renderer`._
+- Docs: `FRAMED_LAYOUT_PLAN.md` (Tier 0/1 shipped), `TODO.md`,
+  `ARCHITECTURE.md`, `AGENTS.md`.
+
+## `9f91dcd` — 2026-10-17 — "Framed battle layout: persistent rails + crisp play field (M1)"
 
 - **The battle screen is now a framed composition.** A permanent rail (stub
   panel for now) brackets each side of the battlefield. The rails are a

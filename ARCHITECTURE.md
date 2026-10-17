@@ -162,9 +162,12 @@ Battle rendering uses two coordinate spaces, deliberately kept separate:
 - **Design / UI** — menus, dialogs, HUD text and screen-anchored effects are
   laid out in the 1280×720 (`GameConstants::VIEW_*`) design space and mapped to
   the window by the renderer's letterbox transform, exactly as before.
-- **Rails** — the permanent side rails sit outside the design play field, so
-  they are drawn in raw native pixels via `Renderer::beginNativeOverlay()` /
-  `endNativeOverlay()` (no design transform).
+- **Rails / backdrop** — the map's sky is drawn across the **whole window** in
+  raw native pixels, between `endWorldPass()` and `blitWorldBuffer()`, so the
+  world composites over a continuous themed backdrop (the island floating on
+  the sky). The permanent side rails are then a **vignette + hairline** layered
+  over that sky via `beginNativeOverlay()` / `endNativeOverlay()` — not an
+  opaque panel. Tier 2 parallax layers slot between the sky and the world blit.
 
 `BattleLayout` (game) owns the rail/play-rect/art-scale math; the engine exposes
 only the primitives (`Renderer::getOutputSize`, `setWorldBufferSize`,
