@@ -47,6 +47,7 @@
 #include "engine/ui/TextBlock.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -187,7 +188,10 @@ void BattleState::onEnter()
     m_camera.setRenderScale(static_cast<float>(m_scale));
     m_camera.setOffset(origin);
     m_camera.setZoom(m_battleDefinition->defaultZoom);
-    m_camera.setMapBoundsMargin(0.0f);
+    // Sprite overhang above tiles: unit sprites stand ~36px tall at up to
+    // ~2.6x effective scale (~94px on screen), plus damage floaters. The
+    // margin is screen pixels, so it holds at any zoom.
+    m_camera.setMapBoundsMargin(112.0f);
 
     // Cast-beat glides read smoother with a touch more follow time than the
     // stock cursor chase; per-target snaps bypass easing entirely.
@@ -394,6 +398,7 @@ BattleCameraController::Context BattleState::makeCameraContext()
         ctx.speakerTile = speaker->getPosition();
     ctx.cursorTile = m_cursor.getPosition();
     ctx.anchorTile = Vec2i{-1, -1};
+    ctx.turnSerial = m_turnSerial;
     if (Unit *active = m_session.getCurrentUnit())
         ctx.anchorTile = active->getPosition();
     ctx.tileSize = Vec2f{static_cast<float>(m_mapData.tileWidth),
@@ -924,6 +929,27 @@ void BattleState::handleInput()
         // Only in free-cursor mode does ESC open the system menu.
         if (m_humanTurnPhase == HumanTurnPhase::FreeCursor)
             m_battleMenu.showSystemMenu();
+        // Wait's facing picker: Esc undoes Wait (back to the action menu)
+        // while the unit still has something to do; with a spent turn there
+        // is nothing to go back to, so Esc confirms instead. Handled here in
+        // the Back block — alongside the Move/AttackTarget cancels — rather
+        // than in tactical input, so the edge can't be eaten upstream.
+        else if (m_humanTurnPhase == HumanTurnPhase::ChooseFacing)
+        {
+            Unit *pickerActive = m_session.getCurrentUnit();
+            if (pickerActive && pickerActive->getTeam() == 0)
+            {
+                LOG_INFO("Battle", "ChooseFacing Back pressed (phase ok)");
+                if (m_battleMenu.cancelWaitToMenu())
+                    return;
+                m_damagePreview.hide();
+                m_topBattleText.clear();
+                m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+                Input::instance().consumeKey(KeyCode::Back);
+                advanceToNextUnit();
+                m_turnState = TurnState::Idle;
+            }
+        }
         return;
     }
 
@@ -1015,6 +1041,9 @@ void BattleState::update(float dt)
     // it — see handleInput()'s hasBlockingWindow() guard.
     if (m_battleTutorialPending && m_flowPhase == BattleFlowPhase::Combat)
     {
+        // Don't show unit panels before the tutorial dialog appears
+        if (m_unitPanelWindow)
+            m_unitPanelWindow->clearPanels();
         m_battleTutorialPending = false;
         maybeShowBattleControlsTutorial();
     }
@@ -1430,6 +1459,7 @@ void BattleState::processCurrentTurn()
 
     active->resetTurn();
     m_canUndoLastMove = false; // fresh turn — nothing to undo yet
+    ++m_turnSerial;            // camera re-frames the acting unit once
     m_eventSystem.setTurn(m_session.m_turnsElapsed);
     m_eventSystem.emit(BattleTriggerType::OnTurnStart);
 
@@ -1511,8 +1541,15 @@ void BattleState::processCurrentTurn()
         }
         else // Human
         {
+            // The unit's menu opens immediately — no need to Enter on it
+            // first. Esc from the fresh menu drops to the free cursor for
+            // inspecting, Enter on the unit reopens it. Consuming Accept
+            // swallows a press held over from the previous turn so it can't
+            // instantly fire a menu row.
+            m_cursor.setPosition(active->getPosition());
+            m_humanTurnPhase = HumanTurnPhase::ActionMenu;
+            openBattleMenu(canActiveUnitMove(), !active->hasActed(), true, KeyCode::Accept);
             m_turnState = TurnState::ProcessingTurn;
-            // Later we'll add state for move-targeting / attack-targeting.
         }
     }
 }
@@ -1623,6 +1660,16 @@ Camera BattleState::buildInterpolatedCamera(float alpha) const
     Camera renderCam = m_camera;
     renderCam.setOffset(interpOffset);
     renderCam.setZoom(interpZoom);
+
+    // Pixel-perfect world pass. The battlefield is drawn into the fixed logical
+    // canvas and sampled with NEAREST, so a fractional offset puts tile and
+    // sprite edges between pixels — visible as seams between iso tiles and
+    // jittering sprites as the camera moves. screen = (iso - offset) * z, and
+    // iso coordinates are integers for this tile size, so snapping offset * z
+    // to an integer makes every anchor land on a whole logical pixel.
+    const float z = std::max(interpZoom, 0.0001f) * renderCam.getRenderScale();
+    renderCam.setOffset(Vec2f{std::round(interpOffset.x * z) / z,
+                              std::round(interpOffset.y * z) / z});
     return renderCam;
 }
 
@@ -1749,9 +1796,31 @@ void BattleState::syncUnitPanelWindow()
         return;
     }
 
+    // Combat has started but the first tutorial/controls dialog hasn't been
+    // pushed yet (it goes up in update(), after the first render). Keep panels
+    // hidden so no portraits flash for a frame before the message appears.
+    if (m_battleTutorialPending && m_flowPhase == BattleFlowPhase::Combat)
+    {
+        m_unitPanelWindow->clearPanels();
+        return;
+    }
+
     Unit *active = nullptr;
     if (m_flowPhase == BattleFlowPhase::Combat)
         active = m_session.getCurrentUnit();
+
+    // Enemy action: duel panels only once the strike has actually landed
+    // (damage applied, pause playing). While the enemy is still walking into
+    // position — or when no strike happened at all — show only the mover, so
+    // no stray ally portrait appears mid-walk.
+    if (m_pendingResolution == PendingResolution::EnemyAction && m_pendingActor)
+    {
+        if (m_enemyActionResolved && m_pendingTarget && !m_pendingTarget->isDead())
+            m_unitPanelWindow->setDuel(m_pendingActor, m_pendingTarget, m_pendingTarget->getTeam() != 0);
+        else
+            m_unitPanelWindow->setSingle(m_pendingActor, m_pendingActor->getTeam());
+        return;
+    }
 
     if (m_pendingResolution != PendingResolution::None && m_pendingActor)
     {
@@ -1791,6 +1860,15 @@ void BattleState::syncUnitPanelWindow()
         }
         else
             m_unitPanelWindow->clearPanels();
+        return;
+    }
+
+    // Enemy turn: show only the acting enemy. The hovered-unit readout below
+    // is for player turns; during the enemy's move it would show a stray ally
+    // portrait alongside it. Caster+target duels are handled above.
+    if (active && active->getTeam() != 0 && !active->isDead())
+    {
+        m_unitPanelWindow->setSingle(active, active->getTeam());
         return;
     }
 

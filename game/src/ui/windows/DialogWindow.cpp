@@ -68,7 +68,14 @@ void DialogWindow::update(float dt)
     m_timer += dt;
     while (m_timer >= kCharInterval && !isCurrentLineFinished())
     {
-        ++m_visibleChars;
+        // Reveal a whole UTF-8 code point, never half of one: m_visibleChars
+        // is a byte index, and splitting a multi-byte char (e.g. the em-dash
+        // "—") renders as garbage for a frame — a visible blink per char.
+        const std::string &text = m_lines[m_lineIndex].text;
+        std::size_t i = static_cast<std::size_t>(m_visibleChars) + 1;
+        while (i < text.size() && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80)
+            ++i;
+        m_visibleChars = static_cast<int>(i);
         m_timer -= kCharInterval;
     }
 }

@@ -1,4 +1,5 @@
 #include "engine/core/App.h"
+#include "engine/core/Log.h"
 #include "engine/input/Input.h"
 #include "engine/input/KeyCode.h"
 #include "battle/controllers/HumanTurnController.h"
@@ -243,6 +244,12 @@ void HumanTurnController::handleActiveTurn(const Input &input)
             Input::instance().consumeKey(KeyCode::Accept);
             m_state.advanceToNextUnit();
             ctx.turnState = BattleState::TurnState::Idle;
+        }
+        else if (input.isKeyPressed(KeyCode::Back, false))
+        {
+            // Handled in BattleState's Back block (next to the MoveTarget /
+            // AttackTarget cancels) so the edge can't be eaten upstream.
+            return;
         }
     }
 }

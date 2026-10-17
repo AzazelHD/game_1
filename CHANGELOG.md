@@ -7,6 +7,85 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `(uncommitted)` — 2026-10-17 — "Turn-start menu, undoable Wait, camera framing, UTF-8 dialog"
+
+- **A player unit's turn now opens its action menu immediately.** The unit
+  enters its turn with the cursor already on it and the Move/Attack/Defend/
+  Wait menu up, so acting no longer needs a redundant "Enter on your own
+  unit" step. `Esc` from that fresh menu still drops to the free cursor for
+  inspecting, and `Enter` on the unit reopens the menu. `Accept` is consumed
+  on entry so a press held from the previous turn can't fire a row instantly.
+  _Files: `BattleState` (human-turn entry)._
+- **Wait is now undoable with `Esc` while the unit can still act.** Picking
+  Wait records the unit and its entry facing and opens the facing picker
+  (arrows are preview-only). Pressing `Esc` rolls back only the facing preview
+  and reopens the action menu — the move already made is **kept** (the unit
+  stays on its tile) — whenever the unit has a move left or its action unused,
+  e.g. move-then-Wait-then-`Esc` leaves you free to attack, use a skill, or move
+  again. An exhausted turn (max-moved **and** acted) instead auto-fires Wait
+  with no one-item menu, and `Esc` there confirms rather than cancels, since
+  there is nothing to return to. The facing-picker `Back` case lives in
+  `BattleState`'s own Back block (next to the Move/AttackTarget cancels) so the
+  edge can't be swallowed upstream. _Files: `BattleMenuController` (`selectWait`
+  / `cancelWaitToMenu`), `HumanTurnController`, `BattleState`._
+- **Camera no longer pins before edge/corner tiles (units stay framed).**
+  Root cause was engine-side: `Camera::setMapBounds` built its clamp box from
+  tile *origins*, but each iso diamond spans half a tile beyond its origin
+  sideways and a full tile below, so the viewport clamped early and a unit on
+  an edge or corner tile sat half off-screen. Bounds now cover the true diamond
+  extents, and `setMapBoundsMargin` is finally honoured in **screen pixels**
+  (symmetric padding never moves small-map centering) for sprite overhang —
+  battle sets a 112px margin (sprites stand ~94px above their tile at battle
+  zoom). _Files (engine): `renderer/Camera`; `BattleState` sets the margin._
+- **Battle camera is now FFTA-style edge-scroll, not a follow-cam.** Free
+  control no longer re-centres on the active unit or cursor every frame. The
+  camera stays put while the cursor roams the central area and scrolls **only**
+  when the cursor reaches a thin band (15%) at the viewport edge, shifting just
+  far enough to keep the cursor inside that band — and it stops immediately
+  once the cursor leaves the edge region. Movement stays clamped to the map
+  bounds. The lone exception is a single focus glide onto the acting unit at
+  the start of each turn (and on returning from a cast/track resolution), so an
+  enemy/far unit's turn is still framed without a continuous follow. _Files:
+  `battle/systems/BattleCameraController`, `BattleState` (`m_turnSerial`)._
+- **World render is snapped to the pixel grid (fixes "breaking" tiles/sprite
+  jitter while the camera moves).** The battlefield is drawn into the fixed
+  logical canvas and sampled with NEAREST, but the camera offset handed to the
+  render pass was fractional (it had been continuously eased every frame), so
+  every tile and sprite edge landed *between* pixels — visible as seams through
+  the iso tile grid and shimmering sprites whenever the camera moved.
+  `BattleState::buildInterpolatedCamera` now snaps `offset * z` to whole pixels,
+  so every anchor maps to a whole logical pixel (`screen = (iso - offset) * z`
+  with integer `iso`). _Files: `BattleState`._ Note: a residual known-soft
+  spot remains at non-integer window ratios (1366×768, 1600×900, 1920×1080)
+  because NEAREST upscaling of the 1280×720 canvas is then uneven; 1280×720,
+  2560×1440 and 3840×2160 are exact.
+- **Turn queue: `forceNext` replaces `moveToFront`.** The tutorial opener and
+  future extra-turn effects now use a pure reorder primitive that lifts a unit
+  to the current front time without touching anyone's clock (no `+1.0`
+  head-start artifact). _Files: `TurnQueue`, `BattleSession`,
+  `DeploymentPhaseController`._
+- **Enemy move-only turns no longer pay a MajorAction.** `EnemyAI::resolveAttack`
+  marks `MajorAction::Attack` only when a strike actually lands; a null/dead/
+  out-of-range target leaves the action unspent, so a move-only turn costs
+  move-only and alternation stays correct at equal speeds. _Files: `EnemyAI`._
+- **Deployment cursor regression + UX.** The cursor no longer snaps when the
+  selection is cycled (Q/E leaves it on the tile under it) and no longer
+  duplicates a held unit; placing a unit selects the next **unplaced** one, and
+  cycling while holding skips already-placed units. _Files:
+  `DeploymentPhaseController`, `DeploymentSystem`._
+- **Tutorial unit panels.** The battle unit panels stay hidden while a tutorial
+  dialog is pending; the enemy walk shows only the mover, and the duel panel
+  appears only after a strike lands. _Files: `BattleState`
+  (`syncUnitPanelWindow`)._
+- **Dialog typewriter no longer splits multi-byte UTF-8 characters.**
+  `DialogWindow` steps whole code points instead of bytes, killing the
+  mid-character blink on accented text. _Files: `DialogWindow`._
+- **Window-mode transitions.** `Window::restore()` (engine passthrough to
+  `SDL_RestoreWindow`) lets `SettingsManager::applyGraphics` leave a maximized
+  state before resizing: Windowed+native maximizes, Borderless+native uses true
+  fullscreen, and returning to a smaller floating size restores first so the
+  resize lands. _Files (engine): `core/Window`; `data/SettingsManager`._
+
 ## `(uncommitted)` — 2026-10-09 — "FFTA deployment cycling, exp-driven leveling, QA string fixes"
 
 - **Deployment cycling reworked to the FFTA model.** The unit portrait is now

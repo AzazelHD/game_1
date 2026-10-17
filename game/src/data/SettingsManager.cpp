@@ -128,12 +128,56 @@ void SettingsManager::applyGraphics()
 
     const Resolution &res = m_settings.resolutions[m_settings.resolutionIndex];
     const bool borderless = (m_settings.windowMode == WindowMode::Borderless);
+    const bool isNative = (m_settings.resolutionIndex == m_nativeResolutionIndex);
 
     LOG_INFO("Settings", "Calling setBorderless(%d), setSize(%d,%d)",
              borderless, res.width, res.height);
 
-    window->setBorderless(borderless);
-    window->setSize(res.width, res.height);
+    if (borderless && isNative)
+    {
+        // Real fullscreen (SDL3 borderless fullscreen at desktop mode).
+        // setBorderless() alone only strips decorations: the window stays a
+        // floating window, so the taskbar keeps showing on top of it.
+        window->setBorderless(true);
+        try
+        {
+            window->setFullscreen(true);
+        }
+        catch (const std::exception &e)
+        {
+            LOG_ERROR("Settings", "setFullscreen failed, falling back to sized window: %s", e.what());
+            window->setFullscreen(false);
+            window->setSize(res.width, res.height);
+        }
+    }
+    else if (borderless)
+    {
+        // Floating borderless window: the taskbar staying visible is correct
+        // here, only a native-sized one must cover it (handled above).
+        // restore() first: leaving a maximized window ignores setSize().
+        window->setFullscreen(false);
+        window->setBorderless(true);
+        window->restore();
+        window->setSize(res.width, res.height);
+    }
+    else
+    {
+        window->setFullscreen(false);
+        window->setBorderless(false);
+        if (isNative)
+        {
+            // A client area sized exactly to the desktop pushes the title bar
+            // off-screen, leaving a chromeless window that can't be moved or
+            // closed. Maximize instead: full work area WITH the title bar.
+            window->maximize();
+        }
+        else
+        {
+            // restore() first: leaving a maximized window ignores setSize().
+            window->restore();
+            window->setSize(res.width, res.height);
+        }
+    }
     window->getRenderer().setPresentationMode(Renderer::PresentationMode::Letterbox);
 
     UIScale::refresh();

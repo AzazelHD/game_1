@@ -3,6 +3,7 @@
 #include "ui/BattleMenuItem.h"
 #include "ui/WindowId.h"
 #include "ui/windows/ButtonMenuWindow.h"
+#include "engine/math/MathUtils.h"
 #include "engine/math/Vec2.h"
 
 #include <optional>
@@ -42,6 +43,14 @@ public:
     void showSkillMenu();
     void showSystemMenu();
 
+    // Wait flow. selectWait() enters the facing picker — used by the Wait menu
+    // item and to auto-fire Wait when it is the only option. cancelWaitToMenu()
+    // backs out of the picker (Esc) when the unit still has something to do,
+    // restoring the entry facing; it returns false when the turn is exhausted
+    // and Esc must confirm instead.
+    void selectWait();
+    bool cancelWaitToMenu();
+
     void showInspectWindow(Unit *unit);
     [[nodiscard]] bool hasInspectWindowOpen() const { return m_inspectWindow != nullptr; }
     void showStatusMenu(Unit *unit);
@@ -75,7 +84,13 @@ private:
 
     // Last skill the active unit aimed, per unit — so Esc'ing out of
     // target-selection reopens the skill list with the same row hovered
-    // instead of resetting to the first skill.
+    // instead of resetting to the first skill. The wait entry below is the
+    // same idea for the facing picker.
     const Unit *m_lastSkillUnit = nullptr;
     int m_lastSkillIndex = -1;
+
+    // Unit + facing captured when Wait is picked, so Esc-cancel restores the
+    // preview-only facing changes made in the picker.
+    Unit *m_waitEntryUnit = nullptr;
+    IsoDirection m_waitEntryFacing = IsoDirection::SouthWest;
 };

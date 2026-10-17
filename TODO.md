@@ -107,6 +107,41 @@
 
 ## UX Backlog (from manual QA)
 
+- [x] **Fresh turn opens the action menu**: a player unit enters its turn with
+      the cursor already on it and its menu open — no Enter-to-select step;
+      Esc drops to the free cursor, Enter on the unit reopens it. _Files:
+      `BattleState`._
+- [x] **Undo Wait (Esc)**: the facing picker backs out to the action menu with
+      Esc while the unit can still act (move left or action unused); only the
+      facing preview is rolled back — the move already made is kept (the unit
+      stays on its tile) — so you're free to attack/skill/move again. An
+      exhausted turn auto-fires Wait with no one-item menu and treats Esc as
+      confirm. _Files: `BattleMenuController`, `HumanTurnController`,
+      `BattleState`._
+- [x] **Battle camera — edge-scroll (replaces follow-cam)**: the camera stays
+      put while the cursor roams the central area; it scrolls only when the
+      cursor reaches a 15% band at the viewport edge, just far enough to keep
+      the cursor inside that band, stops immediately when the cursor leaves the
+      edge region, and stays clamped to the map bounds. It no longer follows the
+      cursor or the active unit continuously; a single focus glide runs at the
+      start of each turn (and on returning from a resolution) so the acting unit
+      is framed. _Files: `battle/systems/BattleCameraController`, `BattleState`._
+- [x] **Battle camera — edge/corner framing**: the clamp box was built from
+      tile origins only, so an edge/corner unit hung off-screen; bounds now
+      cover the true diamond extents and the margin is applied in screen pixels
+      for sprite overhang. _Files (engine): `renderer/Camera`; `BattleState`._
+- [x] **Pixel-snapped world render**: the render-pass camera offset was
+      fractional (continuously eased), landing tiles/sprites between pixels —
+      seams through the tile grid and sprite shimmer while the camera moved.
+      `BattleState::buildInterpolatedCamera` now snaps `offset * z` to whole
+      pixels so every anchor lands on a whole logical pixel. _Files:
+      `BattleState`._
+- [ ] **Known-soft resolutions**: the world canvas is 1280×720 upscaled with
+      NEAREST, so non-integer window ratios (1366×768, 1600×900, 1920×1080)
+      still show slight uneven texel sizing when the camera moves; 1280×720,
+      2560×1440, 3840×2160 are exact. Options if it still bugs: integer-scale
+      the world canvas (letterbox bars) or render the world pass at native
+      resolution. Decide after a test at an exact ratio.
 - [ ] **Journal submenu**: "Quests" should open a tabbed panel (Active /
       Completed tabs for now) instead of one flat list, so more tabs can be
       added later (e.g. Bestiary, Party).
@@ -123,8 +158,10 @@
 - [x] **LVL1 display bug**: deployment preview and `UnitDetailWindow` roster
       constructors now `growToLevel()` + `importRosterProgression()` so they
       show the real roster level/stats instead of a template-fresh unit.
-- [ ] **Battle camera — follow active unit**: keep the camera centered on the
-      current turn's unit every turn; free pan only while on the free cursor.
+- [x] **Battle camera — edge-scroll**: the camera stays stable during normal
+      cursor navigation and scrolls only when the cursor nears the viewport
+      edge (see UX Backlog), replacing the earlier centre-on-active-unit follow
+      request. A one-time glide frames the acting unit at each turn start.
 - [ ] **Battle camera — target framing**: on attack/skill confirm, center the
       target unit; for AoE, center the midpoint of all target units.
 - [ ] **Battle camera — cast vs effect**: cast animation centers the caster,
@@ -238,9 +275,36 @@
       _Files: `basic_attack.json`, `SkillLoader`, `BattleMenuController`,
       `AttackResolutionController`, `EnemyAI`, `DamagePreview`_
 
+### Tutorial redesign (planned — do NOT implement yet, comment only)
+
+- Replace the Super Unit 1v1 with a story-framed **2v2**: after the intro the
+  player finds a "friend" and together they encounter **toads**.
+- Both player units fight with a **tutorial-only rock-throwing skill** (1 dmg);
+  toads have ~5 HP each. Kill the toads → win.
+- If the **player drops below 30% HP**, the story says the pair retreats and
+  the game continues with **no XP/gold loot** (retreat = survive, not victory).
+- The **ally carries an item-use skill with infinite potions** and heals when
+  someone is about to die, so the tutorial cannot be lost.
+- _Flag: this touches currently-deferred systems — monster-type enemies
+  (`Undead`/creature slot model, see `RACE_DESIGN.md`), consumable items, and
+  a retreat outcome distinct from victory/defeat. Design only for now._
+
 ## Verification & Regression
 
-- [ ] **Full smoke test** (uninterrupted run): Boot → Main Menu → World Map → Deployment → Combat → Attack → Victory → Return
+- [x] **Full smoke test** (uninterrupted run, verified 2026-10-15): Boot → Main Menu → World Map → Deployment → Combat → Attack → Victory → Return
+- [ ] **Turn-start menu verify**: each fresh player turn opens the action menu with
+      the cursor on the unit; Esc drops to the free cursor; Enter on the unit
+      reopens the menu; a key held from the previous turn does not auto-fire a row.
+- [ ] **Undo Wait verify**: move → Wait → picker → Esc reopens the menu and the
+      unit **stays on its moved tile** (move kept) with attack/skill/move still
+      available; the facing preview is rolled back; max-move + attack → menu
+      skips straight to the facing picker and Esc there ends the turn.
+- [ ] **Camera edge-scroll verify (large map, node 7)**: in windowed and
+      borderless, during deployment and combat, walking the cursor across the
+      central tiles leaves the camera still; only near the viewport edge does it
+      scroll a small amount to reveal more map; it stops as soon as the cursor
+      leaves the edge band; it never reveals space outside the map; each new
+      turn glides once to the acting unit.
 - [ ] **Camera regression test**: windowed, borderless, deployment, combat, cursor at all map corners, clamping
 - [ ] **Button menu verification**: marker positioning, width sizing, alignment across action/skill/system/inspect menus
 

@@ -181,12 +181,7 @@ void DeploymentPhaseController::refreshDeploymentWindow()
 
 void DeploymentPhaseController::syncCursorToSelection()
 {
-    BattleState::DeploymentContext ctx = m_owner.makeDeploymentContext();
-    if (const DeploymentEntry *entry = m_deployment.selectedEntry())
-    {
-        if (const DeploymentEntry *placed = m_deployment.deployedEntryFor(entry->instanceId))
-            ctx.cursor.setPosition(placed->position);
-    }
+    // Don't move cursor on selection change - cursor should stay where player placed it
 }
 
 void DeploymentPhaseController::setUnitPanelPreviewFromEntry(const DeploymentEntry *entry)
@@ -261,11 +256,11 @@ void DeploymentPhaseController::startCombatPhase(bool enemyOpens)
     // of it — that call is what decides human-vs-enemy, so anything that wants a
     // different unit to open has to say so here, not after this function returns.
     //
-    // Used by the tutorial: moving the enemy to the head of the queue lets it act
+    // Used by the tutorial: granting the enemy the opening turn lets it act
     // first, so the player learns which unit is theirs by watching the other one
-    // move rather than by being told. Move, don't delay — advance() rewrites
-    // each unit's time to whatever it last spent, so a delay would hand the
-    // enemy several turns in a row instead of one. See TurnQueue::moveToFront.
+    // move rather than by being told. Grant, don't delay — forceNext() only
+    // reorders, touching no clocks, so after the granted turn the timeline is
+    // exactly the undistorted one. See TurnQueue::forceNext.
     //
     // Every enemy goes to the front, in the order they appear. Everyone else
     // keeps their own time and their relative order.
@@ -279,7 +274,7 @@ void DeploymentPhaseController::startCombatPhase(bool enemyOpens)
                 enemies.push_back(u);
         }
         for (Unit *e : enemies)
-            ctx.session.moveToFront(e);
+            ctx.session.forceNext(e);
     }
 
     for (Unit *u : ctx.session.getUnitPtrs())
@@ -511,27 +506,21 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
         return true;
     }
 
-    if (event.actionId == ActionId::CyclePrev)
+    switch (event.actionId)
     {
+    case ActionId::CyclePrev:
         m_deployment.cycleSelection(-1);
-        if (!wasGrabbed)
-            syncCursorToSelection();
-        else
+        if (wasGrabbed)
             syncDeploymentPreviewUnits();
         refreshDeploymentWindow();
         return true;
-    }
-    if (event.actionId == ActionId::CycleNext)
-    {
+    case ActionId::CycleNext:
         m_deployment.cycleSelection(1);
-        if (!wasGrabbed)
-            syncCursorToSelection();
-        else
+        if (wasGrabbed)
             syncDeploymentPreviewUnits();
         refreshDeploymentWindow();
         return true;
-    }
-    if (event.actionId == ActionId::Accept)
+    case ActionId::Accept:
     {
         const Vec2i cursorPos = ctx.cursor.getPosition();
 
@@ -566,6 +555,7 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
                     m_facingChoiceInstanceId = placedInstanceId;
                     m_isChoosingFacing = true;
                 }
+                m_deployment.cycleSelection(1);
                 refreshDeploymentWindow();
             }
             return true;
@@ -593,7 +583,7 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
             refreshDeploymentWindow();
         return true;
     }
-    if (event.actionId == ActionId::Details)
+    case ActionId::Details:
     {
         PartyContext &partyContext = PartyContext::instance();
         partyContext.ensureInitialized();
@@ -636,8 +626,7 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
         }
         return true;
     }
-    if (event.actionId == ActionId::Back)
-    {
+    case ActionId::Back:
         if (wasGrabbed)
         {
             m_deployment.releaseGrabbed();
@@ -646,14 +635,14 @@ bool DeploymentPhaseController::handleUIEvent(const UIEvent &event)
         }
         m_owner.battleMenu().showSystemMenu();
         return true;
-    }
-    if (event.actionId == ActionId::StartCombat)
-    {
+    case ActionId::StartCombat:
         if (!m_deployment.canStartBattle())
             return true;
 
         pushStartBattleConfirm(ctx.uiManager);
         return true;
+    default:
+        break;
     }
 
     return true; // matched BattleDeployment/ActionSelected but no known actionId — still "ours"

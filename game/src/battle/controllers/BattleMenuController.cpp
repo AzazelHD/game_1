@@ -57,6 +57,14 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
 {
     auto ctx = m_owner.makeMenuContext();
 
+    // Wait is the only option and there is no move left to undo: fire it
+    // straight away instead of showing a one-item menu.
+    if (!canMove && !canAttack && canWait && !ctx.canUndoLastMove)
+    {
+        selectWait();
+        return;
+    }
+
     std::vector<BattleMenuItem> items;
     items.push_back(BattleMenuItem{
         .label = "Move",
@@ -141,13 +149,7 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
         .label = "Wait",
         .enabled = canWait,
         .onSelect = [this]()
-        {
-            auto ctx = m_owner.makeMenuContext();
-            ctx.topBattleText = "Choose facing: Arrows + Accept";
-            ctx.humanTurnPhase = BattleState::HumanTurnPhase::ChooseFacing;
-            m_owner.battleMenu().closeAllMenus();
-            m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Wait);
-        }});
+        { selectWait(); }});
 
     m_actionMenuItems = std::move(items);
 
@@ -156,6 +158,40 @@ void BattleMenuController::showBattleMenu(bool canMove, bool canAttack, bool can
     config.anchorBottomRight = true;
     config.bottomRightMargin = Vec2f{16.0f, 16.0f};
     pushButtonMenu(WindowId::BattleActionMenu, config, m_actionMenuItems);
+}
+
+void BattleMenuController::selectWait()
+{
+    auto ctx = m_owner.makeMenuContext();
+    if (Unit *active = ctx.session.getCurrentUnit())
+    {
+        m_waitEntryUnit = active;
+        m_waitEntryFacing = active->getFacing();
+    }
+    ctx.topBattleText = "Choose facing: Arrows + Accept";
+    ctx.humanTurnPhase = BattleState::HumanTurnPhase::ChooseFacing;
+    m_owner.battleMenu().closeAllMenus();
+    m_owner.maybeShowTutorialTip(BattleState::TutorialTip::Wait);
+}
+
+bool BattleMenuController::cancelWaitToMenu()
+{
+    auto ctx = m_owner.makeMenuContext();
+    Unit *active = ctx.session.getCurrentUnit();
+    LOG_INFO("Battle", "cancelWaitToMenu: active=%s entrySet=%d canMove=%d hasActed=%d",
+             active ? active->getName().c_str() : "null", m_waitEntryUnit != nullptr,
+             m_owner.canActiveUnitMove(), active && active->hasActed());
+    if (!active || active != m_waitEntryUnit)
+        return false;
+    // Exhausted (no move left, action spent): nothing to go back to — the
+    // caller confirms the wait instead of reopening a menu for it.
+    if (!m_owner.canActiveUnitMove() && active->hasActed())
+        return false;
+    active->setFacing(m_waitEntryFacing);
+    ctx.cursor.setPosition(active->getPosition());
+    ctx.humanTurnPhase = BattleState::HumanTurnPhase::ActionMenu;
+    m_owner.openBattleMenu(m_owner.canActiveUnitMove(), !active->hasActed(), true, KeyCode::Back);
+    return true;
 }
 
 void BattleMenuController::showSkillMenu()

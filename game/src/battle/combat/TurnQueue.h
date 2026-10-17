@@ -78,21 +78,15 @@ public:
     // offset slightly so equal-speed units have a deterministic order.
     void init(std::vector<Unit *> units);
 
-    // Moves one unit to the head of the timeline, shifting every other unit down
-    // one slot. Each unit keeps its own time and its relative order — only the
-    // unit being moved changes position. Use this when a unit should get
-    // exactly one turn at the front; the tutorial duel moves the enemy here so
-    // the player works out which unit is theirs by watching, instead of being
-    // told in a dialog. Call after init() and before the first turn is processed.
+    // Schedules a unit to act next without touching anyone's time: the unit
+    // takes the current front's slot (tied at the same time, head position)
+    // and everything else keeps its time and relative order. Use this for a
+    // scripted opener (the tutorial duel lets the enemy act first) and for
+    // future extra-turn grants (B lets A "cheat" in right after B): the
+    // granted unit still pays its normal cost when its turn ends via
+    // advance(), so the timeline after that is undistorted.
     // No-op if the unit is absent or already at the front.
-    //
-    // Prefer this over swapping two units' times (which leaves the units in
-    // between where they were, reordering them) and over pushing a unit back by
-    // a fixed delay — advance() rewrites a unit's time to whatever it just spent
-    // on its last action, so a delayed unit stays behind for delay/cost turns: a
-    // 200 delay against a 100-cost turn hands the unit in front three turns,
-    // not one.
-    void moveToFront(Unit *unit);
+    void forceNext(Unit *unit);
 
     // The unit whose turn it is right now (front of the timeline).
     // May return a dead unit — caller is responsible for revive/skip logic.

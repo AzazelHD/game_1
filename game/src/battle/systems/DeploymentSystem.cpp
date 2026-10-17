@@ -267,8 +267,18 @@ void DeploymentSystem::cycleSelection(int delta)
         return;
 
     const int count = static_cast<int>(m_partyEntries.size());
-    const int next = (static_cast<int>(m_selectedIndex) + delta + count) % count;
-    m_selectedIndex = static_cast<std::size_t>(next);
+    // Find next unplaced unit, or just next unit if all placed?
+    // For better UX, try to cycle to next unplaced after placing
+    int start = static_cast<int>(m_selectedIndex);
+    for (int i = 1; i <= count; ++i)
+    {
+        int idx = (start + delta * i + count) % count;
+        if (!isUnitPlaced(m_partyEntries[idx].instanceId))
+        {
+            m_selectedIndex = static_cast<std::size_t>(idx);
+            break;
+        }
+    }
 
     // Cycling while holding a unit swaps what's in hand: drop whatever was
     // grabbed (it simply returns to the roster unplaced — it was never
@@ -276,8 +286,12 @@ void DeploymentSystem::cycleSelection(int delta)
     // newly-selected entry instead.
     if (hasGrabbedUnit())
     {
-        m_grabbedInstanceId = -1;
-        grabUnit(m_partyEntries[m_selectedIndex].instanceId);
+        // Don't let cycling while holding create copies of placed units
+        if (!isUnitPlaced(m_partyEntries[m_selectedIndex].instanceId))
+        {
+            m_grabbedInstanceId = -1;
+            grabUnit(m_partyEntries[m_selectedIndex].instanceId);
+        }
     }
 }
 

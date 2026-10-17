@@ -182,7 +182,8 @@ EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &g
 
     if (!target || target->isDead())
     {
-        unit.setMajorAction(MajorAction::Attack);
+        // No strike rolled — leave hasActed() clear so the turn keeps its
+        // move-only cost instead of paying for an attack that never happened.
         return out;
     }
 
@@ -198,6 +199,10 @@ EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &g
         out.result = CombatSystem::resolve(ctx);
         out.target = target;
         out.attacked = true;
+        // Only a rolled strike counts as the turn's action. Marking it here —
+        // and not on the no-target/out-of-range paths above — keeps a move-only
+        // enemy turn at move cost instead of move+action cost.
+        unit.setMajorAction(MajorAction::Attack);
 
         if (out.result.hit)
         {
@@ -215,7 +220,6 @@ EnemyAttackResult EnemyAI::resolveAttack(Unit &unit, Unit *target, const Grid &g
         LOG_INFO("EnemyAI", "%s out of range – cannot attack %s (range %d)",
                  unit.getName().c_str(), target->getName().c_str(), unit.getAtkRange());
     }
-    unit.setMajorAction(MajorAction::Attack);
     return out;
 }
 

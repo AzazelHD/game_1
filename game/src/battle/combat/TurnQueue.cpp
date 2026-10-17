@@ -77,26 +77,23 @@ void TurnQueue::init(std::vector<Unit *> units)
     rebuildPreview();
 }
 
-void TurnQueue::moveToFront(Unit *unit)
+void TurnQueue::forceNext(Unit *unit)
 {
     auto it = std::find_if(m_timeline.begin(), m_timeline.end(),
                            [unit](const TurnEntry &e) { return e.unit == unit; });
     if (it == m_timeline.end() || it == m_timeline.begin())
         return;
 
-    // Lift the unit out and re-insert it at the head. Every other unit keeps its
-    // own time and its relative order — they just slide down one slot. Swapping
-    // two units' times instead would leave them where they were, reordering them.
-    TurnEntry moved = *it;
+    // Lift the unit out and put it at the head, taking the current front's
+    // time slot. Everyone else keeps its own time and relative order, and
+    // normalise() leaves the head (and the tied old front) at 0 — no clock is
+    // rewound or fast-forwarded, so this grants exactly one turn up front and
+    // the timeline afterwards is the undistorted one.
+    TurnEntry forced = *it;
     m_timeline.erase(it);
 
-    // Place it a hair ahead of whoever is currently first. Keeping its own time
-    // would be wrong: the unit being moved is normally *later* than the front,
-    // and normalise() shifts by the front's value, so the untouched units would
-    // land on negative times — i.e. everyone else would get a free head start.
-    const float firstTime = m_timeline.empty() ? 0.f : m_timeline.front().timeUntilTurn;
-    moved.timeUntilTurn = firstTime - 1.f;
-    m_timeline.insert(m_timeline.begin(), moved);
+    forced.timeUntilTurn = m_timeline.empty() ? 0.f : m_timeline.front().timeUntilTurn;
+    m_timeline.insert(m_timeline.begin(), forced);
 
     // Deliberately no sortTimeline(): the point is to override the time order.
     normalise(m_timeline);
