@@ -7,6 +7,30 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `(uncommitted)` — 2026-10-18 — "Battle camera: driven during deployment, and 900p back at the intended world scale"
+
+- **Deployment had no camera driver at all.** `BattleState::update()` returns
+  early for the deployment phase, *above* the camera drive, so
+  `BattleCameraController` only ever ran in combat. That was masked until the
+  previous change by `DeploymentPhaseController`'s `trackTarget()` follow; with
+  that gone, nothing moved the camera during placement, so on any map larger
+  than the play field the cursor could walk off screen completely. The camera
+  phase machine + drive now live in `BattleState::updateCamera()`, called from
+  the deployment branch *and* the combat path — one camera authority, both
+  phases, and the camera keeps the cursor in the edge band during deployment
+  exactly as it does in combat. _File: `scenes/BattleState`._
+- **900p was rendered at the wrong world scale.** `BattleLayout` derived the
+  integer art scale as `floor(outH / 360)`, which does not match the documented
+  intent (the world should never be *smaller* than the 720p baseline scale):
+  floor drops to 1× for any window 360–719px tall, and at 900px it gives 2×
+  where the exact ratio is 2.5. At 1600×900 that meant 333 world-px of vertical
+  coverage against a 323px-tall 10×10 board — the whole board fitted, so the
+  camera correctly held still and the vertical axis looked dead. With
+  `lround`, 720p and 1080p are unchanged and 1600×900 renders at 3× (the same
+  on-screen scale 1080p already had), giving 222px of coverage so the 10×10
+  board pans vertically with 296 device-px of travel. _File:
+  `renderer/BattleLayout`._
+
 ## `c620ca9` — 2026-10-17 — "Battle camera: edge-scroll in both phases, and an edge band that can be reached"
 
 - **Deployment no longer follows the cursor.** `DeploymentPhaseController`

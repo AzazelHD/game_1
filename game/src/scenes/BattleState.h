@@ -526,6 +526,7 @@ private:
     void renderSceneAndOverlays(const Camera &renderCam);
     void renderDeploymentGrabbedGhost(const Camera &renderCam);
     void syncUnitPanelWindow();
+    void updateCamera(float dt);
     void renderBackdrop();
     void renderRails();
     void renderDeploymentHud();

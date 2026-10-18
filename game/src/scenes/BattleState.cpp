@@ -442,6 +442,36 @@ BattleState::AttackResolutionContext BattleState::makeAttackResolutionContext()
     };
 }
 
+void BattleState::updateCamera(float dt)
+{
+    // ── Camera phase machine ─────────────────────────────────────────────────
+    // Entering a resolution starts the cast beat (glide to the caster); the
+    // enemy's applied strike promotes it to the per-target track. Player hits
+    // promote it inside the WaitingForAnimation switch below, right as the
+    // first consequence's effect plays. Anything else returns to free follow.
+    const bool resolving = m_pendingResolution == PendingResolution::ResolvingHits ||
+                           m_pendingResolution == PendingResolution::EnemyAction;
+    if (resolving)
+    {
+        if (m_cameraPhase == BattleCameraController::Phase::Free)
+            m_cameraPhase = BattleCameraController::Phase::ResolutionCast;
+        if (m_pendingResolution == PendingResolution::EnemyAction && m_enemyActionResolved &&
+            m_cameraPhase == BattleCameraController::Phase::ResolutionCast)
+            m_cameraPhase = BattleCameraController::Phase::ResolutionTrack;
+    }
+    else
+    {
+        m_cameraPhase = BattleCameraController::Phase::Free;
+    }
+
+    const bool cameraSnapped = m_battleCamera.update(
+        dt, m_camera,
+        m_camera.getViewportSize(),
+        makeCameraContext());
+    if (cameraSnapped)
+        m_previousCamera = m_camera; // hard cut: no this-frame render lerp
+}
+
 BattleCameraController::Context BattleState::makeCameraContext()
 {
     BattleCameraController::Context ctx;
@@ -1116,6 +1146,10 @@ void BattleState::update(float dt)
         if (m_request.tutorial && !m_tutorialDeployTipShown)
             maybeShowTutorialTip(TutorialTip::Deploy);
         m_deploymentPhase.update(dt);
+        // Deployment returns early, above the shared camera drive further down,
+        // so it has to be driven here as well — otherwise nothing moves the
+        // camera during placement and the cursor can walk off screen.
+        updateCamera(dt);
         return;
     }
 
@@ -1189,32 +1223,8 @@ void BattleState::update(float dt)
     // Track unit under cursor
     Vec2i cursorPos = m_cursor.getPosition();
 
-    // ── Camera phase machine ─────────────────────────────────────────────────
-    // Entering a resolution starts the cast beat (glide to the caster); the
-    // enemy's applied strike promotes it to the per-target track. Player hits
-    // promote it inside the WaitingForAnimation switch below, right as the
-    // first consequence's effect plays. Anything else returns to free follow.
-    const bool resolving = m_pendingResolution == PendingResolution::ResolvingHits ||
-                           m_pendingResolution == PendingResolution::EnemyAction;
-    if (resolving)
-    {
-        if (m_cameraPhase == BattleCameraController::Phase::Free)
-            m_cameraPhase = BattleCameraController::Phase::ResolutionCast;
-        if (m_pendingResolution == PendingResolution::EnemyAction && m_enemyActionResolved &&
-            m_cameraPhase == BattleCameraController::Phase::ResolutionCast)
-            m_cameraPhase = BattleCameraController::Phase::ResolutionTrack;
-    }
-    else
-    {
-        m_cameraPhase = BattleCameraController::Phase::Free;
-    }
-
-    const bool cameraSnapped = m_battleCamera.update(
-        dt, m_camera,
-        m_camera.getViewportSize(),
-        makeCameraContext());
-    if (cameraSnapped)
-        m_previousCamera = m_camera; // hard cut: no this-frame render lerp
+    // ── Camera ───────────────────────────────────────────────────────────────
+    updateCamera(dt);
 
     m_hoveredUnit = unitAt(m_session.getUnitPtrs(), cursorPos);
 

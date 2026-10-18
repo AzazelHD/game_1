@@ -129,14 +129,20 @@
       margin) and the vertical axis never scrolled. It no longer follows the
       cursor or the active unit continuously; a single focus glide runs at the
       start of each turn (and on returning from a resolution) so the acting unit
-      is framed. Deployment is driven by the same controller now (it no longer
-      chases the cursor with `trackTarget`). _Files:
-      `battle/systems/BattleCameraController`,
-      `battle/controllers/DeploymentPhaseController`, `BattleState`; engine
-      `renderer/Camera` (`getMapBoundsMargin`)._
+      is framed. The camera is driven by `BattleState::updateCamera()` from both
+      the deployment branch and the combat path — `update()` returns early for
+      deployment, above the combat drive, so deployment has to call it
+      explicitly or nothing moves the camera during placement. _Files:
+      `scenes/BattleState`, `battle/systems/BattleCameraController`,
+      `battle/controllers/DeploymentPhaseController`; engine `renderer/Camera`
+      (`getMapBoundsMargin`)._
       When the whole board fits an axis the clamp still centres it — there is
       nothing to scroll to, and the cursor stays inside the frame by
-      construction.
+      construction. `BattleLayout` picks the art scale with `lround`, so 720p
+      and 1080p are untouched while 1600×900 renders at the intended 3× instead
+      of 2× (which used to show 25% more world than any other resolution, enough
+      for a small board to fit vertically and leave the camera nothing to do).
+      _File: `renderer/BattleLayout`._
 - [x] **Battle camera — edge/corner framing**: the clamp box was built from
       tile origins only, so an edge/corner unit hung off-screen; bounds now
       cover the true diamond extents and the margin is applied in screen pixels
@@ -350,8 +356,9 @@
       axis used to never scroll at all, because the 15% band was narrower than
       the map-bounds margin); it stops as soon as the cursor leaves the edge
       band; it never reveals space outside the map; deployment behaves exactly
-      like combat (it no longer follows the cursor); each new turn glides once to
-      the acting unit.
+      like combat and its cursor never leaves the play field (deployment used to
+      have no camera driver at all); each new turn glides once to the acting
+      unit.
 - [ ] **Camera regression test**: windowed, borderless, deployment, combat, cursor at all map corners, clamping
 - [ ] **Button menu verification**: marker positioning, width sizing, alignment across action/skill/system/inspect menus
 
