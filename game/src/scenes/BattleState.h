@@ -483,15 +483,12 @@ private:
     Camera m_camera;
     Camera m_previousCamera;
 
-    // Where the BattleCameraController is steering the camera. Free =
-    // edge-scroll (only scrolls when the cursor nears the viewport edge);
-    // during an attack/skill resolve we glide into the cast beat
-    // (ResolutionCast), then snap target-to-target (ResolutionTrack).
+    // Where the BattleCameraController is steering the camera. Free = the dead
+    // zone (the camera only pans the minimum needed when the cursor's walkable
+    // floor surface leaves the central 80% of the play field); during an
+    // attack/skill resolve we glide into the cast beat (ResolutionCast), then
+    // snap target-to-target (ResolutionTrack).
     BattleCameraController::Phase m_cameraPhase = BattleCameraController::Phase::Free;
-
-    // Bumped each time a new unit's turn starts; the camera controller uses it
-    // to run its one-time focus glide onto the acting unit.
-    int m_turnSerial = 0;
 
     // ── Invalid-target feedback ────────────────────────────────────────────
     // A refused cast (AoE splash that catches nobody, single-target skill with

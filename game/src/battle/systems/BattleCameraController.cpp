@@ -10,29 +10,19 @@ namespace
 {
     constexpr int kInvalid = -1;
 
-    // Comfort box, as a fraction of the viewport kept free on each side: the
-    // cursor may roam the central box freely and the camera only moves once the
-    // cursor's tile leaves it.
-    constexpr float kEdgeBandFraction = 0.15f;
+    // Camera dead zone: a centred rectangle covering 80% of the play field's
+    // width and height (a 10% margin on each side). The cursor's walkable floor
+    // surface may roam it freely and the camera never moves while it stays
+    // inside; the moment it crosses an edge the camera pans by exactly the
+    // minimum needed to bring it back — never a follow-cam, never a recenter.
+    constexpr float kDeadZoneBoxFraction = 0.80f;
 
-    // Comfort box margin. clampToBounds() never lets the cursor come closer to
-    // the viewport edge than its map-bounds margin (that margin keeps unit
-    // sprites on screen at a map edge), so a box narrower than the margin is
-    // unreachable on an overflowing axis and the camera silently stops
-    // scrolling there — which is what the vertical axis used to do, since
-    // 0.15 * 720px of height is less than the 112px margin.
-    constexpr float kEdgeBandComfort = 64.0f;
-
-    [[nodiscard]] float edgeBand(const Camera &camera, float viewExtent)
+    [[nodiscard]] float deadZoneMargin(float viewExtent)
     {
-        // The band is measured against the viewport only: it exists to keep the
-        // cursor's tile off the screen edge, not to make a fitting board move
-        // (a board that fits is never panned at all — see boardFit()).
-        float band = std::max(viewExtent * kEdgeBandFraction,
-                              camera.getMapBoundsMargin() + kEdgeBandComfort);
-        // Both side bands must never meet: keep a central roaming area even on
-        // a very small play field.
-        return std::min(band, std::max(viewExtent * 0.5f - 1.0f, 0.0f));
+        float margin = viewExtent * (1.0f - kDeadZoneBoxFraction) * 0.5f;
+        // Both margins must never meet: keep a central roaming area even on a
+        // very small play field.
+        return std::min(margin, std::max(viewExtent * 0.5f - 1.0f, 0.0f));
     }
 
     // On-screen extent of the board's iso diamond along one axis, given that
@@ -45,14 +35,12 @@ namespace
         return static_cast<float>(mapSize.x + mapSize.y) * tileExtent * 0.5f * pixelsPerIsoUnit;
     }
 
-    // Cap on the one-time focus glide so a clamped target (map corner) can't
-    // keep the controller "focusing" forever.
-    constexpr float kFreeFocusDuration = 0.4f;
-
-    // Time constant of the edge-scroll chase. The camera eases towards the
-    // position that satisfies the box instead of cutting to it, so walking the
-    // cursor across the board reads as one continuous pan rather than a jump per
-    // tile step. Small enough to feel immediate (≈90% of the way in 0.35s).
+    // Easing time constant of the dead-zone correction. The camera eases towards
+    // the position that satisfies the dead zone instead of cutting to it, so
+    // walking the cursor across the board reads as one continuous pan rather
+    // than a jump per tile step (and never blinks). Small enough to feel
+    // immediate (≈90% of the way in 0.35s); the target itself is recomputed
+    // every frame from the live cursor tile, so the motion is deterministic.
     constexpr float kEdgeScrollTau = 0.15f;
 
     [[nodiscard]] bool isValid(Vec2i tile) { return tile.x >= 0 && tile.y >= 0; }
@@ -83,6 +71,31 @@ namespace
         return std::max(camera.getZoom(), 0.0001f) * camera.getRenderScale();
     }
 
+    // On-screen rectangle of a tile's WALKABLE FLOOR SURFACE: the diamond
+    // BattleRenderer::drawCursorTicks draws for the cursor — centred on the
+    // tile's anchor and lifted by the tile's height (height levels are Y
+    // offsets, so an elevated tile's floor renders higher than its grid
+    // position). This is the surface the cursor actually picks and units stand
+    // on, NOT the base grid anchor and NOT the sprite art above it.
+    struct FloorFootprint
+    {
+        float left = 0.0f;
+        float right = 0.0f;
+        float top = 0.0f;
+        float bottom = 0.0f;
+    };
+
+    [[nodiscard]] FloorFootprint floorFootprint(Camera &camera, Vec2f tileSize, Vec2i tile,
+                                               int tileHeight, float z)
+    {
+        const Vec2f anchor = camera.tileToScreen(tile);
+        const float halfW = tileSize.x * 0.5f * z;
+        const float halfH = tileSize.y * 0.5f * z;
+        const float elev = static_cast<float>(tileHeight) * halfH;
+        return FloorFootprint{anchor.x - halfW, anchor.x + halfW,
+                              anchor.y - elev - halfH, anchor.y - elev + halfH};
+    }
+
     void glideTo(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile, float dt)
     {
         const Vec2f iso = tileToIso(tile, static_cast<int>(tileSize.x), static_cast<int>(tileSize.y));
@@ -105,67 +118,55 @@ namespace
         camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 
-    [[nodiscard]] bool centeredOn(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile)
-    {
-        const Vec2f iso = tileToIso(tile, static_cast<int>(tileSize.x), static_cast<int>(tileSize.y));
-        const float z = screenScale(camera);
-        const Vec2f desired{iso.x - (viewSize.x * 0.5f) / z, iso.y - (viewSize.y * 0.5f) / z};
-        const Vec2f off = camera.getOffset();
-        return std::abs(off.x - desired.x) < 0.5f && std::abs(off.y - desired.y) < 0.5f;
-    }
-
-    // FFTA-style edge scroll: shift the camera just far enough that the cursor's
-    // tile lands back inside the comfort box. No-op while the tile is inside it,
-    // so the camera stays put during normal navigation and stops immediately
-    // once the cursor leaves the edge region.
+    // Dead-zone correction: pan the camera by exactly the minimum displacement
+    // that brings the cursor's walkable floor surface back inside the dead zone
+    // (see deadZoneMargin). No-op while the surface is inside it, so the camera
+    // never moves during normal navigation and stops the instant the cursor
+    // returns.
     //
-    // The test uses the tile's whole on-screen footprint, not just its anchor:
-    // a tile's iso anchor is the TOP corner of its diamond, which reaches a full
-    // tile height below that anchor and half a tile width to either side. In iso
-    // the tile's height *is* the y offset between rows, so comparing the anchor
-    // alone would let the bottom half of the tile (and the sprite standing on
-    // it) hang outside the box before the camera reacts.
-    void scrollCursorIntoBand(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
-                              Vec2i cursorTile, BoardFit fit, float dt)
+    // The surface (not the anchor) is what gets tested: an elevated tile's floor
+    // sits `height * halfTileHeight` above its grid position on screen, so a
+    // raised tile near the top of the zone still pulls the camera up to it.
+    //
+    // Pan is gated per axis by BoardFit: if no map content exists beyond the
+    // play field on an axis, that axis never pans (clampToBounds would pin it
+    // there anyway), so a board that fits inside the play field never moves.
+    void scrollCursorIntoDeadZone(Camera &camera, Vec2f viewSize, Vec2f tileSize,
+                                  Vec2i cursorTile, int cursorTileHeight, BoardFit fit,
+                                  float dt)
     {
         const float z = screenScale(camera);
         if (z <= 0.0f)
             return;
 
-        const Vec2f anchor = camera.tileToScreen(cursorTile);
-        const float halfW = tileSize.x * 0.5f * z;
-        const float tileH = tileSize.y * z;
-        const float left = anchor.x - halfW;
-        const float right = anchor.x + halfW;
-        const float top = anchor.y;
-        const float bottom = anchor.y + tileH;
+        const FloorFootprint floor = floorFootprint(camera, tileSize, cursorTile,
+                                                    cursorTileHeight, z);
 
-        const float bandX = edgeBand(camera, viewSize.x);
-        const float bandY = edgeBand(camera, viewSize.y);
-        const float minX = bandX;
-        const float maxX = viewSize.x - bandX;
-        const float minY = bandY;
-        const float maxY = viewSize.y - bandY;
+        const float marginX = deadZoneMargin(viewSize.x);
+        const float marginY = deadZoneMargin(viewSize.y);
+        const float minX = marginX;
+        const float maxX = viewSize.x - marginX;
+        const float minY = marginY;
+        const float maxY = viewSize.y - marginY;
 
-        // Desired change in the cursor tile's screen position (0 when already
-        // inside the box). screen = (iso - offset) * z, so offset moves the
-        // opposite way by delta / z. An axis the board fits on is never panned:
-        // the cursor cannot leave the play field on that axis, so the camera has
-        // no reason to move (and clampToBounds would pin it there anyway).
+        // Minimum displacement needed to bring the floor surface back inside the
+        // dead zone (0 when already inside). screen = (iso - offset) * z, so the
+        // offset moves the opposite way by delta / z. A diagonal crossing
+        // corrects both axes independently.
         Vec2f delta{0.0f, 0.0f};
         if (fit.pansX)
         {
-            if (left < minX)
-                delta.x = minX - left;
-            else if (right > maxX)
-                delta.x = maxX - right;
+            if (floor.left < minX)
+                delta.x = minX - floor.left;
+            else if (floor.right > maxX)
+                delta.x = maxX - floor.right;
         }
         if (fit.pansY)
         {
-            if (top < minY)
-                delta.y = minY - top;
-            else if (bottom > maxY)
-                delta.y = maxY - bottom;
+            if (floor.top < minY)
+                delta.y = minY - floor.top;
+            else if (floor.bottom > maxY)
+                delta.y = maxY - floor.bottom;
         }
 
         if (delta.x == 0.0f && delta.y == 0.0f)
@@ -173,7 +174,7 @@ namespace
 
         // Ease towards the fixing position rather than cutting to it. The delta
         // is recomputed from the live offset every frame, so the camera settles
-        // on the box edge and stops, with no overshoot or drift past it.
+        // on the dead-zone edge and stops, with no overshoot or drift past it.
         const Vec2f current = camera.getOffset();
         const Vec2f target = current - delta / z;
         const float ease = 1.0f - std::exp(-std::max(dt, 0.0f) / kEdgeScrollTau);
@@ -183,29 +184,63 @@ namespace
         // that axis to the middle and yank it back after a framing beat.
         camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
+
+    // Instant variant of the dead-zone correction: same minimum displacement,
+    // applied in one step (no easing). Used on scene entry, where the drive does
+    // not run during the fade-in.
+    void correctDeadZoneNow(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i cursorTile,
+                            int cursorTileHeight, BoardFit fit)
+    {
+        const float z = screenScale(camera);
+        if (z <= 0.0f)
+            return;
+
+        const FloorFootprint floor = floorFootprint(camera, tileSize, cursorTile,
+                                                    cursorTileHeight, z);
+
+        const float marginX = deadZoneMargin(viewSize.x);
+        const float marginY = deadZoneMargin(viewSize.y);
+
+        Vec2f delta{0.0f, 0.0f};
+        if (fit.pansX)
+        {
+            if (floor.left < marginX)
+                delta.x = marginX - floor.left;
+            else if (floor.right > viewSize.x - marginX)
+                delta.x = (viewSize.x - marginX) - floor.right;
+        }
+        if (fit.pansY)
+        {
+            if (floor.top < marginY)
+                delta.y = marginY - floor.top;
+            else if (floor.bottom > viewSize.y - marginY)
+                delta.y = (viewSize.y - marginY) - floor.bottom;
+        }
+
+        if (delta.x == 0.0f && delta.y == 0.0f)
+            return;
+
+        camera.setOffset(camera.getOffset() - delta / z);
+        camera.clampToBounds(Camera::SmallMapFit::Slide);
+    }
 } // namespace
 
 bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
                                     const Context &ctx)
 {
     const Vec2f tileSize = ctx.tileSize;
-    const Phase prevPhase = m_lastPhase;
-    m_lastPhase = ctx.phase;
 
-    // A board that fits inside the play field is entirely visible at once — every
-    // tile, the cursor, and every unit standing on it. Nothing can leave the
-    // view, so the camera holds perfectly still: no focus glide, no resolution
-    // cut, no edge scroll. Only an axis the board *overflows* can carry something
-    // off screen, so only such an axis is ever panned (see
-    // scrollCursorIntoBand). This is also what keeps the camera dead still on the
-    // small boards (e.g. the 5x5 tutorial) and on the fitting axis of a
-    // half-overflowing board.
+    // No map content exists beyond the play field on either axis, so there is
+    // nothing to pan toward: the camera holds perfectly still for the whole
+    // battle. Only an axis the board *overflows* can carry something off screen,
+    // so only such an axis is ever panned (see scrollCursorIntoDeadZone). This
+    // is also what keeps the camera dead still on the small boards (e.g. the
+    // 5x5 tutorial) and on the fitting axis of a half-overflowing board.
     const BoardFit fit = boardFit(ctx.mapSize, viewSize, tileSize, ctx.mapTopExtra,
                                   screenScale(camera));
     if (isValid(ctx.mapSize) && !fit.any())
     {
         m_snappedAny = false;
-        m_freeFocusing = false;
         return false;
     }
 
@@ -244,51 +279,30 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
         return false;
     }
 
-    // Free control: stay put and only edge-scroll. The lone exception is a
-    // one-time focus glide to the acting unit when the turn changes or when a
-    // resolution hands control back, so the acting unit is always framed.
+    // Free control: the dead zone is the only driver. No focus glide, no
+    // recentering — the cursor's walkable floor surface alone decides whether
+    // the camera moves, and then only by the minimum correction needed.
     m_snappedAny = false;
     m_lastSnappedTile = Vec2i{kInvalid, kInvalid};
 
-    const Vec2i focusTile = isValid(ctx.anchorTile) ? ctx.anchorTile : ctx.cursorTile;
-    if (ctx.turnSerial != m_freeTurnSerial || prevPhase != Phase::Free)
-    {
-        m_freeTurnSerial = ctx.turnSerial;
-        m_freeFocusing = isValid(focusTile);
-        m_freeFocusTimer = 0.0f;
-    }
-
-    if (m_freeFocusing && isValid(focusTile))
-    {
-        glideTo(camera, viewSize, tileSize, focusTile, dt);
-        m_freeFocusTimer += dt;
-        if (m_freeFocusTimer >= kFreeFocusDuration ||
-            centeredOn(camera, viewSize, tileSize, focusTile))
-            m_freeFocusing = false;
-        return false;
-    }
-
     if (isValid(ctx.cursorTile) && isValid(ctx.mapSize))
-        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.mapSize, ctx.cursorTile, fit, dt);
+        scrollCursorIntoDeadZone(camera, viewSize, tileSize, ctx.cursorTile,
+                                 ctx.cursorTileHeight, fit, dt);
     return false;
 }
 
-void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize,
-                                             Vec2i mapSize, float mapTopExtra, Vec2i tile)
+void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, const Context &ctx)
 {
-    if (!isValid(tile) || viewSize.x <= 0.0f || viewSize.y <= 0.0f)
+    if (!isValid(ctx.cursorTile) || viewSize.x <= 0.0f || viewSize.y <= 0.0f)
         return;
 
+    const BoardFit fit = boardFit(ctx.mapSize, viewSize, ctx.tileSize, ctx.mapTopExtra,
+                                  screenScale(camera));
     // A board that fits the play field is already fully visible from the scene's
-    // centred clamp: snapping to the cursor would only shove it off centre for
-    // nothing, and the controller is not going to move it again afterwards.
-    if (!boardFit(mapSize, viewSize, tileSize, mapTopExtra, screenScale(camera)).any())
+    // centred clamp: correcting would only shove it off centre for nothing, and
+    // the controller is not going to move it again afterwards.
+    if (isValid(ctx.mapSize) && !fit.any())
         return;
 
-    snapTo(camera, viewSize, tileSize, tile);
-    // Drop any pending focus glide: the camera is already framed, and a fresh
-    // glide would otherwise run on the next frame purely because the turn
-    // serial changed. (It would ease towards this same position, but the scene
-    // fades in between the two, so keeping it is pointless.)
-    m_freeFocusing = false;
+    correctDeadZoneNow(camera, viewSize, ctx.tileSize, ctx.cursorTile, ctx.cursorTileHeight, fit);
 }

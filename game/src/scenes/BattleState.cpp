@@ -265,7 +265,7 @@ void BattleState::onEnter()
     // trackTarget()/clampToBounds() call later (visible as a hard "jump").
     // Frame: a map that fits the play field is centred on its art (so nothing
     // drawn above the top row is cut off); one that does not is clamped with the
-    // sprite margin, exactly like the controller's edge-scroll expects.
+    // sprite margin, exactly like the controller's dead-zone pan expects.
     m_camera.clampToBounds(Camera::SmallMapFit::Frame);
     m_previousCamera = m_camera;
 
@@ -326,16 +326,12 @@ void BattleState::onEnter()
 
     // Frame the board *before* the fade-in. The camera drive lives in update(),
     // which returns early while the transition plays, so without this the battle
-    // fades in on the clamped map origin and then visibly jumps to the cursor
-    // once control starts (worst on a big map, where the two are far apart).
-    // Snap to the same tile the free-control glide would frame: the acting unit
-    // when there is one (a restored mid-combat save), the cursor otherwise
-    // (deployment).
+    // fades in on the clamped map origin and then visibly pans once control
+    // starts. Apply the dead zone's minimum correction instantly: the cursor's
+    // floor surface lands inside the dead zone from frame one, without shoving
+    // an already-comfortable board off centre.
     {
-        const BattleCameraController::Context camCtx = makeCameraContext();
-        const Vec2i focusTile = camCtx.anchorTile.x >= 0 ? camCtx.anchorTile : camCtx.cursorTile;
-        m_battleCamera.focusImmediately(m_camera, playSize, camCtx.tileSize, camCtx.mapSize,
-                                        camCtx.mapTopExtra, focusTile);
+        m_battleCamera.focusImmediately(m_camera, playSize, makeCameraContext());
         m_previousCamera = m_camera;
     }
 
@@ -507,10 +503,9 @@ BattleCameraController::Context BattleState::makeCameraContext()
     if (Unit *speaker = m_dialogueController.currentSpeaker())
         ctx.speakerTile = speaker->getPosition();
     ctx.cursorTile = m_cursor.getPosition();
-    ctx.anchorTile = Vec2i{-1, -1};
-    ctx.turnSerial = m_turnSerial;
-    if (Unit *active = m_session.getCurrentUnit())
-        ctx.anchorTile = active->getPosition();
+    ctx.cursorTileHeight = 0;
+    if (m_battleMap.isValid(ctx.cursorTile.x, ctx.cursorTile.y))
+        ctx.cursorTileHeight = m_battleMap.at(ctx.cursorTile.x, ctx.cursorTile.y).height;
     ctx.tileSize = Vec2f{static_cast<float>(m_mapData.tileWidth),
                          static_cast<float>(m_mapData.tileHeight)};
     ctx.mapSize = Vec2i{m_mapData.width, m_mapData.height};
@@ -1558,7 +1553,6 @@ void BattleState::processCurrentTurn()
 
     active->resetTurn();
     m_canUndoLastMove = false; // fresh turn — nothing to undo yet
-    ++m_turnSerial;            // camera re-frames the acting unit once
     m_eventSystem.setTurn(m_session.m_turnsElapsed);
     m_eventSystem.emit(BattleTriggerType::OnTurnStart);
 

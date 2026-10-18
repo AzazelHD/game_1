@@ -365,9 +365,10 @@ void DeploymentPhaseController::update(float dt)
     else if (!ctx.uiManager.hasBlockingWindow() && !m_deployment.isSelectionLocked())
     {
         // The camera is not driven here: BattleState owns BattleCameraController,
-        // whose free-control pass edge-scrolls the battlefield viewport in both
-        // deployment and combat. Chasing the cursor with Camera::trackTarget()
-        // here made deployment follow the cursor (combat did not).
+        // whose free-control pass drives the battlefield camera's dead zone in
+        // both deployment and combat. Chasing the cursor with
+        // Camera::trackTarget() here made deployment follow the cursor (combat
+        // did not).
         ctx.cursor.update(ctx.battleMap.cols(), ctx.battleMap.rows(), dt);
     }
 

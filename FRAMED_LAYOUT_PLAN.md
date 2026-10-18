@@ -1,6 +1,6 @@
 # Framed Battle Layout — Persistent Rails + Crisp Play Field
 
-Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; **camera edge-scroll consolidated** (both phases, tile-aware comfort box, holds still on a board that fits); M2–M5 planned
+Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; **camera dead zone shipped** (both phases, height-aware walkable-surface test, minimum-displacement pan, holds still on a board that fits); M2–M5 planned
 Scope: battle scene presentation (layout + render pipeline + HUD rails)
 Author: opencode (planning session)
 
@@ -81,8 +81,12 @@ decorative rails).
 - **Already landed this session** (prerequisites):
   - `BattleState::buildInterpolatedCamera` snaps the render offset to the pixel
     grid (`round(offset * z) / z`) — removes fractional-position seams/jitter.
-  - `BattleCameraController` is FFTA-style **edge-scroll** with a one-time
-    turn-start focus glide, and holds the camera perfectly still on a board that
+  - `BattleCameraController` drives a **camera dead zone**: a centred rectangle
+    covering 80% of the play field that the cursor's *walkable floor surface*
+    (anchor lifted by the tile's height level) must stay inside; crossing an
+    edge pans the camera by exactly the minimum needed to put it back (no
+    follow-cam, no recentering), and the camera holds perfectly still on a
+    board that
     fits the play field; engine `Camera` bounds are diamond-exact, honor a
     screen-space margin, and take the art reach above the top tile anchors
     (`Camera::setMapBoundsTopExtra`, reported by `BattleLoader`) so raised rows
@@ -240,7 +244,8 @@ this clean rather than patchwork.
    present, no black bars.
 3. **Window modes**: windowed, borderless, native; maximize → floating smaller
    resolution still lays out correctly.
-4. **Camera**: node 7 large map — edge-scroll, clamping, corners; a unit at each
+4. **Camera**: node 7 large map — dead-zone pan (minimum displacement), clamping,
+   corners; a unit at each
    corner stays framed inside `playRect` (not under a rail).
 5. **Rails**: actor card tracks the active unit; turn queue order correct; target
    card swaps in on aim/resolve; enemy turns show enemy-left / your-unit-right.

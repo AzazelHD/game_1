@@ -118,7 +118,10 @@
       exhausted turn auto-fires Wait with no one-item menu and treats Esc as
       confirm. _Files: `BattleMenuController`, `HumanTurnController`,
       `BattleState`._
-- [x] **Battle camera — edge-scroll (replaces follow-cam)**: the camera stays
+- [x] **Battle camera — edge-scroll (replaces follow-cam)**: _superseded in
+      part by the **dead zone** entry below (box size, test on the walkable
+      surface, no focus glide); kept for the fitted-`Slide` and
+      drive-from-both-phases history._ The camera stays
       put while the cursor roams the central comfort box; it scrolls only when
       the cursor's **tile** leaves that box, just far enough to bring the whole
       tile back inside, and stops as soon as the box is satisfied. The box is
@@ -192,6 +195,37 @@
       "fits" now measures the map's **drawn** height, not the tile-anchor box, so
       a board whose top rows are drawn above the play field no longer counts as
       fitting. _File: `battle/systems/BattleCameraController`._
+- [x] **Battle camera — dead zone (spec rewrite of the comfort box)**: the
+      cursor box is now an explicit **camera dead zone**: a centred rectangle
+      covering 80% of the play field (10% margin on each side), replacing the
+      old `max(15% of the viewport, map-bounds margin + 64px)` band. While the
+      cursor stays inside it the camera never moves; the moment the cursor
+      leaves, the camera pans by **exactly the minimum displacement** that
+      brings it back — one tile over the line moves the camera one tile's worth,
+      a diagonal step corrects both axes, a jump far outside corrects the whole
+      gap and nothing more. No follow-cam and no automatic recentering: the
+      one-time turn-start focus glide is gone (`m_turnSerial`,
+      `anchorTile`/`turnSerial` in the controller `Context`, `centeredOn()` and
+      the free-focus bookkeeping all removed with it) — the cursor is already
+      reset onto the acting unit at turn start, so the dead zone frames it only
+      when it actually needs framing. The test now runs on the tile's
+      **walkable floor surface**, not its grid anchor: height layers are Y
+      offsets, so an elevated tile's floor renders `height * halfTileHeight`
+      above its base position, and `floorFootprint()` mirrors the diamond
+      `BattleRenderer::drawCursorTicks` draws (anchor lifted by the tile
+      height). A raised tile near the top of the dead zone therefore still pulls
+      the camera up to it — the correction accounts for the real elevation
+      rather than a fixed offset. Per-axis panning is unchanged: an axis the
+      board **fits** on never pans (no map content exists beyond the play field
+      there), so a board that fits the play field entirely never moves, exactly
+      as the spec requires. `focusImmediately()` on scene entry now applies the
+      same minimum correction in one step instead of hard-cutting to centre, so
+      a comfortable board keeps the scene's centred clamp. Pan is still eased
+      (τ = 0.15s) toward a target recomputed every frame from the live cursor
+      tile, so the motion is deterministic and settles on the dead-zone edge
+      without jitter. _Files: `battle/systems/BattleCameraController`,
+      `scenes/BattleState` (`makeCameraContext()` now fills `cursorTileHeight`
+      from `BattleMap::at().height`)._
 - [x] **Battle world — constant size relative to the window**: `artScale` is
       `floor(outH / 360)`, so a window whose height is not a multiple of 360 (e.g.
       1600×900 → artScale 2 over a 25% taller window) showed 25% more world and
@@ -447,23 +481,28 @@
       unit **stays on its moved tile** (move kept) with attack/skill/move still
       available; the facing preview is rolled back; max-move + attack → menu
       skips straight to the facing picker and Esc there ends the turn.
-- [ ] **Camera edge-scroll verify (large map, node 7)**: in windowed and
+- [ ] **Camera dead-zone verify (large map, node 7)**: in windowed and
       borderless, during deployment and combat, the whole map must sit inside the
-      play field with no raised top row cut off — the vertical extent now counts
-      the art above the tile anchors, and node 7's art is as tall as the play
-      field at its default zoom, so expect it framed **centred and still** with
-      the top and bottom rows 1–2px from the rails; only the horizontal axis
-      overflows and pans. Walking the cursor across the central tiles leaves the
-      camera still; near the left/right viewport edge it scrolls to reveal more
-      map and stops as soon as the cursor leaves the edge band. Small maps
+      play field with no raised top row cut off — the vertical extent counts the
+      art above the tile anchors, and node 7's art is as tall as the play field at
+      its default zoom, so expect it framed **centred and still** with the top and
+      bottom rows 1–2px from the rails; only the horizontal axis overflows and
+      pans. Walking the cursor across the central tiles (inside the central 80%
+      dead zone — 10% margin per side) leaves the camera perfectly still. Past the
+      left/right dead-zone edge it pans by **exactly** the minimum needed: one tile
+      over the line moves it one tile's worth, a diagonal step corrects both axes,
+      a multi-tile jump corrects the whole gap and no more; it stops the instant
+      the cursor is back inside and never re-centres on its own. Small maps
       (`1v1_test`, `boss_arena`) must be perfectly symmetric — an equal gap above
       the tallest drawn tile and below the lowest — and never move at all. The
-      test must use the cursor tile's whole footprint: the iso anchor is the
-      diamond's top corner, so a tile's lower half otherwise hangs outside the
-      box before the camera reacts. It never reveals space outside the map;
-      deployment behaves exactly like combat and its cursor never leaves the play
-      field (deployment used to have no camera driver at all); each new turn
-      glides once to the acting unit. Also confirm the world scale did **not**
+      test must use the cursor tile's **walkable floor surface**: an elevated tile
+      (h2/h3/h4) renders its floor `height * halfTileHeight` above the grid
+      anchor, so a raised tile just above the dead zone must still pull the camera
+      up to it (a base-anchor-only test misses this). It never reveals space
+      outside the map; deployment behaves exactly like combat and its cursor never
+      leaves the play field (deployment used to have no camera driver at all);
+      the turn-start focus glide is gone — a new turn frames the acting unit only
+      if the dead zone requires it. Also confirm the world scale did **not**
       jump at 1600×900 (tiles must be the same size per source texel as 720p,
       not 1.5× bigger).
 - [ ] **Board framing at a glance**: if node 7 (10×10) reads as too tight

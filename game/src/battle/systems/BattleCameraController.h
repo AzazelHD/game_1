@@ -13,28 +13,36 @@ class Camera;
 // is self-contained and needs nothing but the tile dimensions and the board
 // size in tiles.
 //
-//   Free            - FFTA-style edge-scroll. The camera stays put while the
-//                     cursor roams the central comfort box; it scrolls only
-//                     when the cursor's tile leaves that box, only far enough to
-//                     bring the whole tile back inside, and it *eases* into that
-//                     position instead of cutting to it. It may drift across
-//                     an axis that fits while the other overflows
-//                     (SmallMapFit::Slide) rather than being pinned centred. It
-//                     never continuously follows the cursor or the active unit:
-//                     it glides once to the acting unit at the start of a turn
-//                     (or on returning from a resolution) so the acting unit is
-//                     framed, then stays put again.
+//   Free            - camera DEAD ZONE. A centred rectangle covering 80% of the
+//                     play field (10% margin on each side) never moves the
+//                     camera: while the cursor's walkable floor surface roams
+//                     it, the camera stays put. The moment the surface crosses
+//                     an edge, the camera pans by exactly the minimum needed to
+//                     bring it back inside — one tile over the line moves the
+//                     camera by that one tile's worth, a diagonal step corrects
+//                     both axes, a jump far outside corrects the whole gap and
+//                     nothing more. No follow-cam, no recentering: the camera
+//                     stops as soon as the cursor is back inside.
 //
-// A board that fits inside the play field is never panned at all: it is fully
-// visible, so nothing the cursor does can take anything off screen. update()
-// holds the camera still for the whole battle in that case (no focus glide, no
-// resolution cut, no scroll), which is what keeps the small boards calm.
+//                     The test runs on the tile's WALKABLE FLOOR SURFACE, not
+//                     its grid anchor: height layers are Y offsets, so an
+//                     elevated tile's floor renders (and is stood on) higher
+//                     than its base position. The footprint here mirrors the
+//                     diamond BattleRenderer draws for the cursor (anchor lifted
+//                     by height * halfTileHeight), so a raised tile near the top
+//                     of the dead zone still pulls the camera up to it.
+//
+// A board that fits inside the play field is never panned at all: no map content
+// exists beyond the play field on either axis, so there is nothing to pan toward
+// and update() holds the camera still for the whole battle. The same holds per
+// axis: an axis the board fits on is skipped even when the other overflows.
 //   ResolutionCast  - the cast beat: glide to the caster while the skill's
 //                     cast animation plays (covers the pre-effect timer).
 //   ResolutionTrack - after the cast, each target hit SNAPS into frame as its
-//                     effect/damage plays, then the camera returns to the
-//                     active unit when the resolve closes (Free re-anchor).
-//                     Target-all skills (castOncePerArea) never leave caster.
+//                     effect/damage plays; control then returns to the dead
+//                     zone, which re-corrects minimally from wherever the last
+//                     snap left the camera. Target-all skills
+//                     (castOncePerArea) never leave caster.
 //
 // update() returns true when the frame used an immediate snap, so BattleState
 // can neutralise its between-frame render interpolation for a hard cut (the
@@ -56,13 +64,12 @@ public:
         bool dialogueActive = false;
         Vec2i speakerTile{-1, -1};
         Vec2i cursorTile{-1, -1};
-        Vec2i anchorTile{-1, -1}; // active unit during free control
-        int turnSerial = 0;       // bumped when a new unit's turn starts
+        int cursorTileHeight = 0; // elevation level of the cursor's tile (0 = ground)
         Vec2i casterTile{-1, -1};
         Vec2i focusTile{-1, -1}; // current hit target / blast tile
         bool stayOnCaster = false;
         Vec2f tileSize{0.0f, 0.0f};
-        Vec2i mapSize{-1, -1}; // board size in tiles, for the comfort box
+        Vec2i mapSize{-1, -1}; // board size in tiles, for the dead zone
         float mapTopExtra = 0.0f; // world units of art above the top anchor row
     };
 
@@ -70,24 +77,16 @@ public:
     // neutralises its between-frame render interpolation for a clean cut.
     bool update(float dt, Camera &camera, Vec2f viewSize, const Context &ctx);
 
-    // Frames `tile` immediately (hard cut, no glide) and drops any pending focus
-    // glide. Called on scene entry: the camera drive does not run while the
-    // fade-in transition plays, so without this the battle would fade in on the
-    // clamped map origin and then visibly jump to the cursor once control
-    // starts. A no-op when the board fits the play field — it is already fully
-    // visible from the scene's centred clamp, and nothing will move it again.
-    void focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
-                          float mapTopExtra, Vec2i tile);
+    // Applies the dead zone's minimum correction in a single step (no easing).
+    // Called on scene entry: the camera drive does not run while the fade-in
+    // transition plays, so without this the battle would fade in on the clamped
+    // map origin and then visibly pan once control starts. A no-op when the
+    // cursor's floor surface is already inside the dead zone, and a no-op for a
+    // board that fits the play field — it is fully visible from the scene's
+    // centred clamp, and nothing will move it again.
+    void focusImmediately(Camera &camera, Vec2f viewSize, const Context &ctx);
 
 private:
     bool m_snappedAny = false;
     Vec2i m_lastSnappedTile{-1, -1};
-
-    // Free-control edge-scroll bookkeeping. The one-time focus glide runs when
-    // the turn changes (or on returning from a resolution phase); afterwards
-    // the camera only scrolls to keep the cursor's tile inside the comfort box.
-    Phase m_lastPhase = Phase::Free;
-    int m_freeTurnSerial = -1;
-    bool m_freeFocusing = false;
-    float m_freeFocusTimer = 0.0f;
 };

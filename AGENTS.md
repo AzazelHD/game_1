@@ -135,8 +135,11 @@ For detailed module responsibilities see `ARCHITECTURE.md`. Quick roles:
   (statuses, buffs/debuffs), `RecruitmentRules`, `UnitFactory`.
 - `battle/systems/` — deployment, combat animation queue, `CombatVfxLibrary`,
   `MovementCommitSystem`, `BattleParticipantsBuilder`,
-  `BattleCameraController` (the single battle camera authority: edge-scroll
-  around a per-board cursor comfort box, plus the cast/target focus beats).
+  `BattleCameraController` (the single battle camera authority: a central 80%
+  **camera dead zone** keyed on the cursor's height-adjusted walkable floor
+  surface — a minimum-displacement pan only when the surface leaves it,
+  per-axis gated so an axis the board fits on never pans, plus the cast/target
+  focus beats).
 - `battle/ui/` — battle-specific windows (deployment, inspect, panel).
 - `ai/EnemyAI` — enemy movement + attack plan/act.
 - `config/BattleCatalog` — static battle definitions, per-map rules/events.

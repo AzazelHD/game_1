@@ -55,12 +55,15 @@ The game owns all domain logic:
 - `unit/`: unit runtime model, progression, `SkillProgression` (skill points/levels), `StatusEffect` (statuses, buffs/debuffs), and template-driven factory construction.
 - `systems/`: deployment, combat animation event queue, `CombatVfxLibrary`,
   `MovementCommitSystem`, and `BattleCameraController` (the single camera
-  authority: FFTA-style edge-scroll around a per-board **comfort box** the
-  cursor's whole tile must stay inside, a map whose *drawn* extent (including
-  the art raised tiles reach above their anchors) fits the play field framed
-  centred and never moved (`Camera::SmallMapFit::Frame` +
-  `Camera::setMapBoundsTopExtra`), plus the cast/target focus beats; driven from
-  both deployment and combat by `BattleState::updateCamera()`).
+  authority: a **camera dead zone** — a centred 80%-of-play-field rectangle the
+  cursor's *walkable floor surface* (anchor lifted by the tile's height level)
+  must stay inside, with a minimum-displacement pan the moment it crosses an
+  edge, per-axis gated so an axis the board fits on never pans; a map whose
+  *drawn* extent (including the art raised tiles reach above their anchors)
+  fits the play field is framed centred and never moved
+  (`Camera::SmallMapFit::Frame` + `Camera::setMapBoundsTopExtra`), plus the
+  cast/target focus beats; driven from both deployment and combat by
+  `BattleState::updateCamera()`).
 - `ui/`: battle-specific windows (deployment, inspect, panel).
 
 ### `ai/`
