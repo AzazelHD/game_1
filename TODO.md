@@ -226,6 +226,52 @@
       without jitter. _Files: `battle/systems/BattleCameraController`,
       `scenes/BattleState` (`makeCameraContext()` now fills `cursorTileHeight`
       from `BattleMap::at().height`)._
+- [x] **Battle camera — restore the pre-beat framing after a scripted beat**:
+      a scripted beat (dialogue `glideTo`, cast `glideTo`, hit `snapTo`) takes
+      the camera **away** from the tactical framing to centre it on a unit. When
+      it ends the cursor usually still sits comfortably inside the dead zone of
+      that parked position (it is adjacent to the beat's subject), so the dead
+      zone alone left the view **stuck centred on the beat's subject** — the
+      reported node-7 "camera is centred on one enemy, somehow". The controller
+      now remembers the offset a beat started from (`m_beatOffset`, captured on
+      the Free→beat transition) and eases back to it when control returns
+      (`m_returningToBeat`), so the camera hands back where the player was
+      looking. The target is re-aimed by the dead zone for the **live** cursor
+      every frame, so a cursor moved while a return is in flight still lands on
+      a valid framing; because the cursor is frozen for the whole duration of a
+      beat (dialogue, `ResolvingHits` and `EnemyAction` all block tactical
+      input), the target is in practice the pre-beat offset exactly — this is
+      undoing the beat's excursion, not a recentering. Chained enemy turns are
+      **one** continuous beat (the phase never returns to `Free` between them,
+      since `finishEnemyAction()` → `advanceToNextUnit()` → `processCurrentTurn()`
+      re-sets `EnemyAction` synchronously), so a whole enemy phase is a single
+      excursion with a single return — no back-and-forth between enemies. A
+      return in flight interrupted by a new beat keeps the **original** tactical
+      offset (the `!m_returningToBeat` capture guard) rather than re-capturing a
+      transient mid-ease position. The return settles on arrival (0.5px) **or**
+      when the map bounds pin the camera short of the target (detected by the
+      clamp rejecting the eased position), so a pinned camera can never lock the
+      dead zone out in a no-op easing loop. _File:
+      `battle/systems/BattleCameraController`._
+- [x] **Enemy turn deadlock on a refused move commit**: `beginUnitWalk()`
+      returned **without invoking `onComplete`** when
+      `MovementCommitSystem::commitMovement()` was invalid (out-of-grid
+      destination, or the re-path came back empty — both reachable from
+      `EnemyAI::planTurn()`'s destination, which is only checked against
+      occupancy, not re-pathability). For the enemy path `onComplete` is the
+      turn state machine's **only** resume point — it calls `resolveEnemyAttack()`
+      → `finishEnemyAction()` — and unlike the player path
+      (`HumanTurnController.cpp`, which pre-checks `reachableCosts` before
+      calling) the enemy path has no guard at all. A failed commit therefore
+      parked `TurnState::ProcessingTurn` forever with `m_pendingResolution`
+      stuck at `EnemyAction`: the battle deadlocked **and**
+      `BattleState::updateCamera()` kept `m_cameraPhase` on
+      `ResolutionCast`/`ResolutionTrack`, which glues the camera to that enemy
+      permanently — the exact "camera centred on one enemy, somehow" symptom,
+      and the harder of the two causes to spot since the camera is a side
+      effect. `onComplete` now fires on **both** early-return paths (null unit,
+      invalid commit); the unit simply attacks / reopens its menu from where it
+      already stands. _Files: `scenes/BattleState` (`beginUnitWalk`)._
 - [x] **Battle world — constant size relative to the window**: `artScale` is
       `floor(outH / 360)`, so a window whose height is not a multiple of 360 (e.g.
       1600×900 → artScale 2 over a 25% taller window) showed 25% more world and
@@ -505,6 +551,17 @@
       if the dead zone requires it. Also confirm the world scale did **not**
       jump at 1600×900 (tiles must be the same size per source texel as 720p,
       not 1.5× bigger).
+- [ ] **Camera beat-return verify (node 7)**: after an enemy attacks — and after
+      the player's own attack resolves — the camera must **ease back to the
+      framing it was using before** that attack's cast/hit beat, not stay parked
+      centred on the enemy it just snapped to (that was the reported node-7
+      bug). During a whole enemy phase the camera stays on the acting enemies
+      for the entire chain and returns **once**, at the end — no
+      back-and-forth between consecutive enemies. An enemy whose move commit is
+      refused must still close its turn out (attack from where it stood, then
+      the next unit) instead of deadlocking the battle with the camera glued to
+      it. Small maps (tutorial, boss arena) never move at all — the beat-return
+      is gated by the same per-axis `boardFit()` as the dead zone.
 - [ ] **Board framing at a glance**: if node 7 (10×10) reads as too tight
       vertically now that its full art is counted (rows flush with the rails, and
       a unit standing on the top/bottom row would have its sprite clipped by the

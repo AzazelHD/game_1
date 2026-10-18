@@ -87,7 +87,12 @@ decorative rails).
     edge pans the camera by exactly the minimum needed to put it back (no
     follow-cam, no recentering), and the camera holds perfectly still on a
     board that
-    fits the play field; engine `Camera` bounds are diamond-exact, honor a
+    fits the play field; a scripted beat (dialogue/cast glide, hit snap) is an
+    excursion the controller **undoes when it ends** — it remembers the offset
+    the beat started from and eases back to it (re-aimed by the dead zone for
+    the live cursor), because the cursor usually still sits inside the parked
+    position's dead zone and would otherwise leave the view stuck on the beat's
+    subject; engine `Camera` bounds are diamond-exact, honor a
     screen-space margin, and take the art reach above the top tile anchors
     (`Camera::setMapBoundsTopExtra`, reported by `BattleLoader`) so raised rows
     are never cut off and a fitting board is framed (`SmallMapFit::Frame`) on

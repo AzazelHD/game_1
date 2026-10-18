@@ -62,8 +62,11 @@ The game owns all domain logic:
   *drawn* extent (including the art raised tiles reach above their anchors)
   fits the play field is framed centred and never moved
   (`Camera::SmallMapFit::Frame` + `Camera::setMapBoundsTopExtra`), plus the
-  cast/target focus beats; driven from both deployment and combat by
-  `BattleState::updateCamera()`).
+  cast/target focus beats, which are excursions that **restore the pre-beat
+  tactical framing when they end** (they centre on a unit, and the cursor
+  usually still sits inside that parked position's dead zone — so without the
+  restore the view would stay stuck on the beat's subject); driven from both
+  deployment and combat by `BattleState::updateCamera()`).
 - `ui/`: battle-specific windows (deployment, inspect, panel).
 
 ### `ai/`

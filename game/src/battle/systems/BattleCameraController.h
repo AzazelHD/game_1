@@ -89,4 +89,20 @@ public:
 private:
     bool m_snappedAny = false;
     Vec2i m_lastSnappedTile{-1, -1};
+
+    // Framing bookkeeping for scripted beats (dialogue glide, cast glide, hit
+    // snap). Those beats take the camera AWAY from the tactical framing by
+    // centreing on a unit, and when they end the cursor usually still sits
+    // comfortably inside the dead zone of that parked position — so the dead
+    // zone alone would leave the view stuck on the beat's subject (an enemy,
+    // say) instead of where the player was looking. Remember the offset the
+    // beat started from and ease back to it when control returns.
+    //
+    // The return is re-aimed by the dead zone for the live cursor every frame,
+    // so a cursor moved while the beat ran still pulls the camera correctly; it
+    // settles as soon as it stops covering ground and hands back to the dead
+    // zone, which is then a no-op (the cursor's floor is inside by then).
+    bool m_inScriptedBeat = false;
+    bool m_returningToBeat = false;
+    Vec2f m_beatOffset{0.0f, 0.0f};
 };

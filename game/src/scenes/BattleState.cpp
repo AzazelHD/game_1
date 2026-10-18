@@ -365,13 +365,29 @@ void BattleState::openBattleMenu(bool canMove, bool canAttack, bool canWait, Key
 
 void BattleState::beginUnitWalk(Unit *unit, Vec2i dest, int pathCost, std::function<void()> onComplete)
 {
+    // onComplete is the turn state machine's resume point, not an
+    // "animation finished" nicety: both callers park themselves in
+    // ProcessingTurn before calling (the enemy path additionally leaves
+    // m_pendingResolution at EnemyAction, which pins the camera phase on the
+    // acting unit). A refused commit must therefore still resume — the unit
+    // just attacks / opens its menu from where it already stands. Dropping the
+    // callback here instead deadlocks the battle with the camera glued to that
+    // unit, which is exactly what a failed enemy re-path used to do.
     if (!unit)
+    {
+        if (onComplete)
+            onComplete();
         return;
+    }
 
     MovementCommitResult result =
         MovementCommitSystem::commitMovement(m_session, m_grid, m_battleMap, unit, dest);
     if (!result.valid)
+    {
+        if (onComplete)
+            onComplete();
         return;
+    }
 
     const Vec2i start = unit->getPosition();
 

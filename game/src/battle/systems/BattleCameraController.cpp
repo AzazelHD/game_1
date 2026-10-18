@@ -85,15 +85,29 @@ namespace
         float bottom = 0.0f;
     };
 
-    [[nodiscard]] FloorFootprint floorFootprint(Camera &camera, Vec2f tileSize, Vec2i tile,
-                                               int tileHeight, float z)
+    [[nodiscard]] FloorFootprint floorFootprintAtOffset(Camera &camera, Vec2f tileSize,
+                                                        Vec2i tile, int tileHeight, float z,
+                                                        Vec2f offset)
     {
-        const Vec2f anchor = camera.tileToScreen(tile);
+        // tileToScreen is (iso - offset) * z, so the anchor the camera WOULD
+        // produce at `offset` is the live one shifted by the offset delta — no
+        // need to re-derive the iso projection.
+        const Vec2f anchor =
+            camera.tileToScreen(tile) + (camera.getOffset() - offset) * z;
         const float halfW = tileSize.x * 0.5f * z;
         const float halfH = tileSize.y * 0.5f * z;
         const float elev = static_cast<float>(tileHeight) * halfH;
         return FloorFootprint{anchor.x - halfW, anchor.x + halfW,
                               anchor.y - elev - halfH, anchor.y - elev + halfH};
+    }
+
+    // On-screen rectangle of the tile's floor surface at the camera's LIVE
+    // offset (see floorFootprintAtOffset).
+    [[nodiscard]] FloorFootprint floorFootprint(Camera &camera, Vec2f tileSize, Vec2i tile,
+                                               int tileHeight, float z)
+    {
+        return floorFootprintAtOffset(camera, tileSize, tile, tileHeight, z,
+                                      camera.getOffset());
     }
 
     void glideTo(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile, float dt)
@@ -118,6 +132,38 @@ namespace
         camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 
+    // Minimum camera-offset displacement that brings the floor surface back
+    // inside the dead zone, or zero while it is already inside. screen = (iso -
+    // offset) * z, so the offset has to move the opposite way by delta / z. A
+    // diagonal crossing corrects both axes independently.
+    //
+    // Pan is gated per axis by BoardFit: if no map content exists beyond the
+    // play field on an axis, that axis never pans (clampToBounds would pin it
+    // there anyway), so a board that fits inside the play field never moves.
+    [[nodiscard]] Vec2f deadZoneCorrection(const FloorFootprint &floor, Vec2f viewSize,
+                                           BoardFit fit)
+    {
+        const float marginX = deadZoneMargin(viewSize.x);
+        const float marginY = deadZoneMargin(viewSize.y);
+
+        Vec2f delta{0.0f, 0.0f};
+        if (fit.pansX)
+        {
+            if (floor.left < marginX)
+                delta.x = marginX - floor.left;
+            else if (floor.right > viewSize.x - marginX)
+                delta.x = (viewSize.x - marginX) - floor.right;
+        }
+        if (fit.pansY)
+        {
+            if (floor.top < marginY)
+                delta.y = marginY - floor.top;
+            else if (floor.bottom > viewSize.y - marginY)
+                delta.y = (viewSize.y - marginY) - floor.bottom;
+        }
+        return delta;
+    }
+
     // Dead-zone correction: pan the camera by exactly the minimum displacement
     // that brings the cursor's walkable floor surface back inside the dead zone
     // (see deadZoneMargin). No-op while the surface is inside it, so the camera
@@ -127,10 +173,6 @@ namespace
     // The surface (not the anchor) is what gets tested: an elevated tile's floor
     // sits `height * halfTileHeight` above its grid position on screen, so a
     // raised tile near the top of the zone still pulls the camera up to it.
-    //
-    // Pan is gated per axis by BoardFit: if no map content exists beyond the
-    // play field on an axis, that axis never pans (clampToBounds would pin it
-    // there anyway), so a board that fits inside the play field never moves.
     void scrollCursorIntoDeadZone(Camera &camera, Vec2f viewSize, Vec2f tileSize,
                                   Vec2i cursorTile, int cursorTileHeight, BoardFit fit,
                                   float dt)
@@ -139,36 +181,8 @@ namespace
         if (z <= 0.0f)
             return;
 
-        const FloorFootprint floor = floorFootprint(camera, tileSize, cursorTile,
-                                                    cursorTileHeight, z);
-
-        const float marginX = deadZoneMargin(viewSize.x);
-        const float marginY = deadZoneMargin(viewSize.y);
-        const float minX = marginX;
-        const float maxX = viewSize.x - marginX;
-        const float minY = marginY;
-        const float maxY = viewSize.y - marginY;
-
-        // Minimum displacement needed to bring the floor surface back inside the
-        // dead zone (0 when already inside). screen = (iso - offset) * z, so the
-        // offset moves the opposite way by delta / z. A diagonal crossing
-        // corrects both axes independently.
-        Vec2f delta{0.0f, 0.0f};
-        if (fit.pansX)
-        {
-            if (floor.left < minX)
-                delta.x = minX - floor.left;
-            else if (floor.right > maxX)
-                delta.x = maxX - floor.right;
-        }
-        if (fit.pansY)
-        {
-            if (floor.top < minY)
-                delta.y = minY - floor.top;
-            else if (floor.bottom > maxY)
-                delta.y = maxY - floor.bottom;
-        }
-
+        const Vec2f delta = deadZoneCorrection(
+            floorFootprint(camera, tileSize, cursorTile, cursorTileHeight, z), viewSize, fit);
         if (delta.x == 0.0f && delta.y == 0.0f)
             return;
 
@@ -195,28 +209,8 @@ namespace
         if (z <= 0.0f)
             return;
 
-        const FloorFootprint floor = floorFootprint(camera, tileSize, cursorTile,
-                                                    cursorTileHeight, z);
-
-        const float marginX = deadZoneMargin(viewSize.x);
-        const float marginY = deadZoneMargin(viewSize.y);
-
-        Vec2f delta{0.0f, 0.0f};
-        if (fit.pansX)
-        {
-            if (floor.left < marginX)
-                delta.x = marginX - floor.left;
-            else if (floor.right > viewSize.x - marginX)
-                delta.x = (viewSize.x - marginX) - floor.right;
-        }
-        if (fit.pansY)
-        {
-            if (floor.top < marginY)
-                delta.y = marginY - floor.top;
-            else if (floor.bottom > viewSize.y - marginY)
-                delta.y = (viewSize.y - marginY) - floor.bottom;
-        }
-
+        const Vec2f delta = deadZoneCorrection(
+            floorFootprint(camera, tileSize, cursorTile, cursorTileHeight, z), viewSize, fit);
         if (delta.x == 0.0f && delta.y == 0.0f)
             return;
 
@@ -241,8 +235,29 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
     if (isValid(ctx.mapSize) && !fit.any())
     {
         m_snappedAny = false;
+        m_inScriptedBeat = false;
+        m_returningToBeat = false;
         return false;
     }
+
+    // A scripted beat (dialogue glide, cast glide, hit snap) takes the camera
+    // AWAY from the tactical framing to centre it on a unit. Remember the offset
+    // it starts from, so that when the beat ends control resumes there instead
+    // of wherever the beat parked the camera.
+    //
+    // The cursor cannot move while a beat runs — dialogue, ResolvingHits and
+    // EnemyAction all block tactical input — so the remembered offset is still a
+    // dead-zone-valid framing for the live cursor: restoring it is not a
+    // recentering, it is undoing the beat's excursion.
+    const bool scriptedBeat = ctx.dialogueActive || ctx.phase != Phase::Free;
+    if (!scriptedBeat && m_inScriptedBeat)
+        m_returningToBeat = true; // beat just ended: take the camera back
+    // Skipped while a previous return is still in flight — that return's
+    // framing is the real tactical one, not the transient mid-ease offset a
+    // chained beat would hand us.
+    if (scriptedBeat && !m_inScriptedBeat && !m_returningToBeat)
+        m_beatOffset = camera.getOffset();
+    m_inScriptedBeat = scriptedBeat;
 
     // Scripted dialogue wins over everything: follow the speaker, or hold.
     if (ctx.dialogueActive)
@@ -285,14 +300,63 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
     m_snappedAny = false;
     m_lastSnappedTile = Vec2i{kInvalid, kInvalid};
 
-    if (isValid(ctx.cursorTile) && isValid(ctx.mapSize))
-        scrollCursorIntoDeadZone(camera, viewSize, tileSize, ctx.cursorTile,
-                                 ctx.cursorTileHeight, fit, dt);
+    if (!isValid(ctx.cursorTile) || !isValid(ctx.mapSize))
+        return false;
+
+    // A scripted beat just ended and left the camera parked on the unit it
+    // centred (an enemy after its attack, say). The dead zone alone would keep
+    // it there: the cursor still sits comfortably inside the box of that parked
+    // position, so nothing would ever pull the view back. Ease to the framing
+    // the beat displaced instead, so the camera hands back where the player was
+    // looking.
+    //
+    // The target is re-aimed by the dead zone for the live cursor, so a cursor
+    // that somehow moved while the beat ran still gets a valid framing; in
+    // practice the cursor is frozen during a beat, so this is a straight restore.
+    if (m_returningToBeat)
+    {
+        const float z = screenScale(camera);
+        const Vec2f delta = deadZoneCorrection(
+            floorFootprintAtOffset(camera, tileSize, ctx.cursorTile, ctx.cursorTileHeight, z,
+                                   m_beatOffset),
+            viewSize, fit);
+        const Vec2f target = m_beatOffset - delta / z;
+
+        const Vec2f before = camera.getOffset();
+        const float ease = 1.0f - std::exp(-std::max(dt, 0.0f) / kEdgeScrollTau);
+        const Vec2f desired = before + (target - before) * ease;
+        camera.setOffset(desired);
+        camera.clampToBounds(Camera::SmallMapFit::Slide);
+        const Vec2f after = camera.getOffset();
+
+        // Settled once the target is reached, or once the map bounds hold the
+        // camera short of it (the clamp rejected the eased position, so further
+        // easing would be a no-op loop that locks the dead zone out forever).
+        // Hand back either way: the cursor's floor is inside the box at the
+        // target, and the dead zone takes over from whatever we stopped at.
+        const bool reached =
+            std::abs(after.x - target.x) < 0.5f && std::abs(after.y - target.y) < 0.5f;
+        const bool pinned = after.x != desired.x || after.y != desired.y;
+        if (reached || pinned)
+        {
+            camera.setOffset(target);
+            camera.clampToBounds(Camera::SmallMapFit::Slide);
+            m_returningToBeat = false;
+        }
+        return false;
+    }
+
+    scrollCursorIntoDeadZone(camera, viewSize, tileSize, ctx.cursorTile,
+                             ctx.cursorTileHeight, fit, dt);
     return false;
 }
 
 void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, const Context &ctx)
 {
+    // Fresh battle: no beat has taken the camera anywhere yet.
+    m_inScriptedBeat = false;
+    m_returningToBeat = false;
+
     if (!isValid(ctx.cursorTile) || viewSize.x <= 0.0f || viewSize.y <= 0.0f)
         return;
 
