@@ -7,6 +7,68 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `f2e65d1` — 2026-10-18 — "Camera: restore pre-beat framing after a scripted beat; fix enemy-turn deadlock on a refused move commit"
+
+- **The camera no longer stays stuck centred on an enemy after its attack.**
+  Removing the turn-start focus glide (commit `4d34a01`) had exposed a real
+  regression: a scripted beat — the dialogue `glideTo`, the cast `glideTo` and
+  the hit `snapTo` — takes the camera **away** from the tactical framing to
+  centre it on a unit, and when the beat ends the cursor usually still sits
+  comfortably inside the dead zone of that parked position (it is adjacent to
+  the beat's subject). The dead zone alone therefore saw "cursor inside, no
+  move needed" and left the view parked on the beat's subject — the reported
+  node-7 "camera is centred on one enemy, somehow". `BattleCameraController`
+  now remembers the offset a beat started from (`m_beatOffset`, captured on
+  the Free→beat transition) and eases back to it when control returns
+  (`m_returningToBeat`), so the camera hands back where the player was
+  looking. The target is re-aimed by the dead zone for the **live** cursor
+  every frame (via `floorFootprintAtOffset()`, which evaluates a tile's floor
+  rectangle as the camera *would* sit at any offset); because the cursor is
+  frozen for the whole duration of a beat (dialogue, `ResolvingHits` and
+  `EnemyAction` all block tactical input), the target is in practice the
+  pre-beat offset exactly — this is undoing the beat's excursion, not a
+  recentering, so the dead-zone spec (no auto-recentering) still holds.
+  Chained enemy turns are treated as **one** continuous beat — the phase never
+  returns to `Free` between them, since `finishEnemyAction()` →
+  `advanceToNextUnit()` → `processCurrentTurn()` re-sets `EnemyAction`
+  synchronously — so a whole enemy phase is a single excursion with a single
+  return, with no back-and-forth between consecutive enemies. A return in
+  flight that is interrupted by a new beat keeps the **original** tactical
+  offset (the `!m_returningToBeat` capture guard) rather than re-capturing a
+  transient mid-ease position. The return settles on arrival (0.5px) **or**
+  when the map bounds hold the camera short of the target (detected by the
+  clamp rejecting the eased position), so a pinned camera can never lock the
+  dead zone out in a no-op easing loop. Gated by the same per-axis
+  `boardFit()` as the dead zone, so a board that fits the play field still
+  never moves.
+- **An enemy whose move commit is refused no longer deadlocks the battle with
+  the camera glued to it.** `beginUnitWalk()` returned **without invoking
+  `onComplete`** when `MovementCommitSystem::commitMovement()` was invalid
+  (an out-of-grid destination, or the re-path came back empty — both reachable
+  from `EnemyAI::planTurn()`, whose destination is checked against occupancy
+  but not re-pathability). For the enemy path `onComplete` is the turn state
+  machine's **only** resume point — it calls `resolveEnemyAttack()` →
+  `finishEnemyAction()` — and unlike the player path
+  (`HumanTurnController.cpp`, which pre-checks `reachableCosts` before
+  calling) the enemy path has no guard at all. A failed commit therefore
+  parked `TurnState::ProcessingTurn` forever with `m_pendingResolution` stuck
+  at `EnemyAction`: the battle deadlocked **and** `updateCamera()` kept
+  `m_cameraPhase` on `ResolutionCast`/`ResolutionTrack`, which glues the
+  camera to that enemy permanently — the same visible symptom, but the harder
+  of the two causes to spot, since the camera is only a side effect of the
+  stuck phase. `onComplete` now fires on **both** early-return paths (null
+  unit, invalid commit); the unit simply attacks / reopens its menu from where
+  it already stands.
+- **Refactor**: the dead-zone minimum-displacement math is extracted into a
+  shared `deadZoneCorrection()` helper, now used by all three consumers (the
+  eased `scrollCursorIntoDeadZone`, the one-shot `correctDeadZoneNow`, and the
+  beat-return re-aim) instead of three inline copies;
+  `floorFootprintAtOffset()` holds the footprint math and `floorFootprint()`
+  delegates to it with the live offset. _Files:
+  `battle/systems/BattleCameraController`, `scenes/BattleState`
+  (`beginUnitWalk`); docs `TODO.md`, `ARCHITECTURE.md`,
+  `FRAMED_LAYOUT_PLAN.md`._
+
 ## `4d34a01` — 2026-10-18 — "Camera dead zone: 80% box, minimum-displacement pan, height-aware floor test"
 
 - **The battle camera now runs on an explicit camera dead zone.** A centred
