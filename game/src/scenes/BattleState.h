@@ -453,6 +453,15 @@ private:
     // True while the enemy's rolled attack awaits its short VFX pause before
     // finishEnemyAction() runs (damage already applied + FX enqueued).
     bool m_enemyActionResolved = false;
+    // True once the enemy has *committed* its turn — i.e. resolveEnemyAttack()
+    // has run (the attack was rolled and damage applied, the walk finished, or
+    // the enemy had nothing in range). The camera's cast/track beats key off
+    // this: the enemy's pre-act hold (EnemyAction but not yet committed) is a
+    // turn-start cue, not a cast, so the camera must not snap-centre onto the
+    // acting enemy during it — the dead zone drives from the cursor instead.
+    // Resetting it in processCurrentTurn()'s enemy branch keeps it scoped to
+    // exactly one turn.
+    bool m_enemyActCommitted = false;
 
     // ── Tileset layout ─────────────────────────────────────────────────────
     float m_texW = 0.0f;

@@ -486,8 +486,17 @@ void BattleState::updateCamera(float dt)
     // enemy's applied strike promotes it to the per-target track. Player hits
     // promote it inside the WaitingForAnimation switch below, right as the
     // first consequence's effect plays. Anything else returns to free follow.
+    //
+    // NOTE: the enemy's `m_pendingResolution = EnemyAction` is set at the start
+    // of its turn (processCurrentTurn, turn-start hold) AND again when it
+    // commits the strike (resolveEnemyAttack). The latter is the real cast
+    // beat: the enemy is actually acting now. The former is just a turn-start
+    // cue — gating the cast/track drive on m_enemyActCommitted keeps the camera
+    // from snap-centring on the enemy the instant its turn begins; the dead
+    // zone drives from the cursor during the hold instead.
     const bool resolving = m_pendingResolution == PendingResolution::ResolvingHits ||
-                           m_pendingResolution == PendingResolution::EnemyAction;
+                           (m_pendingResolution == PendingResolution::EnemyAction &&
+                            m_enemyActCommitted);
     if (resolving)
     {
         if (m_cameraPhase == BattleCameraController::Phase::Free)
@@ -1623,6 +1632,7 @@ void BattleState::processCurrentTurn()
         m_pendingTarget = decision.target;
         m_pendingEnemyAliveBefore = decision.playersAliveBefore;
         m_enemyActionResolved = false;
+        m_enemyActCommitted = false;
         m_pendingActionLabel = "Attack";
         m_topBattleText = m_pendingActionLabel;
 
@@ -1689,6 +1699,7 @@ void BattleState::advanceToNextUnit()
 
 void BattleState::resolveEnemyAttack(Unit &unit, Unit *target)
 {
+    m_enemyActCommitted = true;
     const EnemyAttackResult atk = EnemyAI::resolveAttack(unit, target, m_grid, m_battleMap, basicAttackSkill());
 
     m_pendingResolution = PendingResolution::EnemyAction;
