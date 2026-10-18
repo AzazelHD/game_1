@@ -7,6 +7,35 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `957114b` — 2026-10-18 — "Camera bounds count the map's drawn art (raised tiles)"
+
+- **The camera no longer cuts off raised map rows, and centres a fitting map on
+  what is actually drawn.** The camera's bounds are built from tile *anchors*,
+  but a tile is drawn with its surface half a tile height above its anchor and
+  every height layer (`h2`/`h3`/`h4`, `offsety = -height * 12`) lifts it further
+  — `1v1_test`/`boss_arena` draw up to 48 world units (~130px at 720p) above the
+  top anchor row, `test_map` 36 (~94px). Two visible symptoms: on the large map
+  an elevated top row sat outside the play field (the clamp believed the anchor
+  box was the whole map — walk the cursor up there and it was simply gone), and
+  a fitting map was centred on its anchor box, so the art looked pushed up with
+  more empty space below than above. `BattleLoader::computeMapTopExtra()` now
+  measures the art reach above the top anchors from the tile layers (gids +
+  layer Y offsets + the renderer's sprite-cell top) and returns it as
+  `BattleLoadResult::mapTopExtra`; `BattleState` hands it to the new engine
+  `Camera::setMapBoundsTopExtra()` (world units, zoom-independent) and clamps
+  with the new `Camera::SmallMapFit::Frame`. `Frame` frames a map that fits
+  *on its own* centred, ignoring the sprite margin — a fitting axis has no slack
+  to pan, so honoring the margin there would only let the clamp slide the art out
+  of the view. `BattleCameraController::boardFit()` adds the same reach to its
+  vertical extent, so the controller's "fits → hold still" gate and the engine
+  agree. Measured at 720p: `1v1_test`/`boss_arena` are now 133/133px and
+  135/135px above/below (were 68/198 and asymmetric), and node 7's whole map —
+  top row included, nothing cut — sits inside the play field (276 world units of
+  art against a 277-unit play field, at every resolution, so its vertical axis
+  has nothing left to scroll). _Files: `scenes/BattleLoader`,
+  `scenes/BattleState`, `battle/systems/BattleCameraController`; engine
+  `renderer/Camera` (`01a623b`)._
+
 ## `5fcaa7c` — 2026-10-18 — "Constant tile size, a still camera on fitting boards, wrapping world-map menu, Title Screen"
 
 - **Tiles now keep the same size relative to the window at every resolution.**
