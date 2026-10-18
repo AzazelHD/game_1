@@ -59,7 +59,9 @@ namespace
 
     // The board's on-screen size against the play field. Mirrors (and must stay
     // in step with) Camera::clampToBounds()'s own fit test, which is what decides
-    // whether an axis can be centred/pinned or only clamped.
+    // whether an axis can be centred/pinned or only clamped: the vertical extent
+    // includes `mapTopExtra`, the art raised tiles draw above the top anchor row
+    // (Camera::setMapBoundsTopExtra).
     struct BoardFit
     {
         bool pansX = true;
@@ -67,12 +69,13 @@ namespace
         [[nodiscard]] bool any() const { return pansX || pansY; }
     };
 
-    [[nodiscard]] BoardFit boardFit(Vec2i mapSize, Vec2f viewSize, Vec2f tileSize, float z)
+    [[nodiscard]] BoardFit boardFit(Vec2i mapSize, Vec2f viewSize, Vec2f tileSize,
+                                    float mapTopExtra, float z)
     {
         if (!isValid(mapSize) || z <= 0.0f)
             return BoardFit{};
         return BoardFit{boardExtent(mapSize, tileSize.x, z) > viewSize.x,
-                        boardExtent(mapSize, tileSize.y, z) > viewSize.y};
+                        boardExtent(mapSize, tileSize.y, z) + mapTopExtra * z > viewSize.y};
     }
 
     [[nodiscard]] float screenScale(const Camera &camera)
@@ -197,7 +200,8 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
     // scrollCursorIntoBand). This is also what keeps the camera dead still on the
     // small boards (e.g. the 5x5 tutorial) and on the fitting axis of a
     // half-overflowing board.
-    const BoardFit fit = boardFit(ctx.mapSize, viewSize, tileSize, screenScale(camera));
+    const BoardFit fit = boardFit(ctx.mapSize, viewSize, tileSize, ctx.mapTopExtra,
+                                  screenScale(camera));
     if (isValid(ctx.mapSize) && !fit.any())
     {
         m_snappedAny = false;
@@ -270,7 +274,7 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
 }
 
 void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize,
-                                             Vec2i mapSize, Vec2i tile)
+                                             Vec2i mapSize, float mapTopExtra, Vec2i tile)
 {
     if (!isValid(tile) || viewSize.x <= 0.0f || viewSize.y <= 0.0f)
         return;
@@ -278,7 +282,7 @@ void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, Ve
     // A board that fits the play field is already fully visible from the scene's
     // centred clamp: snapping to the cursor would only shove it off centre for
     // nothing, and the controller is not going to move it again afterwards.
-    if (!boardFit(mapSize, viewSize, tileSize, screenScale(camera)).any())
+    if (!boardFit(mapSize, viewSize, tileSize, mapTopExtra, screenScale(camera)).any())
         return;
 
     snapTo(camera, viewSize, tileSize, tile);

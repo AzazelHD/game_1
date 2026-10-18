@@ -238,6 +238,12 @@ void BattleState::onEnter()
     Vec2f origin = loaded.mapOrigin;
 
     m_camera.setTileSize(m_mapData.tileWidth, m_mapData.tileHeight);
+    // The map's art reaches above its top anchor row (raised tiles + each tile's
+    // own surface offset), and the height layers are all y-offsets: without this
+    // the clamp treats the anchor box as the map and the top rows end up outside
+    // the play field, while a fitting map is centred on its anchors instead of on
+    // what is drawn.
+    m_camera.setMapBoundsTopExtra(loaded.mapTopExtra);
     m_camera.setMapSize(m_mapData.width, m_mapData.height);
     m_camera.setViewportSize(playSize);
     m_camera.setRenderScale(static_cast<float>(m_scale));
@@ -257,7 +263,10 @@ void BattleState::onEnter()
     // offset — clamp immediately so the very first rendered frame already
     // sits inside valid bounds, instead of snapping there on the first
     // trackTarget()/clampToBounds() call later (visible as a hard "jump").
-    m_camera.clampToBounds();
+    // Frame: a map that fits the play field is centred on its art (so nothing
+    // drawn above the top row is cut off); one that does not is clamped with the
+    // sprite margin, exactly like the controller's edge-scroll expects.
+    m_camera.clampToBounds(Camera::SmallMapFit::Frame);
     m_previousCamera = m_camera;
 
     // ── 7. Set up debug renderer ──
@@ -325,7 +334,8 @@ void BattleState::onEnter()
     {
         const BattleCameraController::Context camCtx = makeCameraContext();
         const Vec2i focusTile = camCtx.anchorTile.x >= 0 ? camCtx.anchorTile : camCtx.cursorTile;
-        m_battleCamera.focusImmediately(m_camera, playSize, camCtx.tileSize, camCtx.mapSize, focusTile);
+        m_battleCamera.focusImmediately(m_camera, playSize, camCtx.tileSize, camCtx.mapSize,
+                                        camCtx.mapTopExtra, focusTile);
         m_previousCamera = m_camera;
     }
 
@@ -504,6 +514,7 @@ BattleCameraController::Context BattleState::makeCameraContext()
     ctx.tileSize = Vec2f{static_cast<float>(m_mapData.tileWidth),
                          static_cast<float>(m_mapData.tileHeight)};
     ctx.mapSize = Vec2i{m_mapData.width, m_mapData.height};
+    ctx.mapTopExtra = m_camera.getMapBoundsTopExtra();
 
     if (ctx.phase == BattleCameraController::Phase::ResolutionCast ||
         ctx.phase == BattleCameraController::Phase::ResolutionTrack)
@@ -1754,7 +1765,7 @@ void BattleState::applyBattleLayout(const BattleLayout &layout)
     m_camera.setViewportSize(playSize);
     m_camera.setRenderScale(static_cast<float>(m_scale));
     applyWorldZoom();
-    m_camera.clampToBounds();
+    m_camera.clampToBounds(Camera::SmallMapFit::Frame);
 
     // Fold the change into the render-interpolation snapshot so the resize
     // doesn't lerp across the old framing for one frame.

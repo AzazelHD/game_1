@@ -83,8 +83,11 @@ decorative rails).
     grid (`round(offset * z) / z`) — removes fractional-position seams/jitter.
   - `BattleCameraController` is FFTA-style **edge-scroll** with a one-time
     turn-start focus glide, and holds the camera perfectly still on a board that
-    fits the play field; engine `Camera` bounds are diamond-exact and honor a
-    screen-space margin.
+    fits the play field; engine `Camera` bounds are diamond-exact, honor a
+    screen-space margin, and take the art reach above the top tile anchors
+    (`Camera::setMapBoundsTopExtra`, reported by `BattleLoader`) so raised rows
+    are never cut off and a fitting board is framed (`SmallMapFit::Frame`) on
+    what is **drawn**, not on the anchor box.
 - **Known-soft resolutions** (`TODO.md`): non-integer window ratios
   (1366×768, 1600×900, 1920×1080) still show uneven NEAREST texels while moving.
   **This plan resolves that** by rendering the world at native, integer scale.

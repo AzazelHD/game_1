@@ -63,6 +63,7 @@ public:
         bool stayOnCaster = false;
         Vec2f tileSize{0.0f, 0.0f};
         Vec2i mapSize{-1, -1}; // board size in tiles, for the comfort box
+        float mapTopExtra = 0.0f; // world units of art above the top anchor row
     };
 
     // Returns true when the frame applied a hard snap; BattleState then
@@ -76,7 +77,7 @@ public:
     // starts. A no-op when the board fits the play field — it is already fully
     // visible from the scene's centred clamp, and nothing will move it again.
     void focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
-                          Vec2i tile);
+                          float mapTopExtra, Vec2i tile);
 
 private:
     bool m_snappedAny = false;

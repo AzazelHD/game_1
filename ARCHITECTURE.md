@@ -56,9 +56,11 @@ The game owns all domain logic:
 - `systems/`: deployment, combat animation event queue, `CombatVfxLibrary`,
   `MovementCommitSystem`, and `BattleCameraController` (the single camera
   authority: FFTA-style edge-scroll around a per-board **comfort box** the
-  cursor's whole tile must stay inside, a map that fits the play field may slide
-  instead of being pinned, plus the cast/target focus beats; driven from both
-  deployment and combat by `BattleState::updateCamera()`).
+  cursor's whole tile must stay inside, a map whose *drawn* extent (including
+  the art raised tiles reach above their anchors) fits the play field framed
+  centred and never moved (`Camera::SmallMapFit::Frame` +
+  `Camera::setMapBoundsTopExtra`), plus the cast/target focus beats; driven from
+  both deployment and combat by `BattleState::updateCamera()`).
 - `ui/`: battle-specific windows (deployment, inspect, panel).
 
 ### `ai/`

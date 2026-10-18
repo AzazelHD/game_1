@@ -57,6 +57,9 @@ BattleLoadResult BattleLoader::load(const char *mapPath, int scale, float sprite
     // ── computeMapOrigin ──
     r.mapOrigin = computeMapOrigin(r.mapData, scale, spriteH, viewport);
 
+    // ── computeMapTopExtra ──
+    r.mapTopExtra = computeMapTopExtra(r.mapData, spriteH);
+
     r.ok = true;
     return r;
 }
@@ -97,4 +100,47 @@ Vec2f BattleLoader::computeMapOrigin(const TileMapData &mapData, int scale, floa
              originX, originY, gridH, minLayerOffsetY);
 
     return {originX, originY};
+}
+
+float BattleLoader::computeMapTopExtra(const TileMapData &mapData, float spriteH)
+{
+    const float tileH = static_cast<float>(mapData.tileHeight);
+    if (tileH <= 0.0f || mapData.width <= 0 || mapData.height <= 0)
+        return 0.0f;
+
+    // A tile is drawn as a sprite cell whose top edge sits this far from the
+    // tile's anchor (BattleRenderer draws dst.y = ay - spriteH + 2 * halfTH), and
+    // each height layer lifts its tiles by its own -Y offset.
+    const float cellTop = tileH - spriteH;
+
+    float highest = 0.0f;
+    for (const auto &layer : mapData.layers)
+    {
+        if (layer.type != LayerType::Tile)
+            continue;
+
+        const int cols = layer.width;
+        const int rows = layer.height;
+        if (cols <= 0 || rows <= 0)
+            continue;
+
+        for (int row = 0; row < rows; ++row)
+        {
+            for (int col = 0; col < cols; ++col)
+            {
+                const std::size_t index =
+                    static_cast<std::size_t>(row) * static_cast<std::size_t>(cols) +
+                    static_cast<std::size_t>(col);
+                if (index >= layer.tiles.size() || layer.tiles[index] == 0)
+                    continue;
+
+                const float isoY = tileToIso(Vec2i{col, row}, mapData.tileWidth, mapData.tileHeight).y;
+                highest = std::min(highest, isoY + layer.offsetY + cellTop);
+            }
+        }
+    }
+
+    // The camera's bounds start at the top anchor row (iso y = 0 for the top
+    // corner tile), so the art reach *above* them is what it needs.
+    return std::max(0.0f, -highest);
 }

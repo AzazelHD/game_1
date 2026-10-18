@@ -188,8 +188,10 @@
       the board **overflows** can carry something off screen, so only such an axis
       is ever panned (`scrollCursorIntoBand` gates each axis independently, which
       also stops the vertical drift on a board that only overflows horizontally).
-      The 70%-of-board cap is gone with it. _File:
-      `battle/systems/BattleCameraController`._
+      The 70%-of-board cap is gone with it. Amended by *map art bounds* below:
+      "fits" now measures the map's **drawn** height, not the tile-anchor box, so
+      a board whose top rows are drawn above the play field no longer counts as
+      fitting. _File: `battle/systems/BattleCameraController`._
 - [x] **Battle world — constant size relative to the window**: `artScale` is
       `floor(outH / 360)`, so a window whose height is not a multiple of 360 (e.g.
       1600×900 → artScale 2 over a 25% taller window) showed 25% more world and
@@ -214,6 +216,31 @@
       the title screen (whose own Quit is unchanged). Unsaved progress is
       abandoned, exactly as the old in-game Quit did. _Files: `ui/ActionId`,
       `scenes/WorldMapState`, `scenes/MainMenuState` (unchanged Quit path)._
+- [x] **Battle camera — map art bounds (raised tiles)**: the camera's bounds only
+      knew the tile *anchors* (the iso grid), but a tile is drawn with its
+      surface half a tile height **above** its anchor and each height layer
+      (`h2`/`h3`/`h4`, `offsety = -height * 12`) lifts it further:
+      `1v1_test`/`boss_arena` draw up to 48 world units (≈130px) above the top
+      anchor row, `test_map` 36 (≈94px). Two symptoms: an elevated top row sat
+      outside the play field on the large map (the clamp believed the anchor box
+      was the whole map), and a fitting map was centred on its anchors, so the
+      art looked pushed up with more empty space below than above. The loader now
+      reports the art reach above the top anchors (`BattleLoader::computeMapTopExtra`
+      → `BattleLoadResult::mapTopExtra`) and the scene hands it to the new
+      `Camera::setMapBoundsTopExtra()`, which expands the top bound (world units,
+      zoom-independent). The scene clamps with the new `Camera::SmallMapFit::Frame`
+      (a map that fits *on its own* is framed centred, ignoring the sprite
+      margin, so the clamp can never slide the art out of the view), and
+      `BattleCameraController::boardFit()` adds the same reach to the vertical
+      extent so the "fits" gate and the engine agree. Result: the tutorial/boss
+      maps are now centred on their art (133/133px above/below at 720p instead of
+      68/198), and node 7's whole map — top row included — is inside the play
+      field (its art is 276 world units tall against a 277-unit play field at
+      720p, so it fits with 1px to spare at every resolution; the vertical axis
+      has nothing left to scroll). _Files: `scenes/BattleLoader`,
+      `scenes/BattleState` (`m_camera.setMapBoundsTopExtra`,
+      `SmallMapFit::Frame`), `battle/systems/BattleCameraController`; engine
+      `renderer/Camera` (`setMapBoundsTopExtra`, `SmallMapFit::Frame`)._
 - [x] **Battle camera — edge/corner framing**: the clamp box was built from
       tile origins only, so an edge/corner unit hung off-screen; bounds now
       cover the true diamond extents and the margin is applied in screen pixels
@@ -421,22 +448,30 @@
       available; the facing preview is rolled back; max-move + attack → menu
       skips straight to the facing picker and Esc there ends the turn.
 - [ ] **Camera edge-scroll verify (large map, node 7)**: in windowed and
-      borderless, during deployment and combat, walking the cursor across the
-      central tiles leaves the camera still; only near the viewport edge does it
-      scroll a small amount to reveal more map — on **both axes** (the vertical
-      axis used to never scroll at all, because the 15% band was narrower than
-      the map-bounds margin), and **on a board that fits the play field too**
-      (the clamp used to pin a fitting map centred, so there was no slack to
-      scroll through; the band is now capped to 70% of the board so it always has
-      board left to leave — expect a modest drift, not a follow-cam). The test
-      must use the cursor tile's whole footprint: the iso anchor is the diamond's
-      top corner, so a tile's lower half otherwise hangs outside the box before
-      the camera reacts. It stops as soon as the cursor leaves the edge band; it
-      never reveals space outside the map; deployment behaves exactly like combat
-      and its cursor never leaves the play field (deployment used to have no
-      camera driver at all); each new turn glides once to the acting unit.
-      Also confirm the world scale did **not** jump at 1600×900 (tiles must be
-      the same size per source texel as 720p, not 1.5× bigger).
+      borderless, during deployment and combat, the whole map must sit inside the
+      play field with no raised top row cut off — the vertical extent now counts
+      the art above the tile anchors, and node 7's art is as tall as the play
+      field at its default zoom, so expect it framed **centred and still** with
+      the top and bottom rows 1–2px from the rails; only the horizontal axis
+      overflows and pans. Walking the cursor across the central tiles leaves the
+      camera still; near the left/right viewport edge it scrolls to reveal more
+      map and stops as soon as the cursor leaves the edge band. Small maps
+      (`1v1_test`, `boss_arena`) must be perfectly symmetric — an equal gap above
+      the tallest drawn tile and below the lowest — and never move at all. The
+      test must use the cursor tile's whole footprint: the iso anchor is the
+      diamond's top corner, so a tile's lower half otherwise hangs outside the
+      box before the camera reacts. It never reveals space outside the map;
+      deployment behaves exactly like combat and its cursor never leaves the play
+      field (deployment used to have no camera driver at all); each new turn
+      glides once to the acting unit. Also confirm the world scale did **not**
+      jump at 1600×900 (tiles must be the same size per source texel as 720p,
+      not 1.5× bigger).
+- [ ] **Board framing at a glance**: if node 7 (10×10) reads as too tight
+      vertically now that its full art is counted (rows flush with the rails, and
+      a unit standing on the top/bottom row would have its sprite clipped by the
+      edge), the lever is the per-battle `defaultZoom` in `config/BattleCatalog`
+      — 1.30 → ~1.10 leaves ~55px of headroom above and below; lowering it also
+      shows more of the map horizontally.
 - [ ] **Camera regression test**: windowed, borderless, deployment, combat, cursor at all map corners, clamping
 - [ ] **Button menu verification**: marker positioning, width sizing, alignment across action/skill/system/inspect menus
 

@@ -20,6 +20,14 @@ struct BattleLoadResult
     int tilesPerRow = 1;
     float spriteH = 0.0f;
     Vec2f mapOrigin{0.0f, 0.0f};
+
+    // How far the map's drawn art reaches *above* the top of its tile-anchor
+    // box, in world (source-texel) units. Tiles draw their surface above the
+    // anchor and the height layers (h1/h2/...) lift a raised tile another half
+    // tile height per level, so the art is taller than the grid the camera's
+    // bounds know about. Handed to Camera::setMapBoundsTopExtra() so clamping
+    // and small-map centring account for the top rows.
+    float mapTopExtra = 0.0f;
 };
 
 class BattleLoader
@@ -35,6 +43,9 @@ public:
 
 private:
     static Vec2f computeMapOrigin(const TileMapData &mapData, int scale, float spriteH, Vec2f viewport);
+
+    // Art reach above the map's top tile anchors (see BattleLoadResult).
+    static float computeMapTopExtra(const TileMapData &mapData, float spriteH);
 
     Renderer *m_renderer = nullptr;
 };
