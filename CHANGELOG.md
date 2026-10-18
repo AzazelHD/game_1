@@ -7,6 +7,44 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `1e97afc` — 2026-10-18 — "Battle camera: framed on load, eased pan, and first-time tips that stay gone"
+
+- **The battle no longer fades in on one framing and then jumps to another.**
+  The camera drive lives in `BattleState::update()`, and `update()` returns early
+  while the fade-in transition plays, so the opening framing only happened once
+  control started: the scene faded in on the clamped map origin and *then* moved
+  to the cursor. On the big maps the two positions are far apart, which is why it
+  read as a blink. `BattleState::onEnter()` now calls a new
+  `BattleCameraController::focusImmediately()` (a hard cut that also drops any
+  pending glide) right before starting the transition, framing the same tile the
+  free-control glide would pick — the acting unit when there is one, the cursor
+  otherwise — and neutralises the between-frame render interpolation for that
+  frame. The scene now fades in already centred on the cursor. _Files:
+  `scenes/BattleState`, `battle/systems/BattleCameraController`._
+- **The edge-scroll eases instead of cutting.** `scrollCursorIntoBand()` used to
+  apply the whole fixing delta in one frame, so walking the cursor across the
+  board produced a jump per tile step. It now eases towards the fixing position
+  (τ = 0.15s, ≈90% of the way in 0.35s) with the delta recomputed from the live
+  offset every frame, so the camera is a smooth pan that still settles exactly on
+  the box edge — no overshoot, no drift past the box, and the world-pass pixel
+  snap keeps the tiles crisp mid-pan. _File:
+  `battle/systems/BattleCameraController` (`scrollCursorIntoBand`)._
+- **First-time tips are part of the campaign now, so a load cannot replay them.**
+  `PartyContext::controlsTutorialShown` / `battleControlsTutorialShown` were
+  explicitly "reset per new game; not persisted to saves", which meant loading a
+  campaign re-showed the world-map controls dialog (on *every* load, since the
+  world map is where a load lands) and the first-combat controls block.
+  `SaveManager` now writes `controlsTutorialShown` and
+  `battleControlsTutorialShown` in both the campaign and battle payloads (still
+  `formatVersion` 4 — the keys are additive) and
+  `PartyContext::applyCampaign()` restores them. Absent keys read as `true`: a
+  save written before the keys existed is a campaign in progress, and replaying
+  the tips is the bug being fixed. `resetForNewGame()` still seeds `false`, so a
+  fresh game teaches the controls exactly once. _Files: `data/SaveManager`
+  (`saveCampaign`, `saveBattle`, `campaignFromJson`, `battleFromJson`),
+  `systems/PartyContext`, `scenes/WorldMapState` (save call site);
+  docs: `DATA_SCHEMAS.md` §6 ("Campaign ownership")._
+
 ## `ea57868` — 2026-10-18 — "Battle camera: a cursor comfort box that works on every board (and no 900p zoom)"
 
 - **No more zoom-in at non-720p-multiple heights.** `BattleLayout` is back to
