@@ -389,6 +389,13 @@ see §4). `formatVersion` 4 adds each roster unit's progression fields —
 `skills` (learned levels + equipped sets, see §SkillProgression). Legacy saves
 (v1–v3) load with the template's base class, zero skill points, and nothing
 learned.
+Still at `formatVersion` 4, the campaign payload also carries the two
+first-time-tip flags `controlsTutorialShown` and `battleControlsTutorialShown`
+(booleans). They are campaign-lifetime, so `PartyContext::applyCampaign`
+restores them and a load never replays the controls tutorial. Both default to
+`true` when absent — a save written before the keys existed is a campaign in
+progress, and re-showing the first-time tips on every load is the bug the keys
+fix; a fresh game seeds them `false` in `resetForNewGame()` instead.
 Each `RosterUnit`, identified by its stable `instanceId`, stores persistent
 equipped `ItemId` references for every normal gear slot plus two amulet slots.
 

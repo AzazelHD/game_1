@@ -1556,6 +1556,8 @@ void WorldMapState::processUIEvents()
                 const bool ok = SaveManager::instance().saveCampaign(
                     partyContext.roster(), partyContext.party(),
                     partyContext.inventory(), m_playerNodeId, partyContext.gold(),
+                    partyContext.controlsTutorialShown(),
+                    partyContext.battleControlsTutorialShown(),
                     partyContext.questLog().toJson());
 
                 m_uiManager.popById(WindowId::WorldMap);

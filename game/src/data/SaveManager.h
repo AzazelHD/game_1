@@ -31,6 +31,12 @@ struct CampaignSave
     std::vector<int> partyMemberIds;
     nlohmann::json inventoryJson;
     nlohmann::json questLogJson; // QuestLog::toJson(); empty object = no quests
+    // First-time-tip flags (campaign-lifetime). Default true: a save written
+    // before these keys existed (or a save with no keys at all) is a campaign in
+    // progress, and re-showing the first-time tips every load is exactly the bug
+    // being fixed — a fresh game seeds them false instead.
+    bool controlsTutorialShown = true;
+    bool battleControlsTutorialShown = true;
     std::string label;
 };
 
@@ -233,6 +239,8 @@ namespace
         out.worldNodeId = j.value("worldNodeId", 4);
         out.label = j.value("label", std::string());
         out.gold = j.value("gold", 0);
+        out.controlsTutorialShown = j.value("controlsTutorialShown", true);
+        out.battleControlsTutorialShown = j.value("battleControlsTutorialShown", true);
 
         for (const nlohmann::json &entry : j.at("roster"))
         {
@@ -326,6 +334,8 @@ namespace
             out.inventoryJson = j.at("inventory");
         if (j.contains("questLog"))
             out.questLogJson = j.at("questLog");
+        out.controlsTutorialShown = j.value("controlsTutorialShown", true);
+        out.battleControlsTutorialShown = j.value("battleControlsTutorialShown", true);
         for (const RosterUnit &u : out.roster)
             out.nextInstanceId = std::max(out.nextInstanceId, u.instanceId + 1);
 
@@ -388,8 +398,12 @@ public:
     void deleteSave(int slotIndex);
 
     // ── Campaign save ─────────────────────────────────────────────────────
+    // The first-time-tip flags are part of the campaign, so they are written
+    // with it and must be supplied by the caller (no default that could
+    // silently re-arm the tips).
     bool saveCampaign(const RosterSystem &roster, const PartySystem &party,
                       const Inventory &inventory, int worldNodeId, int gold,
+                      bool controlsTutorialShown, bool battleControlsTutorialShown,
                       const nlohmann::json &questLogJson = nlohmann::json::object());
 
     // Loads the newest campaign save. Returns false when none exists or
@@ -500,6 +514,7 @@ inline int SaveManager::allocateNewSlot()
 
 inline bool SaveManager::saveCampaign(const RosterSystem &roster, const PartySystem &party,
                                       const Inventory &inventory, int worldNodeId, int gold,
+                                      bool controlsTutorialShown, bool battleControlsTutorialShown,
                                       const nlohmann::json &questLogJson)
 {
     nlohmann::json j;
@@ -547,6 +562,10 @@ inline bool SaveManager::saveCampaign(const RosterSystem &roster, const PartySys
 
     // Quest log (M2): active + completed quest ids.
     j["questLog"] = questLogJson;
+
+    // First-time-tip flags: campaign-lifetime, so a load must not replay them.
+    j["controlsTutorialShown"] = controlsTutorialShown;
+    j["battleControlsTutorialShown"] = battleControlsTutorialShown;
 
     // Queue bookkeeping — newest first.
     const int slot = allocateNewSlot();
@@ -638,6 +657,8 @@ inline bool SaveManager::saveBattle(const CampaignSave &campaign, const nlohmann
     j["party"] = campaign.partyMemberIds;
     j["inventory"] = campaign.inventoryJson;
     j["questLog"] = campaign.questLogJson;
+    j["controlsTutorialShown"] = campaign.controlsTutorialShown;
+    j["battleControlsTutorialShown"] = campaign.battleControlsTutorialShown;
     j["battle"] = battlePayload;
 
     const int slot = allocateNewSlot();

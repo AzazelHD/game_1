@@ -150,6 +150,33 @@
       than the baseline; rounding to the nearest multiple made 1600×900 jump to
       3× and read as a zoom-in on the battlefield.
       _File: `renderer/BattleLayout`._
+- [x] **Battle camera — load framing + eased pan, and one-shot tips that stay
+      gone**: three follow-ups reported from play.
+      1. The battle faded in on the clamped map origin and *then* jumped to the
+         cursor, which read as a blink (worst on a big map, where the two are far
+         apart). The camera drive lives in `update()`, which returns early while
+         the fade-in transition plays, so the first framing only happened after
+         control started. `BattleState::onEnter()` now calls
+         `BattleCameraController::focusImmediately()` just before starting the
+         transition, hard-cutting to the same tile the free-control glide would
+         frame (the acting unit when there is one, the cursor otherwise), so the
+         scene fades in already framed.
+      2. The edge-scroll cut straight to the fixing position — one jump per tile
+         step. `scrollCursorIntoBand()` now *eases* towards it (τ = 0.15s, ≈90%
+         of the way in 0.35s) with the delta recomputed from the live offset every
+         frame, so the camera settles on the box edge and stops: smooth pan, no
+         overshoot, no drift past the box.
+      3. The two first-time tip flags lived only in `PartyContext` and were
+         deliberately "reset per new game; not persisted to saves", so every load
+         replayed the world-map controls dialog and the first-combat controls
+         block. `controlsTutorialShown` / `battleControlsTutorialShown` are now
+         part of the campaign save (both the campaign and the battle payload) and
+         are restored by `PartyContext::applyCampaign()`. Absent keys read as
+         `true`: a legacy save is a campaign in progress and the replay is the bug
+         being fixed, while `resetForNewGame()` still seeds `false` so a fresh
+         game teaches the controls once. _Files: `scenes/BattleState`,
+         `battle/systems/BattleCameraController`, `systems/PartyContext`,
+         `data/SaveManager`, `scenes/WorldMapState`._
 - [x] **Battle camera — edge/corner framing**: the clamp box was built from
       tile origins only, so an edge/corner unit hung off-screen; bounds now
       cover the true diamond extents and the margin is applied in screen pixels

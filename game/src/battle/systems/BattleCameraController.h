@@ -16,7 +16,8 @@ class Camera;
 //   Free            - FFTA-style edge-scroll. The camera stays put while the
 //                     cursor roams the central comfort box; it scrolls only
 //                     when the cursor's tile leaves that box, only far enough to
-//                     bring the whole tile back inside, and it may drift across
+//                     bring the whole tile back inside, and it *eases* into that
+//                     position instead of cutting to it. It may drift across
 //                     a map that fits the play field (SmallMapFit::Slide) rather
 //                     than being pinned centred. The box never covers more than
 //                     ~70% of the board, so a board that fits the play field
@@ -65,6 +66,13 @@ public:
     // Returns true when the frame applied a hard snap; BattleState then
     // neutralises its between-frame render interpolation for a clean cut.
     bool update(float dt, Camera &camera, Vec2f viewSize, const Context &ctx);
+
+    // Frames `tile` immediately (hard cut, no glide) and drops any pending focus
+    // glide. Called on scene entry: the camera drive does not run while the
+    // fade-in transition plays, so without this the battle would fade in on the
+    // clamped map origin and then visibly jump to the cursor once control
+    // starts.
+    void focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile);
 
 private:
     bool m_snappedAny = false;

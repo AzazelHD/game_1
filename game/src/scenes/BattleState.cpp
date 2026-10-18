@@ -314,6 +314,20 @@ void BattleState::onEnter()
     if (m_request.tutorial)
         m_deploymentPhase.autoDeployForTutorial();
 
+    // Frame the board *before* the fade-in. The camera drive lives in update(),
+    // which returns early while the transition plays, so without this the battle
+    // fades in on the clamped map origin and then visibly jumps to the cursor
+    // once control starts (worst on a big map, where the two are far apart).
+    // Snap to the same tile the free-control glide would frame: the acting unit
+    // when there is one (a restored mid-combat save), the cursor otherwise
+    // (deployment).
+    {
+        const BattleCameraController::Context camCtx = makeCameraContext();
+        const Vec2i focusTile = camCtx.anchorTile.x >= 0 ? camCtx.anchorTile : camCtx.cursorTile;
+        m_battleCamera.focusImmediately(m_camera, playSize, camCtx.tileSize, focusTile);
+        m_previousCamera = m_camera;
+    }
+
     // ── 9. Start fade‑in transition ──
     m_transition.start({
         .transition = ScreenTransitions::FadeIn,

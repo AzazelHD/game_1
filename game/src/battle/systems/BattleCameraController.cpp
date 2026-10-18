@@ -55,6 +55,12 @@ namespace
     // keep the controller "focusing" forever.
     constexpr float kFreeFocusDuration = 0.4f;
 
+    // Time constant of the edge-scroll chase. The camera eases towards the
+    // position that satisfies the box instead of cutting to it, so walking the
+    // cursor across the board reads as one continuous pan rather than a jump per
+    // tile step. Small enough to feel immediate (≈90% of the way in 0.35s).
+    constexpr float kEdgeScrollTau = 0.15f;
+
     [[nodiscard]] bool isValid(Vec2i tile) { return tile.x >= 0 && tile.y >= 0; }
 
     [[nodiscard]] float screenScale(const Camera &camera)
@@ -102,7 +108,7 @@ namespace
     // alone would let the bottom half of the tile (and the sprite standing on
     // it) hang outside the box before the camera reacts.
     void scrollCursorIntoBand(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
-                              Vec2i cursorTile)
+                              Vec2i cursorTile, float dt)
     {
         const float z = screenScale(camera);
         if (z <= 0.0f)
@@ -139,7 +145,13 @@ namespace
         if (delta.x == 0.0f && delta.y == 0.0f)
             return;
 
-        camera.setOffset(camera.getOffset() - delta / z);
+        // Ease towards the fixing position rather than cutting to it. The delta
+        // is recomputed from the live offset every frame, so the camera settles
+        // on the box edge and stops, with no overshoot or drift past it.
+        const Vec2f current = camera.getOffset();
+        const Vec2f target = current - delta / z;
+        const float ease = 1.0f - std::exp(-std::max(dt, 0.0f) / kEdgeScrollTau);
+        camera.setOffset(current + (target - current) * ease);
         // Slide, not center: on a map that fits the play field the camera must
         // still be able to drift across the slack, otherwise a fitting axis is
         // pinned and the box can never be satisfied.
@@ -214,6 +226,20 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
     }
 
     if (isValid(ctx.cursorTile) && isValid(ctx.mapSize))
-        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.mapSize, ctx.cursorTile);
+        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.mapSize, ctx.cursorTile, dt);
     return false;
+}
+
+void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize,
+                                             Vec2i tile)
+{
+    if (!isValid(tile) || viewSize.x <= 0.0f || viewSize.y <= 0.0f)
+        return;
+
+    snapTo(camera, viewSize, tileSize, tile);
+    // Drop any pending focus glide: the camera is already framed, and a fresh
+    // glide would otherwise run on the next frame purely because the turn
+    // serial changed. (It would ease towards this same position, but the scene
+    // fades in between the two, so keeping it is pointless.)
+    m_freeFocusing = false;
 }

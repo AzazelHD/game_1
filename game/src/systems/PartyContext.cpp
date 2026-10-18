@@ -124,6 +124,10 @@ bool PartyContext::applyCampaign(const CampaignSave &campaign)
         m_questLog.acceptAll();
     }
 
+    // First-time tips are campaign-lifetime: take the saved state so a load
+    // never replays the controls tutorial.
+    restoreTutorialFlags(campaign.controlsTutorialShown, campaign.battleControlsTutorialShown);
+
     m_initialized = true;
     return true;
 }

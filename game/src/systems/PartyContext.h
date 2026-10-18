@@ -64,14 +64,24 @@ public:
     std::vector<QuestDefinition> completeQuestsForNode(int nodeId, bool victorious);
 
     // First-time controls tutorial: shown once when the player picks up their
-    // first tavern quest. Reset per new game; not persisted to saves.
+    // first tavern quest. Fresh games start un-shown; a load restores whatever
+    // the campaign had (see restoreTutorialFlags), so tips never replay.
     bool controlsTutorialShown() const { return m_controlsTutorialShown; }
     void markControlsTutorialShown() { m_controlsTutorialShown = true; }
 
     // First-time battle controls tutorial: shown once at the start of the
-    // first combat. Reset per new game; not persisted to saves.
+    // first combat, same lifetime rules as above.
     bool battleControlsTutorialShown() const { return m_battleControlsTutorialShown; }
     void markBattleControlsTutorialShown() { m_battleControlsTutorialShown = true; }
+
+    // Restores both first-time-tip flags from a campaign save. Set, not OR:
+    // loading must not inherit flags from a campaign played earlier in the
+    // session.
+    void restoreTutorialFlags(bool controlsShown, bool battleShown)
+    {
+        m_controlsTutorialShown = controlsShown;
+        m_battleControlsTutorialShown = battleShown;
+    }
 
 private:
     bool m_initialized = false;
