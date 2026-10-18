@@ -161,8 +161,9 @@ For detailed module responsibilities see `ARCHITECTURE.md`. Quick roles:
   `InventoryWindow`, `PartyWindow`, `ShopWindow`, `SkillProgressionWindow`,
   `UnitDetailWindow`.
   `ButtonMenuWindow` supports `setScrollable(false)` (panel grows to fit every
-  row, nothing scrolls) and `setWrappable(false)` (focus stops at the ends);
-  the world-map main menu uses both.
+  row, nothing scrolls) and `setWrappable(false)` (focus stops at the ends,
+  instead of cycling to the other end); the world-map main menu uses
+  `setScrollable(false)` and keeps the default wrapping.
 - `settings/` — `SettingsState`, `GraphicsSettings`, `AudioSettings`,
   `SettingsRowWindow`.
 - `world/` — `WorldGraph`, `WorldPathfinding`.

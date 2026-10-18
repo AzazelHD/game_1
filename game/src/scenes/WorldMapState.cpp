@@ -16,6 +16,7 @@
 #include "data/TavernData.h"
 #include "data/UnitLoader.h"
 #include "scenes/BattleState.h"
+#include "scenes/MainMenuState.h"
 #include "settings/SettingsState.h"
 #include "ui/ConfirmDialogs.h"
 #include "ui/windows/ButtonMenuWindow.h"
@@ -164,7 +165,6 @@ void WorldMapState::handleInput()
     {
         m_worldMapMenu = m_uiManager.push<ButtonMenuWindow>(WindowId::WorldMap);
         m_worldMapMenu->setFont(FontManager::instance().get(FontRole::Heading));
-        m_worldMapMenu->setWrappable(false);
         m_worldMapMenu->setScrollable(false);
         refreshWorldMapMenuItems();
         return;
@@ -1577,9 +1577,16 @@ void WorldMapState::processUIEvents()
             {
                 m_sm.push(std::make_unique<SettingsState>(m_sm, m_renderer));
             }
-            else if (event.actionId == ActionId::QuitGame)
+            else if (event.actionId == ActionId::ReturnToTitle)
             {
-                App::requestQuit();
+                // Leave the campaign and go back to the title screen: the save
+                // file is the campaign's only persistence, so this is the
+                // in-game half of "quit" (quitting the app is the title
+                // screen's job). Any unsaved progress is abandoned, exactly as
+                // the old in-game Quit did.
+                m_sm.replace(
+                    std::make_unique<MainMenuState>(m_sm, m_renderer, /*fadeInOnEnter=*/true));
+                return;
             }
             continue;
         }
@@ -1721,7 +1728,7 @@ void WorldMapState::refreshWorldMapMenuItems()
         ButtonMenuWindow::Item{.id = ActionId::SaveGame, .label = "Save", .enabled = true},
         ButtonMenuWindow::Item{.id = ActionId::LoadGame, .label = "Load", .enabled = SaveManager::instance().latestCampaignSlot() >= 0},
         ButtonMenuWindow::Item{.id = ActionId::OpenSettings, .label = "Options", .enabled = true},
-        ButtonMenuWindow::Item{.id = ActionId::QuitGame, .label = "Quit", .enabled = true},
+        ButtonMenuWindow::Item{.id = ActionId::ReturnToTitle, .label = "Title Screen", .enabled = true},
     });
 }
 

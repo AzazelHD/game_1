@@ -23,19 +23,13 @@ namespace
     // 0.15 * 720px of height is less than the 112px margin.
     constexpr float kEdgeBandComfort = 64.0f;
 
-    // A box that covers a whole board would never be left, leaving a map that
-    // fits the play field with nothing to scroll to (the camera would look dead
-    // on every small map, e.g. deployment on the tutorial duel). The box is
-    // therefore also capped to this fraction of the board, so the cursor always
-    // has board left to leave and the camera always reacts by at most
-    // (1 - cover) of the board drifting across the slack.
-    constexpr float kEdgeBandBoardCover = 0.7f;
-
-    [[nodiscard]] float edgeBand(const Camera &camera, float viewExtent, float boardExtent)
+    [[nodiscard]] float edgeBand(const Camera &camera, float viewExtent)
     {
+        // The band is measured against the viewport only: it exists to keep the
+        // cursor's tile off the screen edge, not to make a fitting board move
+        // (a board that fits is never panned at all — see boardFit()).
         float band = std::max(viewExtent * kEdgeBandFraction,
                               camera.getMapBoundsMargin() + kEdgeBandComfort);
-        band = std::max(band, (viewExtent - boardExtent * kEdgeBandBoardCover) * 0.5f);
         // Both side bands must never meet: keep a central roaming area even on
         // a very small play field.
         return std::min(band, std::max(viewExtent * 0.5f - 1.0f, 0.0f));
@@ -63,6 +57,24 @@ namespace
 
     [[nodiscard]] bool isValid(Vec2i tile) { return tile.x >= 0 && tile.y >= 0; }
 
+    // The board's on-screen size against the play field. Mirrors (and must stay
+    // in step with) Camera::clampToBounds()'s own fit test, which is what decides
+    // whether an axis can be centred/pinned or only clamped.
+    struct BoardFit
+    {
+        bool pansX = true;
+        bool pansY = true;
+        [[nodiscard]] bool any() const { return pansX || pansY; }
+    };
+
+    [[nodiscard]] BoardFit boardFit(Vec2i mapSize, Vec2f viewSize, Vec2f tileSize, float z)
+    {
+        if (!isValid(mapSize) || z <= 0.0f)
+            return BoardFit{};
+        return BoardFit{boardExtent(mapSize, tileSize.x, z) > viewSize.x,
+                        boardExtent(mapSize, tileSize.y, z) > viewSize.y};
+    }
+
     [[nodiscard]] float screenScale(const Camera &camera)
     {
         return std::max(camera.getZoom(), 0.0001f) * camera.getRenderScale();
@@ -72,10 +84,11 @@ namespace
     {
         const Vec2f iso = tileToIso(tile, static_cast<int>(tileSize.x), static_cast<int>(tileSize.y));
         camera.trackTarget(iso, viewSize, dt);
-        // Slide (not center) so a map that fits the play field can still be
-        // panned: centering would pin it to the middle and the glide would stop
-        // short of its target, leaving the free-scroll pass to jolt the board
-        // into the comfort box on the very next frame.
+        // Slide (not center) so a board that overflows one axis only can still
+        // use the slack on the fitting axis to frame the acting unit: centering
+        // would pin that axis to the middle and the glide would stop short of its
+        // target. Entirely-fitting boards never reach here — update() holds the
+        // camera still instead (see boardFit()).
         camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 
@@ -84,6 +97,8 @@ namespace
         const Vec2f iso = tileToIso(tile, static_cast<int>(tileSize.x), static_cast<int>(tileSize.y));
         const float z = screenScale(camera);
         camera.setOffset(Vec2f{iso.x - (viewSize.x * 0.5f) / z, iso.y - (viewSize.y * 0.5f) / z});
+        // Slide for the same reason as glideTo(): only reachable on a board that
+        // overflows at least one axis.
         camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 
@@ -108,7 +123,7 @@ namespace
     // alone would let the bottom half of the tile (and the sprite standing on
     // it) hang outside the box before the camera reacts.
     void scrollCursorIntoBand(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
-                              Vec2i cursorTile, float dt)
+                              Vec2i cursorTile, BoardFit fit, float dt)
     {
         const float z = screenScale(camera);
         if (z <= 0.0f)
@@ -122,8 +137,8 @@ namespace
         const float top = anchor.y;
         const float bottom = anchor.y + tileH;
 
-        const float bandX = edgeBand(camera, viewSize.x, boardExtent(mapSize, tileSize.x, z));
-        const float bandY = edgeBand(camera, viewSize.y, boardExtent(mapSize, tileSize.y, z));
+        const float bandX = edgeBand(camera, viewSize.x);
+        const float bandY = edgeBand(camera, viewSize.y);
         const float minX = bandX;
         const float maxX = viewSize.x - bandX;
         const float minY = bandY;
@@ -131,16 +146,24 @@ namespace
 
         // Desired change in the cursor tile's screen position (0 when already
         // inside the box). screen = (iso - offset) * z, so offset moves the
-        // opposite way by delta / z.
+        // opposite way by delta / z. An axis the board fits on is never panned:
+        // the cursor cannot leave the play field on that axis, so the camera has
+        // no reason to move (and clampToBounds would pin it there anyway).
         Vec2f delta{0.0f, 0.0f};
-        if (left < minX)
-            delta.x = minX - left;
-        else if (right > maxX)
-            delta.x = maxX - right;
-        if (top < minY)
-            delta.y = minY - top;
-        else if (bottom > maxY)
-            delta.y = maxY - bottom;
+        if (fit.pansX)
+        {
+            if (left < minX)
+                delta.x = minX - left;
+            else if (right > maxX)
+                delta.x = maxX - right;
+        }
+        if (fit.pansY)
+        {
+            if (top < minY)
+                delta.y = minY - top;
+            else if (bottom > maxY)
+                delta.y = maxY - bottom;
+        }
 
         if (delta.x == 0.0f && delta.y == 0.0f)
             return;
@@ -152,9 +175,9 @@ namespace
         const Vec2f target = current - delta / z;
         const float ease = 1.0f - std::exp(-std::max(dt, 0.0f) / kEdgeScrollTau);
         camera.setOffset(current + (target - current) * ease);
-        // Slide, not center: on a map that fits the play field the camera must
-        // still be able to drift across the slack, otherwise a fitting axis is
-        // pinned and the box can never be satisfied.
+        // Slide, not center: only the axis being panned is moving, and Slide
+        // leaves the other (fitting) axis exactly where it is. Center would pin
+        // that axis to the middle and yank it back after a framing beat.
         camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 } // namespace
@@ -165,6 +188,22 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
     const Vec2f tileSize = ctx.tileSize;
     const Phase prevPhase = m_lastPhase;
     m_lastPhase = ctx.phase;
+
+    // A board that fits inside the play field is entirely visible at once — every
+    // tile, the cursor, and every unit standing on it. Nothing can leave the
+    // view, so the camera holds perfectly still: no focus glide, no resolution
+    // cut, no edge scroll. Only an axis the board *overflows* can carry something
+    // off screen, so only such an axis is ever panned (see
+    // scrollCursorIntoBand). This is also what keeps the camera dead still on the
+    // small boards (e.g. the 5x5 tutorial) and on the fitting axis of a
+    // half-overflowing board.
+    const BoardFit fit = boardFit(ctx.mapSize, viewSize, tileSize, screenScale(camera));
+    if (isValid(ctx.mapSize) && !fit.any())
+    {
+        m_snappedAny = false;
+        m_freeFocusing = false;
+        return false;
+    }
 
     // Scripted dialogue wins over everything: follow the speaker, or hold.
     if (ctx.dialogueActive)
@@ -226,14 +265,20 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
     }
 
     if (isValid(ctx.cursorTile) && isValid(ctx.mapSize))
-        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.mapSize, ctx.cursorTile, dt);
+        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.mapSize, ctx.cursorTile, fit, dt);
     return false;
 }
 
 void BattleCameraController::focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize,
-                                             Vec2i tile)
+                                             Vec2i mapSize, Vec2i tile)
 {
     if (!isValid(tile) || viewSize.x <= 0.0f || viewSize.y <= 0.0f)
+        return;
+
+    // A board that fits the play field is already fully visible from the scene's
+    // centred clamp: snapping to the cursor would only shove it off centre for
+    // nothing, and the controller is not going to move it again afterwards.
+    if (!boardFit(mapSize, viewSize, tileSize, screenScale(camera)).any())
         return;
 
     snapTo(camera, viewSize, tileSize, tile);

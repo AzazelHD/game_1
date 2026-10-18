@@ -470,6 +470,16 @@ private:
     BattleLayout m_layout;
     void applyBattleLayout(const BattleLayout &layout);
 
+    // The battle's designed world zoom (BattleDefinition::defaultZoom), before
+    // the framed layout's resolution compensation. Kept as the authored value so
+    // a window resize can re-derive the camera zoom from it.
+    float m_worldZoom = 1.0f;
+
+    // Camera zoom = the designed zoom scaled by layout.worldScale/artScale, so
+    // the world keeps a constant size relative to the window at any resolution
+    // (see BattleLayout). Called whenever the design zoom or the layout changes.
+    void applyWorldZoom();
+
     Camera m_camera;
     Camera m_previousCamera;
 

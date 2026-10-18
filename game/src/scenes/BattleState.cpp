@@ -242,7 +242,8 @@ void BattleState::onEnter()
     m_camera.setViewportSize(playSize);
     m_camera.setRenderScale(static_cast<float>(m_scale));
     m_camera.setOffset(origin);
-    m_camera.setZoom(m_battleDefinition->defaultZoom);
+    m_worldZoom = m_battleDefinition->defaultZoom;
+    applyWorldZoom();
     // Sprite overhang above tiles: unit sprites stand ~36px tall at up to
     // ~2.6x effective scale (~94px on screen), plus damage floaters. The
     // margin is screen pixels, so it holds at any zoom.
@@ -324,7 +325,7 @@ void BattleState::onEnter()
     {
         const BattleCameraController::Context camCtx = makeCameraContext();
         const Vec2i focusTile = camCtx.anchorTile.x >= 0 ? camCtx.anchorTile : camCtx.cursorTile;
-        m_battleCamera.focusImmediately(m_camera, playSize, camCtx.tileSize, focusTile);
+        m_battleCamera.focusImmediately(m_camera, playSize, camCtx.tileSize, camCtx.mapSize, focusTile);
         m_previousCamera = m_camera;
     }
 
@@ -1752,11 +1753,24 @@ void BattleState::applyBattleLayout(const BattleLayout &layout)
                          static_cast<float>(m_layout.playRect.h)};
     m_camera.setViewportSize(playSize);
     m_camera.setRenderScale(static_cast<float>(m_scale));
+    applyWorldZoom();
     m_camera.clampToBounds();
 
     // Fold the change into the render-interpolation snapshot so the resize
     // doesn't lerp across the old framing for one frame.
     m_previousCamera = m_camera;
+}
+
+void BattleState::applyWorldZoom()
+{
+    // artScale is floored to a whole number so the world buffer and the box
+    // sizes baked into it stay integral; worldScale is the exact ratio the
+    // window height implies. Folding worldScale/artScale into the camera zoom
+    // keeps tiles the same size *relative to the window* on resolutions that sit
+    // between art-scale steps (a 900p window is 1.25x a 720p one, so it draws
+    // each tile 1.25x larger in device pixels instead of showing 25% more map).
+    const float art = static_cast<float>(std::max(1, m_layout.artScale));
+    m_camera.setZoom(m_worldZoom * m_layout.worldScale / art);
 }
 
 Camera BattleState::buildInterpolatedCamera(float alpha) const

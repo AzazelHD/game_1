@@ -1,6 +1,6 @@
 # Framed Battle Layout — Persistent Rails + Crisp Play Field
 
-Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; **camera edge-scroll consolidated** (both phases, tile-aware comfort box, small-map slide); M2–M5 planned
+Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; **camera edge-scroll consolidated** (both phases, tile-aware comfort box, holds still on a board that fits); M2–M5 planned
 Scope: battle scene presentation (layout + render pipeline + HUD rails)
 Author: opencode (planning session)
 
@@ -25,6 +25,11 @@ decorative rails).
    space, so they exist at *every* resolution (no "0 rails" cases).
 2. **Play field is integer art scale.** The world renders at a whole number of
    device pixels per source texel → crisp, no shimmer, no visible scaling ratio.
+   The battle camera's zoom carries `worldScale / artScale` (the exact ratio for
+   the output height) on top, so tiles keep a constant size *relative to the
+   window* at resolutions that sit between integer steps (a 900p window draws
+   each tile 1.25× a 720p one, matching its 1.25× larger window, instead of
+   shrinking and showing more map).
 3. **No black bars.** The rails occupy the side regions; the world fills the
    middle. Full window usage.
 4. **One rule for rail content:** *left = who is acting; right = what is next /
@@ -77,7 +82,8 @@ decorative rails).
   - `BattleState::buildInterpolatedCamera` snaps the render offset to the pixel
     grid (`round(offset * z) / z`) — removes fractional-position seams/jitter.
   - `BattleCameraController` is FFTA-style **edge-scroll** with a one-time
-    turn-start focus glide; engine `Camera` bounds are diamond-exact and honor a
+    turn-start focus glide, and holds the camera perfectly still on a board that
+    fits the play field; engine `Camera` bounds are diamond-exact and honor a
     screen-space margin.
 - **Known-soft resolutions** (`TODO.md`): non-integer window ratios
   (1366×768, 1600×900, 1920×1080) still show uneven NEAREST texels while moving.
@@ -193,11 +199,12 @@ this clean rather than patchwork.
 ## 9. Open decisions
 
 - World zoom `S`: **settled** — the largest whole multiple at or below the 720p
-  baseline ratio (`floor(outH / 360)`, so 2× at 720p/900p and 3× at 1080p).
-  Rounding to the nearest multiple magnified the battlefield 50% at 900p and read
-  as a zoom-in; a 900p window shows more world instead, and the camera's
-  small-map slide (`Camera::SmallMapFit::Slide`) gives it the slack to pan. A
-  user zoom setting can still scale `S` in integers later (M5).
+  baseline ratio (`floor(outH / 360)`, so 2× at 720p/900p and 3× at 1080p) for
+  the world buffer and the sizes baked into it. Rounding to the nearest multiple
+  magnified the battlefield 50% at 900p and read as a zoom-in; instead the exact
+  ratio (`worldScale = outH / 360`) is folded into the camera zoom, so tiles hold
+  the same size relative to the window at every resolution. A user zoom setting
+  can still scale `S` in integers later (M5).
 - Rail width policy confirm (ratio 18%, clamp 200–340px, UI-scaled).
 - Whether menus stay letterboxed long-term (M5) or migrate immediately.
 - Rail backdrop art vs. plain panels for M1 (recommend plain panels first).

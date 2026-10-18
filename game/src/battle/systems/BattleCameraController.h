@@ -18,15 +18,17 @@ class Camera;
 //                     when the cursor's tile leaves that box, only far enough to
 //                     bring the whole tile back inside, and it *eases* into that
 //                     position instead of cutting to it. It may drift across
-//                     a map that fits the play field (SmallMapFit::Slide) rather
-//                     than being pinned centred. The box never covers more than
-//                     ~70% of the board, so a board that fits the play field
-//                     still leaves the cursor room to leave it and the camera
-//                     reacts there too. It never continuously follows
-//                     the cursor or the active unit. It glides once to the
-//                     active unit at the start of a turn (or on returning from a
-//                     resolution) so the acting unit is always framed, then
-//                     stays put again.
+//                     an axis that fits while the other overflows
+//                     (SmallMapFit::Slide) rather than being pinned centred. It
+//                     never continuously follows the cursor or the active unit:
+//                     it glides once to the acting unit at the start of a turn
+//                     (or on returning from a resolution) so the acting unit is
+//                     framed, then stays put again.
+//
+// A board that fits inside the play field is never panned at all: it is fully
+// visible, so nothing the cursor does can take anything off screen. update()
+// holds the camera still for the whole battle in that case (no focus glide, no
+// resolution cut, no scroll), which is what keeps the small boards calm.
 //   ResolutionCast  - the cast beat: glide to the caster while the skill's
 //                     cast animation plays (covers the pre-effect timer).
 //   ResolutionTrack - after the cast, each target hit SNAPS into frame as its
@@ -71,8 +73,10 @@ public:
     // glide. Called on scene entry: the camera drive does not run while the
     // fade-in transition plays, so without this the battle would fade in on the
     // clamped map origin and then visibly jump to the cursor once control
-    // starts.
-    void focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile);
+    // starts. A no-op when the board fits the play field — it is already fully
+    // visible from the scene's centred clamp, and nothing will move it again.
+    void focusImmediately(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
+                          Vec2i tile);
 
 private:
     bool m_snappedAny = false;

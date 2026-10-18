@@ -122,13 +122,13 @@
       put while the cursor roams the central comfort box; it scrolls only when
       the cursor's **tile** leaves that box, just far enough to bring the whole
       tile back inside, and stops as soon as the box is satisfied. The box is
-      `max(15% of the viewport, map-bounds margin + 64px)`, capped to **70% of
-      the board** and to half the viewport per side: `clampToBounds()` never lets
+      `max(15% of the viewport, map-bounds margin + 64px)`, capped to half the
+      viewport per side (it was briefly also capped to 70% of the board to force
+      a fitting board to move — dropped again by the "holds still on a board that
+      fits" entry below): `clampToBounds()` never lets
       the cursor closer to the edge than the margin, so a plain 15% band was
       *unreachable* vertically (108px of height at 720p vs the 112px margin) and
-      the vertical axis never scrolled; and a box wider than the board is never
-      left, so a board that fits the play field had nothing to scroll to (the
-      deployment complaint on the 5×5 tutorial). The test measures the tile's
+      the vertical axis never scrolled. The test measures the tile's
       whole on-screen **footprint**, not its anchor: `tileToScreen()` returns the
       diamond's *top* corner and a tile reaches a full tile height below it (in
       iso the tile height *is* the y offset), so the anchor-only test let the
@@ -177,6 +177,43 @@
          game teaches the controls once. _Files: `scenes/BattleState`,
          `battle/systems/BattleCameraController`, `systems/PartyContext`,
          `data/SaveManager`, `scenes/WorldMapState`._
+- [x] **Battle camera — holds still on a board that fits the play field**: the
+      comfort box used to be capped to 70% of the board specifically so a small
+      map would still leave the box and make the camera drift; that is the
+      opposite of what a small map wants. A board that fits inside the play field
+      is entirely visible at once — every tile, the cursor, every unit on it — so
+      `BattleCameraController::update()` now returns before any camera motion when
+      both board axes fit: no focus glide, no resolution cut, no edge scroll, and
+      `focusImmediately()` leaves the scene's centred clamp alone. Only an axis
+      the board **overflows** can carry something off screen, so only such an axis
+      is ever panned (`scrollCursorIntoBand` gates each axis independently, which
+      also stops the vertical drift on a board that only overflows horizontally).
+      The 70%-of-board cap is gone with it. _File:
+      `battle/systems/BattleCameraController`._
+- [x] **Battle world — constant size relative to the window**: `artScale` is
+      `floor(outH / 360)`, so a window whose height is not a multiple of 360 (e.g.
+      1600×900 → artScale 2 over a 25% taller window) showed 25% more world and
+      drew tiles 20% smaller *relative to the window* than 720p/1080p do. 
+      `BattleLayout` now also computes `worldScale = outH / 360` (the exact ratio)
+      and `BattleState::applyWorldZoom()` folds `worldScale / artScale` into the
+      battle camera's zoom, so tiles occupy the same fraction of the window at
+      every resolution — 900p draws each tile 1.25× a 720p one, matching its 1.25×
+      larger window, and the visible slice of map is constant across resolutions.
+      artScale stays integral for the world buffer and the sizes baked into it.
+      Re-applied on window resize. _Files: `renderer/BattleLayout`,
+      `scenes/BattleState` (`m_worldZoom`, `applyWorldZoom`)._
+- [x] **World-map menu wraps around**: `focusPrevious/Next` on the in-game Back
+      menu now cycles past the ends (first row + Up → last row) instead of
+      stopping. The menu only disables scrolling (`setScrollable(false)`, panel
+      grows to fit every row) and keeps `ButtonMenuWindow`'s default wrapping.
+      _File: `scenes/WorldMapState`._
+- [x] **Quit moved to the title screen**: the in-game (world-map) Back menu's
+      "Quit" — which killed the application outright — is now **"Title Screen"**
+      (`ActionId::ReturnToTitle`): it leaves the campaign and replaces the scene
+      with a fade-in `MainMenuState`, so quitting the app is only ever done from
+      the title screen (whose own Quit is unchanged). Unsaved progress is
+      abandoned, exactly as the old in-game Quit did. _Files: `ui/ActionId`,
+      `scenes/WorldMapState`, `scenes/MainMenuState` (unchanged Quit path)._
 - [x] **Battle camera — edge/corner framing**: the clamp box was built from
       tile origins only, so an edge/corner unit hung off-screen; bounds now
       cover the true diamond extents and the margin is applied in screen pixels

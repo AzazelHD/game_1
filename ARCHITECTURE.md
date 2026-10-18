@@ -72,8 +72,12 @@ The game owns all domain logic:
   fixed design size.
 - `BattleRendererContext`: read-only render input contract.
 - `BattleLayout`: framed battle layout — computes the permanent side-rail width,
-  the centred `playRect`, and the integer `artScale` (device px per source
-  texel) from the native output size. Rebuilt on resize by `BattleState`.
+  the centred `playRect`, the integer `artScale` (device px per source texel) and
+  the continuous `worldScale` (the exact ratio the output height implies) from
+  the native output size. `BattleState` folds `worldScale / artScale` into the
+  battle camera's zoom, so tiles keep a constant size relative to the window at
+  resolutions between integer art-scale steps. Rebuilt on resize by
+  `BattleState`.
 - `BattleWorldProjection`: shared tile→screen anchor math (Camera projection +
   elevation) for world-anchored VFX and floating damage text.
 
@@ -162,7 +166,11 @@ Battle rendering uses two coordinate spaces, deliberately kept separate:
   blitted **1:1**, so the art stays pixel-crisp. The `Camera` viewport is the
   play rect and its render scale is an **integer** device-px-per-texel
   (`BattleLayout::artScale`, the largest whole multiple at or below the 720p
-  baseline ratio, so tiles are never magnified past it). All world draws (tiles,
+  baseline ratio, so tiles are never magnified past it); the camera's zoom also
+  carries the layout's resolution compensation (`worldScale / artScale`), so the
+  world occupies the same fraction of the window at every resolution rather than
+  shrinking between art-scale steps (a 900p window draws tiles 1.25× a 720p one,
+  matching its 1.25× larger window). All world draws (tiles,
   units, cursor, VFX, floating text, debug) go through the camera into this pass
   via `beginLogicalPass()` / `endLogicalPass()`.
 - **Design / UI** — menus, dialogs, HUD text and screen-anchored effects are

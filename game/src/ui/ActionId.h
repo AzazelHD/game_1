@@ -36,6 +36,10 @@ enum class ActionId
     OpenSettings,
     QuitGame,
 
+    // In-game (world map) — leave the campaign and go back to the title screen.
+    // Quitting the application is the title screen's job.
+    ReturnToTitle,
+
     // Settings
     OpenGraphicSettings,
     OpenAudioSettings,
