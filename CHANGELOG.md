@@ -7,6 +7,45 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `4d34a01` — 2026-10-18 — "Camera dead zone: 80% box, minimum-displacement pan, height-aware floor test"
+
+- **The battle camera now runs on an explicit camera dead zone.** A centred
+  rectangle covering 80% of the play field (10% margin on each side) replaces
+  the old `max(15% of the viewport, map-bounds margin + 64px)` band. While the
+  cursor stays inside, the camera does not move at all; the moment it crosses an
+  edge, the camera pans by **exactly the minimum displacement** that brings it
+  back — one tile over the line moves the camera one tile's worth, a diagonal
+  step corrects both axes, a jump far outside corrects the whole gap and nothing
+  more. No follow-cam, no automatic recentering: it stops the instant the cursor
+  is back inside, and it never re-centres on its own.
+- **The test runs on the walkable floor surface, not the grid anchor.** Height
+  layers are Y offsets, so an elevated tile's floor renders `height *
+  halfTileHeight` above its base position. `floorFootprint()` mirrors the
+  diamond `BattleRenderer::drawCursorTicks` draws (anchor lifted by the tile's
+  height level), and `BattleState::makeCameraContext()` feeds it the cursor
+  tile's height from `BattleMap`. A raised tile just above the dead zone
+  therefore still pulls the camera up to it, with the correction sized by the
+  tile's real elevation rather than a fixed offset.
+- **The turn-start focus glide is gone** — the spec forbids automatic
+  recentering, and the cursor is already reset onto the acting unit at turn
+  start, so the dead zone frames it only when it actually needs framing.
+  `m_turnSerial`, the `anchorTile`/`turnSerial` context fields, `centeredOn()`
+  and the free-focus bookkeeping were removed with it. `focusImmediately()` on
+  scene entry now applies the same minimum correction in one step instead of
+  hard-cutting to centre, so a board that is already comfortable keeps the
+  scene's centred clamp (no post-fade jump either way).
+- **Unchanged by design**: per-axis panning is still gated by `boardFit()`, so
+  an axis the board fits on never pans — a board that fits the play field
+  entirely never moves, exactly as the spec requires (node 7's vertical axis,
+  whose drawn art is 99.7% of the play field at every resolution, therefore
+  stays still; only its horizontal axis pans). The pan is still eased (τ =
+  0.15s) toward a target recomputed every frame from the live cursor tile, so
+  the motion is deterministic and settles on the dead-zone edge without jitter.
+  _Files: `battle/systems/BattleCameraController`, `scenes/BattleState`
+  (`makeCameraContext`, `onEnter` framing), `battle/controllers/DeploymentPhaseController`
+  (comment); docs `TODO.md`, `ARCHITECTURE.md`, `FRAMED_LAYOUT_PLAN.md`,
+  `AGENTS.md`._
+
 ## `957114b` — 2026-10-18 — "Camera bounds count the map's drawn art (raised tiles)"
 
 - **The camera no longer cuts off raised map rows, and centres a fitting map on
