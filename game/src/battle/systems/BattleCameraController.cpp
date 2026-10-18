@@ -10,26 +10,45 @@ namespace
 {
     constexpr int kInvalid = -1;
 
-    // Outer band (as a fraction of the viewport on each side) that triggers a
-    // scroll: the cursor may roam the central area freely and the camera only
-    // moves once it reaches this band near the edge.
+    // Comfort box, as a fraction of the viewport kept free on each side: the
+    // cursor may roam the central box freely and the camera only moves once the
+    // cursor's tile leaves it.
     constexpr float kEdgeBandFraction = 0.15f;
 
-    // Room the band keeps beyond the camera's map-bounds margin. clampToBounds()
-    // never lets the cursor come closer to the viewport edge than that margin
-    // (it is there to keep unit sprites on screen at the map edge), so a band
-    // narrower than the margin is unreachable and the camera silently stops
-    // scrolling on that axis — which is what the vertical axis used to do, since
+    // Comfort box margin. clampToBounds() never lets the cursor come closer to
+    // the viewport edge than its map-bounds margin (that margin keeps unit
+    // sprites on screen at a map edge), so a box narrower than the margin is
+    // unreachable on an overflowing axis and the camera silently stops
+    // scrolling there — which is what the vertical axis used to do, since
     // 0.15 * 720px of height is less than the 112px margin.
     constexpr float kEdgeBandComfort = 64.0f;
 
-    [[nodiscard]] float edgeBand(const Camera &camera, float viewExtent)
+    // A box that covers a whole board would never be left, leaving a map that
+    // fits the play field with nothing to scroll to (the camera would look dead
+    // on every small map, e.g. deployment on the tutorial duel). The box is
+    // therefore also capped to this fraction of the board, so the cursor always
+    // has board left to leave and the camera always reacts by at most
+    // (1 - cover) of the board drifting across the slack.
+    constexpr float kEdgeBandBoardCover = 0.7f;
+
+    [[nodiscard]] float edgeBand(const Camera &camera, float viewExtent, float boardExtent)
     {
-        const float band = std::max(viewExtent * kEdgeBandFraction,
-                                    camera.getMapBoundsMargin() + kEdgeBandComfort);
+        float band = std::max(viewExtent * kEdgeBandFraction,
+                              camera.getMapBoundsMargin() + kEdgeBandComfort);
+        band = std::max(band, (viewExtent - boardExtent * kEdgeBandBoardCover) * 0.5f);
         // Both side bands must never meet: keep a central roaming area even on
         // a very small play field.
         return std::min(band, std::max(viewExtent * 0.5f - 1.0f, 0.0f));
+    }
+
+    // On-screen extent of the board's iso diamond along one axis, given that
+    // axis' tile extent (tile width for x, tile height for y) and the screen
+    // scale. The four corner tiles project to a diamond whose width is (w + h)
+    // half-tile-widths and whose height is (w + h) half-tile-heights, so only
+    // the tile count sum matters.
+    [[nodiscard]] float boardExtent(Vec2i mapSize, float tileExtent, float pixelsPerIsoUnit)
+    {
+        return static_cast<float>(mapSize.x + mapSize.y) * tileExtent * 0.5f * pixelsPerIsoUnit;
     }
 
     // Cap on the one-time focus glide so a clamped target (map corner) can't
@@ -47,7 +66,11 @@ namespace
     {
         const Vec2f iso = tileToIso(tile, static_cast<int>(tileSize.x), static_cast<int>(tileSize.y));
         camera.trackTarget(iso, viewSize, dt);
-        camera.clampToBounds();
+        // Slide (not center) so a map that fits the play field can still be
+        // panned: centering would pin it to the middle and the glide would stop
+        // short of its target, leaving the free-scroll pass to jolt the board
+        // into the comfort box on the very next frame.
+        camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 
     void snapTo(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile)
@@ -55,7 +78,7 @@ namespace
         const Vec2f iso = tileToIso(tile, static_cast<int>(tileSize.x), static_cast<int>(tileSize.y));
         const float z = screenScale(camera);
         camera.setOffset(Vec2f{iso.x - (viewSize.x * 0.5f) / z, iso.y - (viewSize.y * 0.5f) / z});
-        camera.clampToBounds();
+        camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 
     [[nodiscard]] bool centeredOn(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i tile)
@@ -67,42 +90,60 @@ namespace
         return std::abs(off.x - desired.x) < 0.5f && std::abs(off.y - desired.y) < 0.5f;
     }
 
-    // FFTA-style edge scroll: shift the camera just far enough that the cursor
-    // lands back on the inner edge of the band. No-op while the cursor is in
-    // the central area, so the camera stays put during normal navigation and
-    // stops immediately once the cursor leaves the edge region.
-    void scrollCursorIntoBand(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i cursorTile)
+    // FFTA-style edge scroll: shift the camera just far enough that the cursor's
+    // tile lands back inside the comfort box. No-op while the tile is inside it,
+    // so the camera stays put during normal navigation and stops immediately
+    // once the cursor leaves the edge region.
+    //
+    // The test uses the tile's whole on-screen footprint, not just its anchor:
+    // a tile's iso anchor is the TOP corner of its diamond, which reaches a full
+    // tile height below that anchor and half a tile width to either side. In iso
+    // the tile's height *is* the y offset between rows, so comparing the anchor
+    // alone would let the bottom half of the tile (and the sprite standing on
+    // it) hang outside the box before the camera reacts.
+    void scrollCursorIntoBand(Camera &camera, Vec2f viewSize, Vec2f tileSize, Vec2i mapSize,
+                              Vec2i cursorTile)
     {
         const float z = screenScale(camera);
         if (z <= 0.0f)
             return;
 
-        const Vec2f screen = camera.tileToScreen(cursorTile);
-        const float bandX = edgeBand(camera, viewSize.x);
-        const float bandY = edgeBand(camera, viewSize.y);
+        const Vec2f anchor = camera.tileToScreen(cursorTile);
+        const float halfW = tileSize.x * 0.5f * z;
+        const float tileH = tileSize.y * z;
+        const float left = anchor.x - halfW;
+        const float right = anchor.x + halfW;
+        const float top = anchor.y;
+        const float bottom = anchor.y + tileH;
+
+        const float bandX = edgeBand(camera, viewSize.x, boardExtent(mapSize, tileSize.x, z));
+        const float bandY = edgeBand(camera, viewSize.y, boardExtent(mapSize, tileSize.y, z));
         const float minX = bandX;
         const float maxX = viewSize.x - bandX;
         const float minY = bandY;
         const float maxY = viewSize.y - bandY;
 
-        // Desired change in the cursor's screen position (0 when already inside
-        // the band). screen = (iso - offset) * z, so offset moves the opposite
-        // way by delta / z.
+        // Desired change in the cursor tile's screen position (0 when already
+        // inside the box). screen = (iso - offset) * z, so offset moves the
+        // opposite way by delta / z.
         Vec2f delta{0.0f, 0.0f};
-        if (screen.x < minX)
-            delta.x = minX - screen.x;
-        else if (screen.x > maxX)
-            delta.x = maxX - screen.x;
-        if (screen.y < minY)
-            delta.y = minY - screen.y;
-        else if (screen.y > maxY)
-            delta.y = maxY - screen.y;
+        if (left < minX)
+            delta.x = minX - left;
+        else if (right > maxX)
+            delta.x = maxX - right;
+        if (top < minY)
+            delta.y = minY - top;
+        else if (bottom > maxY)
+            delta.y = maxY - bottom;
 
         if (delta.x == 0.0f && delta.y == 0.0f)
             return;
 
         camera.setOffset(camera.getOffset() - delta / z);
-        camera.clampToBounds();
+        // Slide, not center: on a map that fits the play field the camera must
+        // still be able to drift across the slack, otherwise a fitting axis is
+        // pinned and the box can never be satisfied.
+        camera.clampToBounds(Camera::SmallMapFit::Slide);
     }
 } // namespace
 
@@ -172,7 +213,7 @@ bool BattleCameraController::update(float dt, Camera &camera, Vec2f viewSize,
         return false;
     }
 
-    if (isValid(ctx.cursorTile))
-        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.cursorTile);
+    if (isValid(ctx.cursorTile) && isValid(ctx.mapSize))
+        scrollCursorIntoBand(camera, viewSize, tileSize, ctx.mapSize, ctx.cursorTile);
     return false;
 }

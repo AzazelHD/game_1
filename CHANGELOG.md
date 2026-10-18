@@ -7,7 +7,47 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
-## `(uncommitted)` — 2026-10-18 — "Battle camera: driven during deployment, and 900p back at the intended world scale"
+## `(uncommitted)` — 2026-10-18 — "Battle camera: a cursor comfort box that works on every board (and no 900p zoom)"
+
+- **No more zoom-in at non-720p-multiple heights.** `BattleLayout` is back to
+  `floor(outH / 360)` for the art scale: rounding to the *nearest* multiple made
+  1600×900 jump from 2× to 3×, which magnified the battlefield 50% and read as a
+  zoom-in rather than a bigger viewport. Tiles are now never drawn larger than
+  the 720p baseline ratio; a 900p window simply shows more world (the camera's
+  small-map slide covers that, below). _File: `renderer/BattleLayout`._
+- **The camera now pans on a board that fits the play field instead of being
+  pinned.** This is what made the vertical axis look dead at every resolution
+  where `clampToBounds()` was able to hold the whole board (10×10 at 1600×900
+  included): centring a fitting map leaves the camera literally nothing to move
+  through. New engine knob `Camera::SmallMapFit::Slide` (and the existing
+  `clampToBounds()` keeps `Center` as its default) lets a map that fits the
+  viewport sit *anywhere* inside it — the hard limit becomes the unpadded map
+  extent, so the map itself still never leaves the play field, while the camera
+  gains the slack to scroll across. The initial framing and window-resize clamp
+  still centre. _Files (engine): `renderer/Camera`._
+- **The edge band became a real comfort box, measured against the cursor's whole
+  tile.** Three fixes in one place:
+  1. The test now uses the tile's on-screen **footprint** — `tileToScreen()` is
+     the diamond's **top** corner, and in iso the tile's height *is* the y offset
+     (a tile reaches a full tile height below its anchor and half a tile width
+     either side), so comparing the anchor alone let the bottom half of the tile
+     hang outside the box before the camera reacted.
+  2. The box is capped to **70% of the board**, so a board that would otherwise
+     sit entirely inside it still has board left for the cursor to leave — a
+     board that fits inside a viewport-only box never scrolls, which is exactly
+     the "deployment doesn't move the camera" report on the 5×5 tutorial.
+  3. The band still resolves to `max(15% of the viewport, map-bounds margin +
+     64px)` so it can never be shorter than the margin the clamp enforces. Net
+     travel on the boards in the game, at 900p: 1v1 194×97px, 10×10 448×187px,
+     6×5 198×99px — all four directions, deployment and combat alike, with the
+     board never leaving the play field. Kept intentionally modest: the drift is
+     bounded by `(1 - cover) × board`, so a small board glides a little rather
+     than following the cursor around. _Files:
+     `battle/systems/BattleCameraController` (`scrollCursorIntoBand`,
+     `edgeBand`), `scenes/BattleState` (context carries the board size);
+     engine `renderer/Camera`._
+
+## `880cd6e` — 2026-10-18 — "Battle camera: driven during deployment, and 900p back at the intended world scale"
 
 - **Deployment had no camera driver at all.** `BattleState::update()` returns
   early for the deployment phase, *above* the camera drive, so
@@ -30,6 +70,10 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   on-screen scale 1080p already had), giving 222px of coverage so the 10×10
   board pans vertically with 296 device-px of travel. _File:
   `renderer/BattleLayout`._
+  *Reverted in the next entry:* at 900p that reads as a 50% zoom-in on the
+  battlefield, and the vertical axis is now served by the camera's small-map
+  slide instead — the art scale is back to the largest whole multiple *below*
+  the baseline ratio.
 
 ## `c620ca9` — 2026-10-17 — "Battle camera: edge-scroll in both phases, and an edge band that can be reached"
 

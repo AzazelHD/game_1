@@ -488,6 +488,7 @@ BattleCameraController::Context BattleState::makeCameraContext()
         ctx.anchorTile = active->getPosition();
     ctx.tileSize = Vec2f{static_cast<float>(m_mapData.tileWidth),
                          static_cast<float>(m_mapData.tileHeight)};
+    ctx.mapSize = Vec2i{m_mapData.width, m_mapData.height};
 
     if (ctx.phase == BattleCameraController::Phase::ResolutionCast ||
         ctx.phase == BattleCameraController::Phase::ResolutionTrack)

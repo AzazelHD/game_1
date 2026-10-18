@@ -1,6 +1,6 @@
 # Framed Battle Layout — Persistent Rails + Crisp Play Field
 
-Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; M2–M5 planned
+Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; **camera edge-scroll consolidated** (both phases, tile-aware comfort box, small-map slide); M2–M5 planned
 Scope: battle scene presentation (layout + render pipeline + HUD rails)
 Author: opencode (planning session)
 
@@ -192,7 +192,12 @@ this clean rather than patchwork.
 
 ## 9. Open decisions
 
-- World zoom `S`: fixed (default 2) vs. adaptive-per-resolution vs. user setting.
+- World zoom `S`: **settled** — the largest whole multiple at or below the 720p
+  baseline ratio (`floor(outH / 360)`, so 2× at 720p/900p and 3× at 1080p).
+  Rounding to the nearest multiple magnified the battlefield 50% at 900p and read
+  as a zoom-in; a 900p window shows more world instead, and the camera's
+  small-map slide (`Camera::SmallMapFit::Slide`) gives it the slack to pan. A
+  user zoom setting can still scale `S` in integers later (M5).
 - Rail width policy confirm (ratio 18%, clamp 200–340px, UI-scaled).
 - Whether menus stay letterboxed long-term (M5) or migrate immediately.
 - Rail backdrop art vs. plain panels for M1 (recommend plain panels first).

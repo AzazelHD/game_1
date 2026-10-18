@@ -13,14 +13,15 @@ namespace
     constexpr int kRailMax = 340;
 
     // Baseline world scale: 2 device px per source texel at 720p (the fixed
-    // scale the world used before the framed layout). artScale is the whole
-    // multiple nearest the window height, so the world's on-screen size tracks
-    // the window while the amount of world visible stays about the same at
-    // every resolution. Rounding matters: 720p (2.0) and 1080p (3.0) land on
-    // exact multiples either way, but 900p is 2.5 — floor made it 2, which is
-    // *below* the baseline scale the intent promises and showed 25% more world
-    // than intended, enough for a whole small map to fit vertically and leave
-    // the camera nothing to scroll to.
+    // scale the world used before the framed layout). artScale is the largest
+    // whole multiple that still fits the window height, so tiles always stay on
+    // integer zoom (crisp) and never render *larger* than the baseline ratio.
+    // The window height is deliberately not rounded to the nearest multiple: a
+    // 900p window would then jump to 3x and magnify the battlefield by 50%,
+    // which reads as a zoom-in rather than a bigger viewport. The trade-off is
+    // that a window whose height is not an exact multiple shows somewhat more
+    // world than the baseline ratio implies (900p shows 25% more than 720p);
+    // the camera handles that via its small-map slide, not by rescaling art.
     constexpr float kBaselineViewH = 360.0f;
 }
 
@@ -38,7 +39,7 @@ BattleLayout computeBattleLayout(int outW, int outH)
 
     layout.railW = rail;
 
-    const int artScale = static_cast<int>(std::lround(static_cast<float>(outH) / kBaselineViewH));
+    const int artScale = static_cast<int>(std::floor(static_cast<float>(outH) / kBaselineViewH));
     layout.artScale = std::clamp(artScale, 1, 8);
 
     layout.playRect = Recti{rail, 0, outW - 2 * rail, outH};

@@ -119,29 +119,36 @@
       confirm. _Files: `BattleMenuController`, `HumanTurnController`,
       `BattleState`._
 - [x] **Battle camera — edge-scroll (replaces follow-cam)**: the camera stays
-      put while the cursor roams the central area; it scrolls only when the
-      cursor reaches the edge band at the viewport edge, just far enough to keep
-      the cursor inside that band, stops immediately when the cursor leaves the
-      edge region, and stays clamped to the map bounds. The band is
-      `max(15% of the viewport, map-bounds margin + 64px)`: `clampToBounds()`
-      never lets the cursor closer to the edge than the margin, so a plain 15%
-      band was *unreachable* vertically (108px of height at 720p vs the 112px
-      margin) and the vertical axis never scrolled. It no longer follows the
+      put while the cursor roams the central comfort box; it scrolls only when
+      the cursor's **tile** leaves that box, just far enough to bring the whole
+      tile back inside, and stops as soon as the box is satisfied. The box is
+      `max(15% of the viewport, map-bounds margin + 64px)`, capped to **70% of
+      the board** and to half the viewport per side: `clampToBounds()` never lets
+      the cursor closer to the edge than the margin, so a plain 15% band was
+      *unreachable* vertically (108px of height at 720p vs the 112px margin) and
+      the vertical axis never scrolled; and a box wider than the board is never
+      left, so a board that fits the play field had nothing to scroll to (the
+      deployment complaint on the 5×5 tutorial). The test measures the tile's
+      whole on-screen **footprint**, not its anchor: `tileToScreen()` returns the
+      diamond's *top* corner and a tile reaches a full tile height below it (in
+      iso the tile height *is* the y offset), so the anchor-only test let the
+      lower half of the tile hang outside the box first. `Camera::SmallMapFit::
+      Slide` lets a map that fits the play field sit anywhere inside it instead
+      of being pinned centred — that is the slack the camera pans across, and the
+      unpadded map bound still keeps the map itself on screen; the initial
+      framing and resize clamp keep the default `Center`. It never follows the
       cursor or the active unit continuously; a single focus glide runs at the
       start of each turn (and on returning from a resolution) so the acting unit
       is framed. The camera is driven by `BattleState::updateCamera()` from both
       the deployment branch and the combat path — `update()` returns early for
       deployment, above the combat drive, so deployment has to call it
       explicitly or nothing moves the camera during placement. _Files:
-      `scenes/BattleState`, `battle/systems/BattleCameraController`,
-      `battle/controllers/DeploymentPhaseController`; engine `renderer/Camera`
-      (`getMapBoundsMargin`)._
-      When the whole board fits an axis the clamp still centres it — there is
-      nothing to scroll to, and the cursor stays inside the frame by
-      construction. `BattleLayout` picks the art scale with `lround`, so 720p
-      and 1080p are untouched while 1600×900 renders at the intended 3× instead
-      of 2× (which used to show 25% more world than any other resolution, enough
-      for a small board to fit vertically and leave the camera nothing to do).
+      `scenes/BattleState`, `battle/systems/BattleCameraController`;
+      engine `renderer/Camera` (`getMapBoundsMargin`, `SmallMapFit::Slide`)._
+      `BattleLayout` picks the art scale with `floor` (the largest whole multiple
+      at or below the 720p baseline ratio), so tiles are never drawn *larger*
+      than the baseline; rounding to the nearest multiple made 1600×900 jump to
+      3× and read as a zoom-in on the battlefield.
       _File: `renderer/BattleLayout`._
 - [x] **Battle camera — edge/corner framing**: the clamp box was built from
       tile origins only, so an edge/corner unit hung off-screen; bounds now
@@ -354,11 +361,18 @@
       central tiles leaves the camera still; only near the viewport edge does it
       scroll a small amount to reveal more map — on **both axes** (the vertical
       axis used to never scroll at all, because the 15% band was narrower than
-      the map-bounds margin); it stops as soon as the cursor leaves the edge
-      band; it never reveals space outside the map; deployment behaves exactly
-      like combat and its cursor never leaves the play field (deployment used to
-      have no camera driver at all); each new turn glides once to the acting
-      unit.
+      the map-bounds margin), and **on a board that fits the play field too**
+      (the clamp used to pin a fitting map centred, so there was no slack to
+      scroll through; the band is now capped to 70% of the board so it always has
+      board left to leave — expect a modest drift, not a follow-cam). The test
+      must use the cursor tile's whole footprint: the iso anchor is the diamond's
+      top corner, so a tile's lower half otherwise hangs outside the box before
+      the camera reacts. It stops as soon as the cursor leaves the edge band; it
+      never reveals space outside the map; deployment behaves exactly like combat
+      and its cursor never leaves the play field (deployment used to have no
+      camera driver at all); each new turn glides once to the acting unit.
+      Also confirm the world scale did **not** jump at 1600×900 (tiles must be
+      the same size per source texel as 720p, not 1.5× bigger).
 - [ ] **Camera regression test**: windowed, borderless, deployment, combat, cursor at all map corners, clamping
 - [ ] **Button menu verification**: marker positioning, width sizing, alignment across action/skill/system/inspect menus
 

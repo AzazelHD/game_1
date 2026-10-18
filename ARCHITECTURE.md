@@ -53,7 +53,12 @@ The game owns all domain logic:
 - `combat/`: hit formulas (`CombatSystem`), turn queue, pending target sets.
 - `map/`: grid occupancy, movement range, map tile data, and pathfinding.
 - `unit/`: unit runtime model, progression, `SkillProgression` (skill points/levels), `StatusEffect` (statuses, buffs/debuffs), and template-driven factory construction.
-- `systems/`: deployment, combat animation event queue, `CombatVfxLibrary`, and `MovementCommitSystem`.
+- `systems/`: deployment, combat animation event queue, `CombatVfxLibrary`,
+  `MovementCommitSystem`, and `BattleCameraController` (the single camera
+  authority: FFTA-style edge-scroll around a per-board **comfort box** the
+  cursor's whole tile must stay inside, a map that fits the play field may slide
+  instead of being pinned, plus the cast/target focus beats; driven from both
+  deployment and combat by `BattleState::updateCamera()`).
 - `ui/`: battle-specific windows (deployment, inspect, panel).
 
 ### `ai/`
@@ -156,9 +161,10 @@ Battle rendering uses two coordinate spaces, deliberately kept separate:
   buffer** sized to the framed layout's `playRect` (native pixels) and is
   blitted **1:1**, so the art stays pixel-crisp. The `Camera` viewport is the
   play rect and its render scale is an **integer** device-px-per-texel
-  (`BattleLayout::artScale`). All world draws (tiles, units, cursor, VFX,
-  floating text, debug) go through the camera into this pass via
-  `beginLogicalPass()` / `endLogicalPass()`.
+  (`BattleLayout::artScale`, the largest whole multiple at or below the 720p
+  baseline ratio, so tiles are never magnified past it). All world draws (tiles,
+  units, cursor, VFX, floating text, debug) go through the camera into this pass
+  via `beginLogicalPass()` / `endLogicalPass()`.
 - **Design / UI** — menus, dialogs, HUD text and screen-anchored effects are
   laid out in the 1280×720 (`GameConstants::VIEW_*`) design space and mapped to
   the window by the renderer's letterbox transform, exactly as before.
