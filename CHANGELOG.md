@@ -7,7 +7,29 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
-## `(uncommitted)` — 2026-10-17 — "Themed battle backdrop: continuous sky + rail frame (framed layout, Tier 0/1)"
+## `c620ca9` — 2026-10-17 — "Battle camera: edge-scroll in both phases, and an edge band that can be reached"
+
+- **Deployment no longer follows the cursor.** `DeploymentPhaseController`
+  drove the camera with `Camera::trackTarget()` every frame, so deployment
+  smoothly chased the cursor while combat edge-scrolled the play field — the
+  same scene behaved two different ways. Removed: `BattleState` already runs
+  `BattleCameraController` every frame, and its free-control pass now serves
+  both phases. _File: `battle/controllers/DeploymentPhaseController`._
+- **The edge band was narrower than the map-bounds margin, so the vertical axis
+  could never scroll.** `clampToBounds()` never lets the cursor closer to the
+  viewport edge than `setMapBoundsMargin(112)` (unit-sprite overhang), but the
+  band was `0.15 × viewport` = **108px of height at 720p** — *inside* the
+  margin, so the cursor could never reach it and the camera silently stopped
+  scrolling vertically. Horizontally the band (123px) cleared the margin by only
+  11px, which is why X worked and felt thin. The band is now
+  `max(0.15 × viewport, margin + 64px)`, read from the camera itself via the new
+  `Camera::getMapBoundsMargin()`, so the two can no longer fight: the cursor
+  always has 64px of band to be pulled back out of, and the central free-roam
+  area stays ~50–66% of the viewport. When the whole board fits an axis the clamp
+  still centres it (nothing to reveal), which is correct. _Files:
+  `battle/systems/BattleCameraController`; engine `renderer/Camera` (getter)._
+
+## `bb28dd7` — 2026-10-17 — "Themed battle backdrop: continuous sky + rail frame (framed layout, Tier 0/1)"
 
 - **The rails are no longer opaque panels — the map's sky now continues behind
   them.** The battlefield's background gradient is drawn across the **whole

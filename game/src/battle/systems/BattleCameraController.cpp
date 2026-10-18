@@ -15,6 +15,23 @@ namespace
     // moves once it reaches this band near the edge.
     constexpr float kEdgeBandFraction = 0.15f;
 
+    // Room the band keeps beyond the camera's map-bounds margin. clampToBounds()
+    // never lets the cursor come closer to the viewport edge than that margin
+    // (it is there to keep unit sprites on screen at the map edge), so a band
+    // narrower than the margin is unreachable and the camera silently stops
+    // scrolling on that axis — which is what the vertical axis used to do, since
+    // 0.15 * 720px of height is less than the 112px margin.
+    constexpr float kEdgeBandComfort = 64.0f;
+
+    [[nodiscard]] float edgeBand(const Camera &camera, float viewExtent)
+    {
+        const float band = std::max(viewExtent * kEdgeBandFraction,
+                                    camera.getMapBoundsMargin() + kEdgeBandComfort);
+        // Both side bands must never meet: keep a central roaming area even on
+        // a very small play field.
+        return std::min(band, std::max(viewExtent * 0.5f - 1.0f, 0.0f));
+    }
+
     // Cap on the one-time focus glide so a clamped target (map corner) can't
     // keep the controller "focusing" forever.
     constexpr float kFreeFocusDuration = 0.4f;
@@ -61,10 +78,12 @@ namespace
             return;
 
         const Vec2f screen = camera.tileToScreen(cursorTile);
-        const float minX = viewSize.x * kEdgeBandFraction;
-        const float maxX = viewSize.x - minX;
-        const float minY = viewSize.y * kEdgeBandFraction;
-        const float maxY = viewSize.y - minY;
+        const float bandX = edgeBand(camera, viewSize.x);
+        const float bandY = edgeBand(camera, viewSize.y);
+        const float minX = bandX;
+        const float maxX = viewSize.x - bandX;
+        const float minY = bandY;
+        const float maxY = viewSize.y - bandY;
 
         // Desired change in the cursor's screen position (0 when already inside
         // the band). screen = (iso - offset) * z, so offset moves the opposite

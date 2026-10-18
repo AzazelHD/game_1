@@ -120,12 +120,23 @@
       `BattleState`._
 - [x] **Battle camera — edge-scroll (replaces follow-cam)**: the camera stays
       put while the cursor roams the central area; it scrolls only when the
-      cursor reaches a 15% band at the viewport edge, just far enough to keep
+      cursor reaches the edge band at the viewport edge, just far enough to keep
       the cursor inside that band, stops immediately when the cursor leaves the
-      edge region, and stays clamped to the map bounds. It no longer follows the
+      edge region, and stays clamped to the map bounds. The band is
+      `max(15% of the viewport, map-bounds margin + 64px)`: `clampToBounds()`
+      never lets the cursor closer to the edge than the margin, so a plain 15%
+      band was *unreachable* vertically (108px of height at 720p vs the 112px
+      margin) and the vertical axis never scrolled. It no longer follows the
       cursor or the active unit continuously; a single focus glide runs at the
       start of each turn (and on returning from a resolution) so the acting unit
-      is framed. _Files: `battle/systems/BattleCameraController`, `BattleState`._
+      is framed. Deployment is driven by the same controller now (it no longer
+      chases the cursor with `trackTarget`). _Files:
+      `battle/systems/BattleCameraController`,
+      `battle/controllers/DeploymentPhaseController`, `BattleState`; engine
+      `renderer/Camera` (`getMapBoundsMargin`)._
+      When the whole board fits an axis the clamp still centres it — there is
+      nothing to scroll to, and the cursor stays inside the frame by
+      construction.
 - [x] **Battle camera — edge/corner framing**: the clamp box was built from
       tile origins only, so an edge/corner unit hung off-screen; bounds now
       cover the true diamond extents and the margin is applied in screen pixels
@@ -335,9 +346,12 @@
 - [ ] **Camera edge-scroll verify (large map, node 7)**: in windowed and
       borderless, during deployment and combat, walking the cursor across the
       central tiles leaves the camera still; only near the viewport edge does it
-      scroll a small amount to reveal more map; it stops as soon as the cursor
-      leaves the edge band; it never reveals space outside the map; each new
-      turn glides once to the acting unit.
+      scroll a small amount to reveal more map — on **both axes** (the vertical
+      axis used to never scroll at all, because the 15% band was narrower than
+      the map-bounds margin); it stops as soon as the cursor leaves the edge
+      band; it never reveals space outside the map; deployment behaves exactly
+      like combat (it no longer follows the cursor); each new turn glides once to
+      the acting unit.
 - [ ] **Camera regression test**: windowed, borderless, deployment, combat, cursor at all map corners, clamping
 - [ ] **Button menu verification**: marker positioning, width sizing, alignment across action/skill/system/inspect menus
 
