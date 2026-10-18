@@ -7,6 +7,49 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## `5fcaa7c` — 2026-10-18 — "Constant tile size, a still camera on fitting boards, wrapping world-map menu, Title Screen"
+
+- **Tiles now keep the same size relative to the window at every resolution.**
+  `artScale` is `floor(outH / 360)`, so at 1600×900 (not a multiple of 360) the
+  world was drawn at the 720p ratio over a 25% taller window: tiles came out ~20%
+  smaller *relative to the window* and 25% more map was visible, so the
+  battlefield quietly changed size between resolutions. `BattleLayout` now also
+  computes `worldScale = outH / 360` (the exact ratio), and
+  `BattleState::applyWorldZoom()` folds `worldScale / artScale` into the battle
+  camera's zoom. A 900p window draws each tile 1.25× a 720p one — matching its
+  1.25× larger window — and the visible slice of map is now constant across
+  720p/900p/1080p/1440p. `artScale` stays integral, so the world buffer and the
+  sizes baked into it (tile quads, sprite boxes) are unchanged and crisp; the
+  compensation is re-derived on window resize. _Files: `renderer/BattleLayout`
+  (`worldScale`), `scenes/BattleState` (`m_worldZoom`, `applyWorldZoom`)._
+- **The camera holds perfectly still on a board that fits the play field.**
+  `BattleCameraController::update()` used to be able to drift a small board around
+  (the comfort box was capped to 70% of the board precisely so a fitting board
+  would still leave it) and, with `SmallMapFit::Slide`, the clamp allowed it. But a
+  board that fits is entirely visible at once — every tile, the cursor, and every
+  unit standing on it — so nothing the cursor does can take anything off screen.
+  `update()` now returns before *any* camera motion when both board axes fit (no
+  focus glide, no resolution cut, no edge scroll), `focusImmediately()` leaves the
+  scene's centred clamp alone so the map fades in composed, and
+  `scrollCursorIntoBand()` gates each axis independently: only an axis the board
+  **overflows** is ever panned. The 70%-of-board band cap is gone with it. Side
+  effect worth knowing: on a board that overflows horizontally but fits vertically
+  (the 10×10 at 720p/900p/1080p) the camera now pans horizontally only — the
+  vertical axis has nothing that can leave the view. _File:
+  `battle/systems/BattleCameraController`._
+- **The world-map menu wraps around again.** The in-game Back menu had
+  `setWrappable(false)`, so focus stopped dead at the first/last row; it now keeps
+  `ButtonMenuWindow`'s default wrapping (Up on the first row → the last row). It
+  still only disables scrolling (`setScrollable(false)`), so the panel grows to fit
+  every row. _File: `scenes/WorldMapState`; docs: `AGENTS.md` §3._
+- **Quitting the application moved to the title screen.** The in-game Back menu's
+  "Quit" killed the app outright, with no way back to the title from a running
+  campaign. It is now **"Title Screen"** (new `ActionId::ReturnToTitle`): it leaves
+  the campaign and replaces the scene with a fade-in `MainMenuState`, so quitting
+  is only ever done from the title screen. Unsaved progress is abandoned, exactly
+  as the old in-game Quit did — `MainMenuState`'s own Quit is unchanged. _Files:
+  `ui/ActionId`, `scenes/WorldMapState`, `scenes/MainMenuState` (unchanged)._
+
 ## `1e97afc` — 2026-10-18 — "Battle camera: framed on load, eased pan, and first-time tips that stay gone"
 
 - **The battle no longer fades in on one framing and then jumps to another.**
