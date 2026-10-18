@@ -7,7 +7,7 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
-## `(uncommitted)` — 2026-10-18 — "Battle camera: a cursor comfort box that works on every board (and no 900p zoom)"
+## `ea57868` — 2026-10-18 — "Battle camera: a cursor comfort box that works on every board (and no 900p zoom)"
 
 - **No more zoom-in at non-720p-multiple heights.** `BattleLayout` is back to
   `floor(outH / 360)` for the art scale: rounding to the *nearest* multiple made
