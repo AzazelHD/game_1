@@ -164,6 +164,7 @@ set(GAME_SOURCES
     
     src/config/BattleCatalog.h
     src/config/GameConstants.h
+    src/config/UiTuning.h
     
     src/systems/RosterSystem.h
     src/systems/PartySystem.h

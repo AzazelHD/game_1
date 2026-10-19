@@ -1,4 +1,5 @@
 #include "config/GameConstants.h"
+#include "config/UiTuning.h"
 #include "engine/math/Vec2.h"
 #include "engine/math/MathUtils.h"
 #include "engine/data/TiledJsonLoader.h"
@@ -75,7 +76,7 @@ namespace
     constexpr int INVALID_FLASH_STRIPS = 3;
     constexpr Color INVALID_FLASH_COLOR = {220, 60, 60, 255};
 
-    // Framed-layout backdrop + rail frame (see FRAMED_LAYOUT_PLAN.md).
+    // Framed-layout backdrop + rail frame (see docs/design/FRAMED_LAYOUT.md).
     //
     // The map's own sky gradient is drawn across the WHOLE window (rails
     // included) so the battlefield reads as an island floating on the backdrop
@@ -206,7 +207,7 @@ void BattleState::onEnter()
     // canvas above stays 1280x720 for the UI/design transform, but the world
     // renders into a native-sized buffer at an integer art scale, so it stays
     // crisp at any window size. The rails are drawn natively on top of the
-    // leftover. See FRAMED_LAYOUT_PLAN.md.
+    // leftover. See docs/design/FRAMED_LAYOUT.md.
     const Vec2i outputSize = m_renderer->getOutputSize();
     m_layout = computeBattleLayout(outputSize.x, outputSize.y);
     m_scale = m_layout.artScale;
@@ -243,7 +244,7 @@ void BattleState::onEnter()
     // the clamp treats the anchor box as the map and the top rows end up outside
     // the play field, while a fitting map is centred on its anchors instead of on
     // what is drawn.
-    m_camera.setMapBoundsTopExtra(loaded.mapTopExtra);
+    m_camera.setMapBoundsTopExtra(computeCameraTopExtra(loaded.mapTopExtra));
     m_camera.setMapSize(m_mapData.width, m_mapData.height);
     m_camera.setViewportSize(playSize);
     m_camera.setRenderScale(static_cast<float>(m_scale));
@@ -253,11 +254,11 @@ void BattleState::onEnter()
     // Sprite overhang above tiles: unit sprites stand ~36px tall at up to
     // ~2.6x effective scale (~94px on screen), plus damage floaters. The
     // margin is screen pixels, so it holds at any zoom.
-    m_camera.setMapBoundsMargin(112.0f);
+    m_camera.setMapBoundsMargin(Tuning::Camera::kMapEdgeMarginPx);
 
     // Cast-beat glides read smoother with a touch more follow time than the
     // stock cursor chase; per-target snaps bypass easing entirely.
-    m_camera.setFollowDuration(0.2f);
+    m_camera.setFollowDuration(Tuning::Camera::kGlideSeconds);
 
     // origin is a screen-space placement value, not a valid iso-space camera
     // offset — clamp immediately so the very first rendered frame already
@@ -324,14 +325,12 @@ void BattleState::onEnter()
     if (m_request.tutorial)
         m_deploymentPhase.autoDeployForTutorial();
 
-    // Frame the board *before* the fade-in. The camera drive lives in update(),
-    // which returns early while the transition plays, so without this the battle
-    // fades in on the clamped map origin and then visibly pans once control
-    // starts. Apply the dead zone's minimum correction instantly: the cursor's
-    // floor surface lands inside the dead zone from frame one, without shoving
-    // an already-comfortable board off centre.
+    // Open on the cursor (the spawn tile during deployment). The camera drive
+    // lives in update(), which returns early while the transition plays, so this
+    // has to happen before the fade-in or the battle would open on the map origin
+    // and then visibly pan once control starts.
     {
-        m_battleCamera.focusImmediately(m_camera, playSize, makeCameraContext());
+        m_battleCamera.frameCursor(m_camera, playSize, makeCameraContext());
         m_previousCamera = m_camera;
     }
 
@@ -518,11 +517,29 @@ void BattleState::updateCamera(float dt)
         m_previousCamera = m_camera; // hard cut: no this-frame render lerp
 }
 
+float BattleState::computeCameraTopExtra(float mapArtTopExtra) const
+{
+    const float halfTileH = static_cast<float>(m_mapData.tileHeight) * 0.5f;
+    float highestMarker = 0.0f;
+    for (int row = 0; row < m_battleMap.rows(); ++row)
+    {
+        for (int col = 0; col < m_battleMap.cols(); ++col)
+        {
+            const float anchorY =
+                tileToIso(Vec2i{col, row}, m_mapData.tileWidth, m_mapData.tileHeight).y;
+            const float floorTop =
+                anchorY - (static_cast<float>(m_battleMap.at(col, row).height) + 1.0f) * halfTileH;
+            highestMarker =
+                std::min(highestMarker, floorTop - Tuning::Camera::kMarkerHeadroom);
+        }
+    }
+    return std::max(mapArtTopExtra, -highestMarker);
+}
+
 BattleCameraController::Context BattleState::makeCameraContext()
 {
     BattleCameraController::Context ctx;
 
-    ctx.inCombat = m_flowPhase == BattleFlowPhase::Combat;
     ctx.phase = m_cameraPhase;
     ctx.dialogueActive = m_dialogueController.isActive();
     if (Unit *speaker = m_dialogueController.currentSpeaker())
@@ -533,8 +550,6 @@ BattleCameraController::Context BattleState::makeCameraContext()
         ctx.cursorTileHeight = m_battleMap.at(ctx.cursorTile.x, ctx.cursorTile.y).height;
     ctx.tileSize = Vec2f{static_cast<float>(m_mapData.tileWidth),
                          static_cast<float>(m_mapData.tileHeight)};
-    ctx.mapSize = Vec2i{m_mapData.width, m_mapData.height};
-    ctx.mapTopExtra = m_camera.getMapBoundsTopExtra();
 
     if (ctx.phase == BattleCameraController::Phase::ResolutionCast ||
         ctx.phase == BattleCameraController::Phase::ResolutionTrack)
@@ -2314,7 +2329,7 @@ void BattleState::render(float alpha)
 
     // Full-window themed sky behind everything, then the world composited on
     // top of it, then the rail frame — the FFTA "island floating on the
-    // backdrop" look (see FRAMED_LAYOUT_PLAN.md).
+    // backdrop" look (see docs/design/FRAMED_LAYOUT.md).
     renderBackdrop();
     m_renderer->blitWorldBuffer();
     renderRails();

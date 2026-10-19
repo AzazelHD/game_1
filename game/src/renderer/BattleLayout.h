@@ -4,7 +4,7 @@
 #include "engine/math/Vec2.h"
 
 // Framed battle layout — permanent side rails with a crisp play field between
-// them (see FRAMED_LAYOUT_PLAN.md).
+// them (see docs/design/FRAMED_LAYOUT.md).
 //
 // The rails are a designed layout element, never leftover space, so they exist
 // at every resolution. The world renders inside playRect at a whole number of

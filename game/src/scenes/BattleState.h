@@ -23,6 +23,7 @@
 #include "renderer/BattleRenderer.h"
 #include "renderer/BattleLayout.h"
 #include "config/BattleCatalog.h"
+#include "config/UiTuning.h"
 #include "events/BattleEventSystem.h"
 #include "battle/systems/CombatAnimationSystem.h"
 #include "battle/systems/CombatVfxLibrary.h"
@@ -216,6 +217,9 @@ public:
     // controller performs no writes; BattleState owns the phase machine
     // (m_cameraPhase) and flips it as resolution steps advance.
     BattleCameraController::Context makeCameraContext();
+    // Art reach above the top anchor row: the loaded map art, or the highest
+    // cursor-marker headroom on any tile if that reaches further.
+    [[nodiscard]] float computeCameraTopExtra(float mapArtTopExtra) const;
 
     // ── Deployment phase controller interface ──────────────────────────────
     // Mirrors HumanTurnContext/AttackResolutionContext — bundles the shared
@@ -475,7 +479,7 @@ private:
     // Framed layout: permanent side rails with a crisp play field between them.
     // Recomputed whenever the native output size changes (see update()). The
     // world buffer and the camera viewport both follow playRect; artScale is
-    // the integer device-px-per-texel world zoom. See FRAMED_LAYOUT_PLAN.md.
+    // the integer device-px-per-texel world zoom. See docs/design/FRAMED_LAYOUT.md.
     BattleLayout m_layout;
     void applyBattleLayout(const BattleLayout &layout);
 
@@ -508,9 +512,9 @@ private:
     float m_invalidFlashTimer = 0.0f;
 
     Cursor m_cursor;
-    float m_cursorHoverOffset = 50.0f;
-    float m_cursorTriW = 8.0f;
-    float m_cursorTriH = 20.0f;
+    float m_cursorHoverOffset = Tuning::Cursor::kHoverOffset;
+    float m_cursorTriW = Tuning::Cursor::kTriangleHalfWidth;
+    float m_cursorTriH = Tuning::Cursor::kTriangleHeight;
 
     // ── UI ─────────────────────────────────────────────────────────────────
     UIManager m_uiManager;
