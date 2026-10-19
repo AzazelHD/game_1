@@ -3,6 +3,7 @@
 Status: **M1 implemented** (rails + crisp play field); **themed backdrop shipped (Tier 0/1)**; **camera dead zone shipped** (both phases, height-aware walkable-surface test, minimum-displacement pan, holds still on a board that fits); M2–M5 planned
 Scope: battle scene presentation (layout + render pipeline + HUD rails)
 Author: opencode (planning session)
+Doc type: implementation record + remaining plan (was `FRAMED_LAYOUT_PLAN.md`)
 
 ---
 
@@ -290,5 +291,5 @@ Game:
 
 - No gameplay/mechanic changes (no rules, balance, AI, turn logic).
 - No new art assets required for M1 (stub rails are solid panels).
-- No audio, no gamepad, no monster units, no promotions (see `AGENTS.md` §10).
+- No audio, no gamepad, no monster units, no promotions (see `../../AGENTS.md` §10).
 - Not switching the world to linear filtering (crisp integer scale is the goal).

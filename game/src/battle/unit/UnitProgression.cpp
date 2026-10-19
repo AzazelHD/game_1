@@ -20,8 +20,8 @@ namespace
     };
 
     const RaceData kElfRaceData{
-        // PLACEHOLDER BALANCE: values express RACE_DESIGN's magic/speed/
-        // evasion bias and lower HP/defense direction; rebalance later.
+        // PLACEHOLDER BALANCE: the magic/speed/evasion bias and lower HP/defense
+        // direction come from docs/design/RACES.md; rebalance later.
         .race = Race::Elf,
         .bonusMaxHp = -2,
         .bonusMaxMp = 5,
@@ -36,7 +36,7 @@ namespace
     };
 
     const RaceData kElinRaceData{
-        // PLACEHOLDER BALANCE: RACE_DESIGN specifies a fast, evasive,
+        // PLACEHOLDER BALANCE: docs/design/RACES.md specifies a fast, evasive,
         // magic-capable glass-cannon profile but no final numeric values.
         .race = Race::Elin,
         .bonusMaxHp = -4,
@@ -81,7 +81,7 @@ namespace
     };
 
     const RaceGrowth kElfGrowth{
-        // PLACEHOLDER BALANCE: directional Elf bias from RACE_DESIGN.
+        // PLACEHOLDER BALANCE: directional Elf bias from docs/design/RACES.md.
         .race = Race::Elf,
         .hpPerLevel = 1.6f,
         .mpPerLevel = 1.1f,
@@ -93,7 +93,7 @@ namespace
     };
 
     const RaceGrowth kElinGrowth{
-        // PLACEHOLDER BALANCE: directional Elin bias from RACE_DESIGN.
+        // PLACEHOLDER BALANCE: directional Elin bias from docs/design/RACES.md.
         .race = Race::Elin,
         .hpPerLevel = 1.4f,
         .mpPerLevel = 0.9f,
@@ -122,7 +122,7 @@ namespace
     };
 
     // Placeholder balance values for the promotion biases described in
-    // RACE_DESIGN.md. Replace when the class balance pass is designed.
+    // docs/design/RACES.md. Replace when the class balance pass is designed.
     const ClassGrowth kTemplarGrowth{
         .baseClass = BaseClass::Soldier,
         .promotion = PromotionClass::Templar,
@@ -209,7 +209,7 @@ const ClassGrowth &getClassGrowth(BaseClass baseClass, PromotionClass promotion)
     case PromotionClass::None:
         return table[0];
     // PLACEHOLDER BALANCE: Elf/Elin promotion adjustments express only the
-    // direction in RACE_DESIGN and must be replaced by a balance pass.
+    // direction in docs/design/RACES.md and must be replaced by a balance pass.
     case PromotionClass::Sharpshooter:
     {
         static const ClassGrowth growth{.baseClass = BaseClass::Archer, .promotion = PromotionClass::Sharpshooter, .attackPerLevel = 0.2f, .speedPerLevel = 0.1f};

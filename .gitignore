@@ -68,7 +68,7 @@ Testing/
 .cache/
 
 
-# debug run logs (already tracked: git rm --cached to make this take effect)
+# debug run logs
 latest_debug_run.txt
 build_out.txt
 

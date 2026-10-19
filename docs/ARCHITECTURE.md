@@ -88,6 +88,16 @@ The game owns all domain logic:
   `BattleState`.
 - `BattleWorldProjection`: shared tile→screen anchor math (Camera projection +
   elevation) for world-anchored VFX and floating damage text.
+- `config/UiTuning.h`: designer-facing constants (`Tuning::Camera`,
+  `Tuning::Cursor`, `Tuning::Layout`) — dead-zone fractions per axis, cursor
+  marker headroom, ease/glide times, map-edge margin, marker size, rail sizing.
+  See `TUNING.md` for the full "where do I change X" map.
+- Camera pan range has one source of truth: `Camera::getPanAxes()` (engine)
+  reports the axes the padded map overflows; `BattleCameraController` and
+  `Camera::clampToBounds` both use it, so the controller keeps no fit maths of
+  its own. The dead-zone footprint is the floor diamond lifted by tile height,
+  padded by the marker headroom above and the tile-art overhang below so the top
+  and bottom gaps match.
 
 ### `data/`
 
@@ -194,7 +204,7 @@ Battle rendering uses two coordinate spaces, deliberately kept separate:
 `BattleLayout` (game) owns the rail/play-rect/art-scale math; the engine exposes
 only the primitives (`Renderer::getOutputSize`, `setWorldBufferSize`,
 `begin/endNativeOverlay`, `Camera::getViewportSize`). See
-`FRAMED_LAYOUT_PLAN.md` for the staged rollout (M1 shipped: rails + crisp play
+`design/FRAMED_LAYOUT.md` for the staged rollout (M1 shipped: rails + crisp play
 field; M2+ move the HUD content into the rails and the UI to a native layout).
 
 ## Current Gaps and Follow-Ups

@@ -1,4 +1,4 @@
-# TRPG Game (game_1) - Development Plan
+# TRPG Game (game_1) - Roadmap
 
 ## Mission
 
@@ -6,7 +6,8 @@ Deliver a stable tactical RPG vertical slice on top of the shared engine while k
 
 ## Current Vertical Slice Status
 
-The core path is implemented in code:
+The core path is implemented in code (status 2026-10-19; what shipped and when
+is in `CHANGELOG.md`):
 
 - App boot and scene flow (`BootState` -> `MainMenuState` -> `IntroState` (New Game tutorial duel) -> `WorldMapState` -> `BattleState` -> `ResultState`)
 - Deployment phase with roster selection and forced/critical unit handling
@@ -16,90 +17,22 @@ The core path is implemented in code:
 - Settings flow (graphics/audio) with persisted settings
 - Battle rendering split into world logical pass and native UI/effects pass
 
-## Architecture Ownership
+## Where the rest went
 
-### Scene layer (`scenes/`)
+This file used to duplicate the module map, engineering rules, deferred list and doc
+index. Those now have single homes:
 
-- `BootState`: startup handoff and first scene transition
-- `MainMenuState`: entry menu and navigation to world map/settings
-- `WorldMapState`: node graph travel and battle request construction
-- `BattleState`: battle orchestration shell (delegates behavior through context objects)
-- `ResultState`: battle result presentation and return flow
-
-### Battle domain (`battle/`)
-
-- `BattleSession`: runtime unit ownership, turn queue integration, victory/defeat evaluation
-- `controllers/`:
-  - `HumanTurnController`: human input state machine for move/attack/confirm phases
-  - `BattleMenuController`: action/skill/system/inspect menu flows
-  - `AttackResolutionController`: pending-target set, preview, hit resolution sequencing
-  - `DeploymentPhaseController`: deployment-specific interaction and transition into combat
-  - `MovementAnimationController`: visual walk playback independent of logical move commit
-  - `DialogueController`: dialogue sequencing bridge for battle cut-in lines
-- `combat/`: hit formulas, turn queue, and area target selection support
-- `map/`: movement range, pathfinding, occupancy, and tile metadata usage
-- `systems/`: deployment model and combat animation queue hooks
-- `ui/`: battle-specific windows (deployment, inspect, panel)
-
-### Support systems
-
-- `ai/EnemyAI`: enemy plan/act logic
-- `config/BattleCatalog`: map->battle definition catalog and static event rules
-- `data/`:
-  - `SettingsManager`: settings load/save/apply
-  - `UnitLoader`: unit template JSON parser
-  - `SkillLoader`: skill JSON parser and bulk-load database source
-- `events/BattleEventSystem`: trigger/action dispatcher abstraction
-- `renderer/BattleRenderer`: battle drawing pipeline and overlays
-- `ui/`: window stack manager, generic UI events, shared visual helpers
-- `systems/PartySystem` and `systems/RosterSystem`: world/battle party composition data
-- `world/`: graph and pathfinding for world navigation
-
-## What Is Done vs Pending
-
-### Done
-
-1. Movement cost now uses real path cost from reachable cost map.
-2. Cursor resets after combat resolution and action menu re-entry.
-3. Graphics mode application path is implemented with borderless/windowed settings updates.
-4. Render pass separation is implemented in `BattleState::render()`.
-5. Skill loading and skill menu-to-combat wiring are implemented with multiple skill JSON files.
-
-### Pending validation and completion
-
-1. Full uninterrupted smoke run through all major scenes.
-2. Camera and menu alignment regression checks across display modes.
-3. Final visual verification for pass separation on all battle UI overlays.
-4. Add scripted pre-battle story dialogue beats for real battles (the tutorial duel already uses contextual tips).
-
-## Engineering Rules
-
-- Game code uses engine public headers only.
-- Gameplay logic stays in `game/src/`, never in engine.
-- `UIManager` is the single source of truth for modal/input-blocking UI behavior.
-- New behavior should be introduced in focused controllers/systems before extending `BattleState` directly.
-- Keep at least one map fully playable at all times.
-
-## Documentation Map
-
-- Engine architecture: `engine/ARCHITECTURE.md`
-- Game architecture and ownership: `game_1/ARCHITECTURE.md`
-- Data schema reference: `game_1/DATA_SCHEMAS.md`
-- Task tracking: `game_1/TODO.md`
-
-## Deferred Until Vertical Slice Is Fully Stable
-
-1. Promotion class tree and passive/reaction skills (`UNIT_DESIGN.md`).
-2. Full combat animation and VFX package, real sprites, audio.
-3. Multi-cast skill chains and enemy skill casting.
+- Module ownership / battle flow / render pipeline: `ARCHITECTURE.md`
+- Agent rules, deferred ("do NOT build") list, doc index: `../AGENTS.md`
+- Live work items and verification: `TODO.md`, `archive/MILESTONES.md`
+- What shipped, when: `CHANGELOG.md`
 
 ## Roadmap — Remaining Work (living plan)
 
 Everything below is on the table. Order matters: each phase unlocks the next
 (economy before shop, save fidelity before any persisted meta-system, quests
-before the tavern becomes the quest-giver). This section supersedes the
-"Deferred" list above for the items it covers; true hard no-go items still
-live in `AGENTS.md` §10 (monster/Undead recruits, races beyond Human/Elf/Elin).
+before the tavern becomes the quest-giver). True hard no-go items live in
+`../AGENTS.md` §10 (monster/Undead recruits, races beyond Human/Elf/Elin).
 
 ### Category A — Campaign loop & economy
 
@@ -146,7 +79,7 @@ live in `AGENTS.md` §10 (monster/Undead recruits, races beyond Human/Elf/Elin).
   progression level; enemies without progression fight at authored power),
   and the real active skills now level to 3 (costs 1/1/2 pts). Remaining:
   passive/reaction combat effects, the promotion class tree, and a level-up
-  notification in the victory screen. (`UNIT_DESIGN.md` is the design source.)
+  notification in the victory screen. (`design/UNIT_PROGRESSION.md` is the design source.)
 - **Status effect pipeline** — **(M5 slice 1 shipped 2026-09-15)**
   `StatusType`/`ActiveStatus`/`StatusEffectApply` model, `Unit` apply/tick
   (DoT stacking, turn locks, sleep-breaks-on-damage), skill JSON `statuses`

@@ -1,16 +1,11 @@
+# Prose is not graph input (AGENTS.md, README.md, docs/**).
+*.md
+
+# Not source / vendored
 build/
 vcpkg_installed/
 .opencode/
 .github/
-game/assets/
-PLAN.md
-TODO.md
-CHANGELOG.md
-ISSUE.md
-AGENTS.md
 .clinerules
-USEFUL_COMMANDS.txt
-latest_debug_run.txt
-build_out.txt
-*.md
+game/assets/
 CMakeLists.txt

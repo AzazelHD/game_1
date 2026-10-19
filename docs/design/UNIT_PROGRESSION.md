@@ -1,5 +1,9 @@
 # Unit Progression System – Design Document
 
+**Status:** M4/M5 slices shipped — skill points, unlocks, skill levels, status
+effects, buffs and skill power scaling are live. Promotion classes and
+passive/reaction skills are **deferred** (`../../AGENTS.md` §10).
+
 ## Philosophy
 
 The player controls an army of recruitable units, not fixed protagonists.
@@ -41,7 +45,7 @@ Points are **never** re-assignable. If the player wants a different variant of t
 
 - Each unit belongs to a **race**, chosen at recruitment. Race is permanent.
 - Race determines:
-  - Base stats and stat growth curves (see `RACE_DESIGN.md` § Race Roster &
+  - Base stats and stat growth curves (see `RACES.md` § Race Roster &
     Stat Growth for the per-race base bonuses and per-level growth tables)
   - Equipment slot access (see Gear doc)
   - Possibly a small race-flavored bonus/malus, similar in scope to Nature
@@ -49,9 +53,9 @@ Points are **never** re-assignable. If the player wants a different variant of t
 
 The playable roster is **6 races**: Human, Elin, Kragan, Fennari, Tok, and Gria
 (placeholder names). `Elf` is not a playable race; `Undead` is reserved for
-future monster units, not recruits. Gria can **fly** (see `RACE_DESIGN.md`
+future monster units, not recruits. Gria can **fly** (see `RACES.md`
 § Flight), which is a movement-model trait rather than a stat. See
-`RACE_DESIGN.md` for full details.
+`RACES.md` for full details.
 
 ### Promotion
 

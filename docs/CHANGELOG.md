@@ -7,6 +7,39 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
 
 ---
 
+## Unreleased — "Camera: even top/bottom gaps, central tuning file"
+
+- Fixed the uneven gap above the topmost tile vs below the bottom one: the camera
+  reserved `hover + triH` (70 units) above the floor though the marker reaches
+  only `hover` (50), and nothing below. The dead-zone footprint is now the floor
+  diamond lifted by tile height, plus `kMarkerHeadroom` above and the tile-art
+  overhang (half a tile) below.
+- New `config/UiTuning.h` (`Tuning::Camera/Cursor/Layout`): per-axis dead-zone
+  fractions, marker headroom, ease/glide times, map-edge margin, cursor marker
+  size, rail sizing. `BattleLayout`, `BattleState` and `BattleCameraController`
+  read from it; magic numbers removed. New `TUNING.md` maps every tweakable value
+  (including fonts and window sizes) to its file.
+- Removed `Context::cursorMarkerReach` and `BattleState::cursorMarkerReach()`.
+
+---
+
+## Unreleased — "Camera: single pan-range source, cursor-centred open, vertical pan"
+
+- `Camera::getPanAxes()` (engine) reports the axes on which the padded map
+  overflows the viewport; `clampToBounds` shares its bounds helpers. The
+  controller's duplicated fit maths (`boardFit`, `boardExtent`) is gone, and the
+  `SmallMapFit::Slide` mode was removed (public API change: only `Center` and
+  `Frame` remain; the controller was its only user).
+- The sprite margin now counts as map content, so large maps such as node 7 pan
+  vertically instead of being pinned (their art alone "fit" by 1px).
+- The battle opens centred on the cursor's floor surface
+  (`BattleCameraController::frameCursor`, replaces `focusImmediately`) instead
+  of the nearest dead-zone edge / the map origin.
+- `BattleCameraController` rewritten around small helpers; `Context` lost
+  `inCombat`, `mapSize`, `mapTopExtra`.
+
+---
+
 ## `f2e65d1` — 2026-10-18 — "Camera: restore pre-beat framing after a scripted beat; fix enemy-turn deadlock on a refused move commit"
 
 - **The camera no longer stays stuck centred on an enemy after its attack.**
@@ -67,7 +100,7 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   delegates to it with the live offset. _Files:
   `battle/systems/BattleCameraController`, `scenes/BattleState`
   (`beginUnitWalk`); docs `TODO.md`, `ARCHITECTURE.md`,
-  `FRAMED_LAYOUT_PLAN.md`._
+  `design/FRAMED_LAYOUT.md`._
 
 ## `4d34a01` — 2026-10-18 — "Camera dead zone: 80% box, minimum-displacement pan, height-aware floor test"
 
@@ -105,7 +138,7 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   the motion is deterministic and settles on the dead-zone edge without jitter.
   _Files: `battle/systems/BattleCameraController`, `scenes/BattleState`
   (`makeCameraContext`, `onEnter` framing), `battle/controllers/DeploymentPhaseController`
-  (comment); docs `TODO.md`, `ARCHITECTURE.md`, `FRAMED_LAYOUT_PLAN.md`,
+  (comment); docs `TODO.md`, `ARCHITECTURE.md`, `design/FRAMED_LAYOUT.md`,
   `AGENTS.md`._
 
 ## `957114b` — 2026-10-18 — "Camera bounds count the map's drawn art (raised tiles)"
@@ -332,7 +365,7 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   `endWorldPass() + blitWorldBuffer()` convenience. This is the seam Tier 2
   parallax (drifting clouds/embers/snow) drops into. _Files (engine):
   `renderer/Renderer`._
-- Docs: `FRAMED_LAYOUT_PLAN.md` (Tier 0/1 shipped), `TODO.md`,
+- Docs: `design/FRAMED_LAYOUT.md` (Tier 0/1 shipped), `TODO.md`,
   `ARCHITECTURE.md`, `AGENTS.md`.
 
 ## `9f91dcd` — 2026-10-17 — "Framed battle layout: persistent rails + crisp play field (M1)"
@@ -365,7 +398,7 @@ Each entry is keyed to its **commit**, ordered **newest first** by commit date.
   unchanged, so no UI code moved; migrating the UI to a native, edge-anchored
   layout is a follow-up (M5). _Files (engine): `renderer/Renderer`,
   `renderer/Camera`._
-- Docs: `FRAMED_LAYOUT_PLAN.md` (M1 marked implemented), `TODO.md`,
+- Docs: `design/FRAMED_LAYOUT.md` (M1 marked implemented), `TODO.md`,
   `ARCHITECTURE.md`.
 
 ## `5e0de28` — 2026-10-17 — "Turn-start menu, undoable Wait, camera framing, UTF-8 dialog"
@@ -1330,7 +1363,7 @@ setSkillCooldown}`), ticked in `resetTurn()`.
   on the erase frame. `Renderer::renderText` now rasterizes at `a=255` and fades
   via `SDL_SetTextureAlphaMod(texture, color.a)` (plus an early-out when
   `a==0`), so the fade actually reaches the pixels and the end pop is gone.
-  (Full details: `ISSUE.md`.)
+  (Full details: `archive/RESOLVED_ISSUES.md`.)
 - Placeholder hit ring no longer shows solid "red line" bars at its top/bottom
   poles: `drawRing` now draws two sampled circle outlines instead of an
   integer-scanline disc.
@@ -1454,7 +1487,7 @@ setSkillCooldown}`), ticked in `resetTurn()`.
 - Added placeholder promotion skills and new unit templates
   (`elf_archer`, `elin_duelist`, etc.).
 - Introduced/expanded design docs: `ARCHITECTURE.md`, `DATA_SCHEMAS.md`,
-  `PLAN.md`, `RACE_DESIGN.md`, `UNIT_DESIGN.md`, `AGENTS.md`.
+  `ROADMAP.md`, `design/RACES.md`, `design/UNIT_PROGRESSION.md`, `AGENTS.md`.
 
 ---
 
@@ -1621,7 +1654,7 @@ setSkillCooldown}`), ticked in `resetTurn()`.
 
 ## Notes
 
-- `RACE_DESIGN.md` / `UNIT_DESIGN.md`: design-only race roster + stat growth
+- `design/RACES.md` / `design/UNIT_PROGRESSION.md`: design-only race roster + stat growth
   tables are in progress (6-race roster: Human, Elin, Kragan, Fennari, Tok,
   Gria). Unit progression / class system remains deferred — not yet wired into
   code.

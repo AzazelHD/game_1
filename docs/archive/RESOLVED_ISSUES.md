@@ -1,4 +1,11 @@
-# ISSUE: Floating damage number "flickers once" at the end of its animation
+# Resolved issues — root-cause records
+
+Archive: these entries are kept for the reasoning, not as a to-do list. Open
+work is in `../TODO.md`, and what shipped when is in `../CHANGELOG.md`.
+
+---
+
+# Floating damage number "flickers once" at the end of its animation
 
 **Status:** RESOLVED — root-caused, fixed, visually confirmed by user.
 All debug scaffolding (Tab FX-mode cycler, banner, probe PNGs, per-frame
@@ -36,7 +43,7 @@ was removed after the fix.
 ## Observed (logged) data — CPU side is CORRECT
 
 Per-frame capture (tag `FloatText` T / `Render` TEXT / `CombatAnim` T lines in
-`latest_debug_run.txt`):
+the debug run log — the log itself was deleted with the repo cleanup, 2026-10-19):
 
 - A single floating-text entry is enqueued per press/attack.
 - Rise uses `easeOut` tween over ttl 1.0 s; fade driven by **linear** t over

@@ -1,7 +1,13 @@
-# Race System – Companion to UNIT_DESIGN.md
+# Race System – Companion to UNIT_PROGRESSION.md
+
+**Status:** design pitch — the roster below (**Human, Elin, Kragan, Fennari,
+Tok, Gria**) is aspirational. The build ships `Human`, `Elf` and `Elin` only
+(with placeholder Elf/Elin class names); `Undead` is a placeholder for future
+monster units. Do not implement the rest without an explicit ask
+(`../../AGENTS.md` §10).
 
 Race does **not** change the skill system, promotion system, or point economy defined
-in UNIT_DESIGN.md. It only gates **which base classes are eligible at recruitment**,
+in UNIT_PROGRESSION.md. It only gates **which base classes are eligible at recruitment**,
 and may bias starting stats/growth slightly (comparable in scope to Nature).
 
 ## How it works
@@ -9,7 +15,7 @@ and may bias starting stats/growth slightly (comparable in scope to Nature).
 - Each race has a fixed list of base classes it can recruit as.
 - A unit's race is permanent, chosen at recruitment (or fixed per recruit encounter).
 - Everything after recruitment (aptitudes, nature, skill points, promotion path)
-  works exactly as described in UNIT_DESIGN.md, scoped to whatever base class
+  works exactly as described in UNIT_PROGRESSION.md, scoped to whatever base class
   the unit rolled.
 - Each race has a **stat growth curve** (per-level gains) and a **base stat
   bonus** (starting stat profile). See the tables in § Race Roster & Stat Growth.
@@ -147,7 +153,7 @@ Promotes into one of 3 specializations (pick one, permanent):
 - **Knight** — bias toward defense/HP tanking
 - **Paladin** — bias toward hybrid physical + support
 
-Per UNIT_DESIGN.md promotion rules:
+Per UNIT_PROGRESSION.md promotion rules:
 
 - Alters stat growth
 - Adapts some base-class (Soldier) skills
